@@ -7,7 +7,7 @@ where that tail starts.
 import typing
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Bool, Float
 
 
 def find_elbow_index_in_sorted_data(data: torch.Tensor) -> int:
@@ -28,16 +28,24 @@ def find_elbow_index_in_sorted_data(data: torch.Tensor) -> int:
 
 
 def positive_sorted_activations(
-    outputs: Float[torch.Tensor, "batch seq hidden"], neuron_idx: int
+    outputs: Float[torch.Tensor, "batch seq hidden"],
+    neuron_idx: int,
+    valid_mask: Bool[torch.Tensor, "batch seq"] | None = None,
 ) -> Float[torch.Tensor, "n_pos"]:
-    values = outputs[..., neuron_idx].flatten()
+    """`valid_mask` drops padding before the elbow is computed. Padding would otherwise enter
+    the activation distribution the threshold is derived from, moving the cutoff for every
+    real token."""
+    values = outputs[..., neuron_idx]
+    values = values[valid_mask] if valid_mask is not None else values.flatten()
     values = values[values > 0]
     return torch.sort(values).values
 
 
 def find_activation_threshold(
-    outputs: Float[torch.Tensor, "batch seq hidden"], neuron_idx: int
+    outputs: Float[torch.Tensor, "batch seq hidden"],
+    neuron_idx: int,
+    valid_mask: Bool[torch.Tensor, "batch seq"] | None = None,
 ) -> tuple[float, Float[torch.Tensor, "n_pos"], int]:
-    sorted_values = positive_sorted_activations(outputs, neuron_idx)
+    sorted_values = positive_sorted_activations(outputs, neuron_idx, valid_mask)
     elbow_idx = find_elbow_index_in_sorted_data(sorted_values)
     return sorted_values[elbow_idx].item(), sorted_values, elbow_idx
