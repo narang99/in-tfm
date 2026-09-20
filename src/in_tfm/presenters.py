@@ -7,6 +7,7 @@ completely between images and text:
 - what a rendered hit even is - a JPEG overlay, or highlighted text
 """
 
+import html
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,6 +19,7 @@ from jaxtyping import Float
 from transformers.image_processing_utils import BaseImageProcessor
 
 from .dicom import inv_tfm
+from .html_report import colored_tokens, details, display_text, page, symmetric_scale
 from .sources import SampleId
 from .viz import mk_overlay, render_hadamard_tiles, save_image_grid, to_pil
 
@@ -34,14 +36,14 @@ class ClusterHit(NamedTuple):
     model_input: torch.Tensor
     """The leaf that produced it, for presenters that show the input alongside the overlay."""
     hadamard: Float[np.ndarray, "hidden"]
-    display_ids: torch.Tensor | None = None
     """Token ids as fed, when the leaf is not invertible - see sources.ModelBatch."""
+    display_ids: torch.Tensor | None = None
 
 
 @runtime_checkable
 class ClusterPresenter(Protocol):
     def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
-        """Writes artifact files into cluster_dir; returns the markdown fragment linking them."""
+        """Writes artifact files into cluster_dir; returns the html fragment linking them."""
         ...
 
 
@@ -69,11 +71,9 @@ class ImagePresenter:
 
         name = cluster_dir.name
         return (
-            f"![original]({name}/original.jpg)\n\n"
-            f"![overlay]({name}/overlay.jpg)\n\n"
-            f"<details>\n<summary>hadamard patterns</summary>\n\n"
-            f"![hadamard]({name}/hadamard.jpg)\n\n"
-            f"</details>\n"
+            f'<img src="{name}/original.jpg" alt="original">\n'
+            f'<img src="{name}/overlay.jpg" alt="overlay">\n'
+            + details("hadamard patterns", f'<img src="{name}/hadamard.jpg" alt="hadamard">')
         )
 
     def _denormalized(self, hit: ClusterHit) -> np.ndarray:
@@ -89,12 +89,33 @@ class ImagePresenter:
         return torch.from_numpy(relevance.sum(0))
 
 
+class HitWindow(NamedTuple):
+    """One hit's context slice, ready to shade."""
+
+    tokens: list[str]
+    relevance: Float[np.ndarray, "window"]
+    """Index of the firing token within the slice, not within the sequence."""
+    firing_pos: int
+    starts_at_bos: bool
+
+    @property
+    def scale_relevance(self) -> Float[np.ndarray, "..."]:
+        """The slice minus `<bos>`, for picking a color scale.
+
+        `<bos>` carries the decoder's attention-sink relevance, an order of magnitude above
+        every real token; leaving it in the scale would flatten the rest of the window to grey.
+        It is still drawn, just clipped to the limit.
+        """
+        return self.relevance[1:] if self.starts_at_bos else self.relevance
+
+
 class TextPresenter:
-    """Renders each hit as its token in context, with per-token relevance.
+    """Renders each hit as its token in context, shaded by per-token relevance.
 
     The image path collapses relevance over channels to get a 2D map; here it collapses over
     the hidden dimension to get one number per token, which is what "where did this neuron look"
-    means for text.
+    means for text. The colored-token view is that 1D map drawn over the text itself, the way
+    `mk_overlay` draws the 2D one over pixels.
     """
 
     def __init__(self, source, context_tokens: int = 12, top_tokens: int = 10) -> None:
@@ -103,13 +124,17 @@ class TextPresenter:
         self.top_tokens = top_tokens
 
     def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
-        lines = [self._hit_block(h) for h in hits]
-        (cluster_dir / "hits.md").write_text("\n\n".join(lines))
+        windows = [self._window(h) for h in hits]
+        vmax = symmetric_scale([w.scale_relevance for w in windows])
+        blocks = "\n".join(
+            self._hit_block(hit, window, vmax) for hit, window in zip(hits, windows)
+        )
+        (cluster_dir / "hits.html").write_text(page(f"{cluster_dir.name} hits", blocks))
         return (
-            f"firing tokens: {self._firing_token_summary(hits)}\n\n"
-            f"<details>\n<summary>{len(hits)} sampled hits in context</summary>\n\n"
-            + "\n\n".join(lines)
-            + f"\n\n</details>\n"
+            f'<p class="firing">firing tokens: {self._firing_token_summary(hits)}</p>\n'
+            f'<p class="scale">shading is shared across these hits: '
+            f"red {-vmax:.2f} to green {vmax:+.2f}, hover a token for its value</p>\n"
+            + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
         )
 
     def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> str:
@@ -120,7 +145,7 @@ class TextPresenter:
         """
         counts = Counter(self._firing_token(h) for h in hits)
         return ", ".join(
-            f"`{tok}`x{n}" if n > 1 else f"`{tok}`"
+            f"{_code(tok)}x{n}" if n > 1 else _code(tok)
             for tok, n in counts.most_common(self.top_tokens)
         )
 
@@ -140,20 +165,24 @@ class TextPresenter:
         tokens = self._tokens(hit)
         return tokens[hit.token_idx] if hit.token_idx < len(tokens) else "<out-of-range>"
 
-    def _hit_block(self, hit: ClusterHit) -> str:
+    def _window(self, hit: ClusterHit) -> HitWindow:
         tokens = self._tokens(hit)
         relevance = self._per_token_relevance(hit)
+        n = min(len(tokens), len(relevance))
         lo = max(0, hit.token_idx - self.context_tokens)
-        hi = min(len(tokens), hit.token_idx + self.context_tokens + 1)
+        hi = min(n, hit.token_idx + self.context_tokens + 1)
+        return HitWindow(tokens[lo:hi], relevance[lo:hi], hit.token_idx - lo, starts_at_bos=lo == 0)
 
-        rendered = [
-            f"**[{tokens[i]}]**" if i == hit.token_idx else tokens[i]
-            for i in range(lo, hi)
-        ]
+    def _hit_block(self, hit: ClusterHit, window: HitWindow, vmax: float) -> str:
+        tokens = self._tokens(hit)
         return (
-            f"- sample `{hit.sample_id}` token {hit.token_idx}: "
-            + " ".join(rendered).replace(chr(9601), " ")
-            + f"\n  - top relevance: {self._top_relevance(tokens, relevance)}"
+            '<div class="hit">\n'
+            f'<div class="hit-tag">sample {html.escape(str(hit.sample_id))} '
+            f"&middot; token {hit.token_idx}</div>\n"
+            + colored_tokens(window.tokens, window.relevance, vmax, firing_idx=window.firing_pos)
+            + f'\n<div class="scale">top relevance over the whole sequence: '
+            f"{self._top_relevance(tokens, self._per_token_relevance(hit))}</div>\n"
+            "</div>"
         )
 
     def _per_token_relevance(self, hit: ClusterHit) -> np.ndarray:
@@ -167,4 +196,8 @@ class TextPresenter:
     def _top_relevance(self, tokens: list[str], relevance: np.ndarray) -> str:
         n = min(len(tokens), len(relevance))
         order = np.argsort(-np.abs(relevance[:n]))[: self.top_tokens]
-        return ", ".join(f"`{tokens[i]}`({relevance[i]:+.2f})" for i in order)
+        return ", ".join(f"{_code(tokens[i])}({relevance[i]:+.2f})" for i in order)
+
+
+def _code(token: str) -> str:
+    return f"<code>{html.escape(display_text(token))}</code>"

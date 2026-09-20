@@ -21,6 +21,7 @@ from tqdm import tqdm
 
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
+from .html_report import page
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter
 from .sources import SampleId, SampleSource
@@ -108,17 +109,16 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn,
         max_n: int,
     ) -> str:
-        """Markdown for one cluster's section of the report; a `cluster_{id}/` subfolder holding
+        """Html for one cluster's section of the report; a `cluster_{id}/` subfolder holding
         its artifacts and mean Hadamard prototype (`mean.pt`) is written as a side effect."""
         cluster_dir = report_dir / f"cluster_{cluster_id}"
         cluster_dir.mkdir(parents=True, exist_ok=True)
         torch.save(self._cluster_mean_hadamard(cluster_id), cluster_dir / "mean.pt")
 
-        header = f"## Cluster {cluster_id} (n={count}, unique_samples={n_unique_samples})"
+        header = f"<h2>Cluster {cluster_id} (n={count}, unique_samples={n_unique_samples})</h2>"
         hits = self.sample_cluster(cluster_id, max_n=max_n, attr_fn=attr_fn)
-        if not hits:
-            return f"{header}\n\nno hits sampled.\n"
-        return f"{header}\n\n{self.presenter.render(hits, cluster_dir)}"
+        body = self.presenter.render(hits, cluster_dir) if hits else "<p>no hits sampled.</p>"
+        return f'<section class="cluster">\n{header}\n{body}\n</section>'
 
     def _write_meta(
         self,
@@ -149,7 +149,7 @@ class NeuronClusterHits(BaseModel):
         max_n: int = 5,
         min_uniq_images: int = 2,
     ) -> Path:
-        """Self-contained report folder for this neuron: `out_dir/{name}/index.md`, every
+        """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
         threshold metadata that picked this neuron's activation cutoff, all sitting under
         report_dir - so the whole folder can be zipped/tarred and read standalone.
@@ -176,10 +176,15 @@ class NeuronClusterHits(BaseModel):
             for cid in cluster_ids
         ]
 
-        report_path = report_dir / "index.md"
+        report_path = report_dir / "index.html"
+        title = f"Neuron {self.neuron_idx}"
         report_path.write_text(
-            f"# Neuron {self.neuron_idx}\n\n"
-            f"threshold: {self.threshold:.4f}\n\n"
-            f"![elbow](elbow.png)\n\n" + "\n\n".join(sections)
+            page(
+                title,
+                f"<h1>{title}</h1>\n"
+                f'<p class="meta">threshold: {self.threshold:.4f} &middot; '
+                f"{len(self.labels)} hits &middot; {len(sections)} clusters</p>\n"
+                '<img src="elbow.png" alt="elbow plot">\n' + "\n".join(sections),
+            )
         )
         return report_path

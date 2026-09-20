@@ -249,7 +249,7 @@ have no effect - the re-run produced byte-identical numbers. Cell 1 now uses `-e
 ## Still open
 
 - `reports/` is never cleaned between runs, so cluster folders from a previous run with more
-  clusters linger on disk. `index.md` only links current ones, so it is cosmetic, but a stale
+  clusters linger on disk. `index.html` only links current ones, so it is cosmetic, but a stale
   `cluster_N/` next to a fresh `meta.json` is misleading.
 - `--max-hits-per-cluster` is still the dominant knob: 15.9s of the 21.2s total is LRP passes.
 - Stop the runtime when idle. Credits burn on wall-clock, not compute.
