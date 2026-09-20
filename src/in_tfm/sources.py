@@ -129,11 +129,20 @@ class TextSource:
         self.embed = embed
         self.max_length = max_length
 
-        # Right padding is load-bearing, not a style choice. Gemma-family tokenizers default to
-        # left padding for generation, which shifts every real token by however much padding a
-        # batch happened to need - so a token_idx taken from the batched activations would
-        # index somewhere else entirely when a hit is later re-encoded on its own. With right
-        # padding, position i means the same token in both.
+        # Right padding keeps token_idx meaningful. Gemma-family tokenizers default to left
+        # padding for generation, which shifts every real token by however much padding a batch
+        # happened to need - so a token_idx read off the batched activations indexes somewhere
+        # else when the hit is later re-encoded on its own. With right padding, position i is
+        # the same token in both.
+        #
+        # This is bookkeeping, not numerics: measured on gemma-3-270m, real-token activations
+        # are identical (max abs diff 1e-6) whether padded left, right, or not at all. RoPE is
+        # relative, so a constant position shift cancels in (i - j), and the attention mask
+        # excludes pad keys either way.
+        #
+        # That equivalence is architecture-dependent though - a model with learned absolute
+        # position embeddings would genuinely differ under left padding, since nothing cancels.
+        # Right padding is the choice that stays correct for any decoder this source is given.
         self.tokenizer.padding_side = "right"
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
