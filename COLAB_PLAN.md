@@ -179,6 +179,58 @@ with the clustering backend settled in §2.
 6. Build cells 1–3, run stage 1, compare against the Mac numbers
 7. Stage 2
 
+## RESULTS (measured 2026-09-20, Tesla T4)
+
+Everything below §0-§6 was the plan; this is what actually happened.
+
+**The dependency strategy worked.** After `uv pip install --system --no-deps -e .` plus the six
+light deps, Colab's stack was untouched:
+
+```
+torch        2.11.0+cu128 | cuda: True | Tesla T4
+transformers 5.16.1
+numpy        2.1.3
+sklearn      1.6.1
+cuml         26.02.000
+device       cuda | cluster backend: cuml (gpu)
+```
+
+`--no-deps` on our own package is load-bearing. Installing it with deps lets uv re-resolve torch
+and swap the +cu128 build for a generic wheel.
+
+**cuml is preinstalled** (26.02.000) - no RAPIDS install needed, GPU clustering is free.
+
+**Timings, 8 dicoms / neuron 90 / max-hits 4:**
+
+| phase | Mac (MPS) | T4 |
+|---|---|---|
+| load model | 3.52s | 1.46s |
+| capture activations | 166.66s | 2.04s |
+| cluster | 9.89s | 0.87s (cuml) |
+| write report (20 LRP passes) | 398.69s | 15.88s |
+| **total** | **581.71s** | **21.15s** |
+
+~27x end to end. Capture is 80x faster; MPS was the whole problem.
+
+## Two bugs the port exposed
+
+**1. `Path.glob` order is filesystem-dependent.** `--n-dicoms 8` picked a different 8 images on
+Mac than on Colab - only 3 of 8 overlapped - which moved the threshold (0.5627 vs 0.6585) and hit
+count (1195 vs 630). It reads exactly like a broken port until you diff `dcm_paths` in
+`meta.json`. Fixed in 4752ee1 by sorting the glob.
+
+**2. A non-editable install silently ignores `git pull`.** Without `-e`, the script imports
+`in_tfm` from dist-packages while `git pull` only updates the checkout, so an edit appears to
+have no effect - the re-run produced byte-identical numbers. Cell 1 now uses `-e`.
+
+## Still open
+
+- `reports/` is never cleaned between runs, so cluster folders from a previous run with more
+  clusters linger on disk. `index.md` only links current ones, so it is cosmetic, but a stale
+  `cluster_N/` next to a fresh `meta.json` is misleading.
+- `--max-hits-per-cluster` is still the dominant knob: 15.9s of the 21.2s total is LRP passes.
+- Stop the runtime when idle. Credits burn on wall-clock, not compute.
+
 ## 7. Open risk, restated
 
 The corpus is chest **CT**; rad-dino is a chest **X-ray** model. Fine as a pipeline smoke test,

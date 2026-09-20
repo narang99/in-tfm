@@ -1,0 +1,35 @@
+{
+  "neuron_idx": 90,
+  "threshold": 0.6243048906326294,
+  "n_hits": 619,
+  "min_uniq_images_per_cluster": 2,
+  "n_clusters": 4,
+  "clusters": {
+    "4": {
+      "n_hits": 131,
+      "n_unique_images": 7
+    },
+    "1": {
+      "n_hits": 41,
+      "n_unique_images": 2
+    },
+    "0": {
+      "n_hits": 30,
+      "n_unique_images": 2
+    },
+    "3": {
+      "n_hits": 13,
+      "n_unique_images": 5
+    }
+  },
+  "dcm_paths": [
+    "dicoms/0000-0001.dcm",
+    "dicoms/0000-0002.dcm",
+    "dicoms/0000-0003.dcm",
+    "dicoms/0000-0004.dcm",
+    "dicoms/0000-0005.dcm",
+    "dicoms/0000-0006.dcm",
+    "dicoms/0000-0007.dcm",
+    "dicoms/0000-0008.dcm"
+  ]
+}
