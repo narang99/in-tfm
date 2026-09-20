@@ -18,12 +18,13 @@ import numpy as np
 import torch
 from jaxtyping import Float, Int
 from PIL import Image
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from tqdm import tqdm
 from transformers.image_processing_utils import BaseImageProcessor
 from transformers.models.dinov2.modeling_dinov2 import Dinov2Model
 
 from .attribution import compute_attnlrp_relevance
+from .device import default_device, empty_cache
 from .dicom import get_batch, inv_tfm
 from .layers import LayerGetter
 from .viz import (
@@ -85,7 +86,7 @@ class NeuronClusterHits(BaseModel):
     threshold: float
     elbow_values: Float[np.ndarray, "n_pos"]
     elbow_idx: int
-    device: str = "cuda"
+    device: str = Field(default_factory=default_device)
 
     def sample_cluster(
         self, cluster_id: int, max_n: int = 5, attr_fn: AttrFn = compute_attnlrp_relevance
@@ -106,7 +107,7 @@ class NeuronClusterHits(BaseModel):
             attr = attr.detach().cpu() if isinstance(attr, torch.Tensor) else torch.from_numpy(attr)
             results.append(ClusterHit(image=inv_img, attribution=attr, hadamard=self.hdmds[i]))
             del batch, attr
-            torch.cuda.empty_cache()
+            empty_cache()
             gc.collect()
         return results
 

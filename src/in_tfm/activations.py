@@ -16,13 +16,14 @@ from nnsight.modeling.base import NNsight
 from tqdm import tqdm
 from transformers.image_processing_utils import BaseImageProcessor
 
+from .device import default_device, empty_cache
 from .dicom import get_batch
 from .layers import LayerGetter
 
 
 def clear_mem() -> None:
     """Drop Jupyter's cached Out/In history (if running under IPython) before freeing CUDA
-    memory - `torch.cuda.empty_cache()` alone can't reclaim tensors still referenced by cell
+    memory - `empty_cache()` alone can't reclaim tensors still referenced by cell
     outputs."""
     try:
         from IPython import get_ipython
@@ -32,7 +33,7 @@ def clear_mem() -> None:
             ip.run_line_magic("reset", "out")
     except ImportError:
         pass
-    torch.cuda.empty_cache()
+    empty_cache()
     gc.collect()
 
 
@@ -43,7 +44,7 @@ def get_activations(
     dcm_base: Path,
     n_iter: int = 14,
     bs: int = 4,
-    device: str = "cuda",
+    device: str | None = None,
 ) -> tuple[
     list[Path],
     Float[torch.Tensor, "batch seq hidden"],
@@ -53,6 +54,7 @@ def get_activations(
     batch/seq_len together, so a later `argwhere` on the activations can be traced back to
     (batch_idx, token_idx) pairs.
     """
+    device = device or default_device()
     it = dcm_base.glob("*.dcm")
     all_dcm_paths: list[Path] = []
     all_inputs: list[torch.Tensor] = []
@@ -72,7 +74,7 @@ def get_activations(
         all_outputs.append(outputs.detach().cpu())
 
         del inputs, outputs, batch
-        torch.cuda.empty_cache()
+        empty_cache()
         gc.collect()
 
     outputs = torch.cat(all_outputs, dim=0)
