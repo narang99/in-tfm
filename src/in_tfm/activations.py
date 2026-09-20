@@ -84,7 +84,22 @@ def get_activations(
 
     return (
         all_ids,
-        torch.cat(all_inputs, dim=0),
-        torch.cat(all_outputs, dim=0),
-        torch.cat(all_masks, dim=0),
+        cat_padded(all_inputs),
+        cat_padded(all_outputs),
+        cat_padded(all_masks),
     )
+
+
+def cat_padded(tensors: list[torch.Tensor]) -> torch.Tensor:
+    """Concatenate along batch, right-padding the sequence axis to the widest batch.
+
+    Each batch is tokenized independently and pads to its own longest sequence, so widths
+    differ between batches even though they agree within one. The padding added here is marked
+    invalid by the same mask (itself padded with False), so it never reaches a hit.
+    """
+    max_seq = max(t.shape[1] for t in tensors)
+    padded = [
+        torch.nn.functional.pad(t, (0,) * (2 * (t.ndim - 2)) + (0, max_seq - t.shape[1]))
+        for t in tensors
+    ]
+    return torch.cat(padded, dim=0)
