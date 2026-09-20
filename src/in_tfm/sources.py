@@ -14,7 +14,7 @@ Two things make this more than "hand back a batch dict":
   positions - which cluster happily and mean nothing.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -121,7 +121,7 @@ class TextSource:
         self,
         texts: Sequence[str],
         tokenizer,
-        embed: Callable[[torch.Tensor], torch.Tensor],
+        embed: torch.nn.Module,
         max_length: int = 128,
     ) -> None:
         self.texts = list(texts)
@@ -143,13 +143,18 @@ class TextSource:
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
         encoded = self._encode(ids)
         mask = encoded["attention_mask"]
+        # the embedding table already sits on the accelerator by this point, while the
+        # tokenizer always returns cpu ids - index_select needs both on the same device
         with torch.no_grad():
-            embeds = self.embed(encoded["input_ids"])
+            embeds = self.embed(encoded["input_ids"].to(self._embed_device()))
         return ModelBatch(
             kwargs={"inputs_embeds": embeds, "attention_mask": mask},
             grad_leaf_key="inputs_embeds",
             valid_mask=mask.bool(),
         )
+
+    def _embed_device(self) -> torch.device:
+        return next(self.embed.parameters()).device
 
     def _encode(self, ids: Sequence[SampleId]):
         return self.tokenizer(
