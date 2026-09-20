@@ -35,6 +35,8 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_for_attn_lrp
 from in_tfm.hadamard import hadamard_products, high_activation_hits
 from in_tfm.layers import fc2_getter
 from in_tfm.neuron_report import NeuronClusterHits
+from in_tfm.presenters import ImagePresenter
+from in_tfm.sources import DicomSource
 from in_tfm.threshold import find_activation_threshold
 
 ACT_SHAPE = (48, 64)  # 48*64 == mlp intermediate size (3072); reshape target for hdmd plots
@@ -87,15 +89,12 @@ def clamp_n_dicoms_to_available(args: argparse.Namespace) -> None:
         args.n_dicoms = available
 
 
-def capture_activations(
-    args: argparse.Namespace, model: NNsight, processor: AutoImageProcessor
-) -> tuple[list[Path], torch.Tensor, torch.Tensor]:
+def capture_activations(args: argparse.Namespace, model: NNsight, source: DicomSource):
     n_iter = math.ceil(args.n_dicoms / args.batch_size)
     return get_activations(
         model,
-        processor,
+        source,
         fc2_getter(args.layer_idx),
-        args.dcm_dir,
         n_iter=n_iter,
         bs=args.batch_size,
         device=args.device,
@@ -114,20 +113,22 @@ def load_attnlrp_model() -> RadDino:
 def cluster_hadamards(
     inputs: torch.Tensor,
     outputs: torch.Tensor,
+    valid_mask: torch.Tensor,
     fc2_weight: torch.Tensor,
     neuron_idx: int,
     thresh: float,
     min_cluster_size: int,
 ):
-    batch_idx, token_idx = high_activation_hits(outputs, neuron_idx, thresh)
+    batch_idx, token_idx = high_activation_hits(outputs, neuron_idx, thresh, valid_mask)
     hdmd = hadamard_products(inputs, batch_idx, token_idx, fc2_weight, neuron_idx)
     return batch_idx, token_idx, hdmd, cluster_labels(hdmd, min_cluster_size)
 
 
 def build_hits(
     model,
-    processor: BaseImageProcessor,
-    dcm_paths: list[Path],
+    source: DicomSource,
+    presenter: ImagePresenter,
+    sample_ids: list[str],
     neuron_idx: int,
     batch_idx,
     token_idx,
@@ -140,15 +141,15 @@ def build_hits(
 ) -> NeuronClusterHits:
     return NeuronClusterHits(
         model=model,
-        processor=processor,
-        dcm_paths=dcm_paths,
+        source=source,
+        presenter=presenter,
+        sample_ids=sample_ids,
         layer_getter=fc2_getter(args.layer_idx),
         neuron_idx=neuron_idx,
         token_idx=token_idx,
         batch_idx=batch_idx,
         labels=labels,
         hdmds=hdmd,
-        act_shape=ACT_SHAPE,
         threshold=threshold,
         elbow_values=elbow_values.numpy(),
         elbow_idx=elbow_idx,
@@ -158,28 +159,31 @@ def build_hits(
 
 def process_neuron(
     neuron_idx: int,
-    dcm_paths: list[Path],
+    sample_ids: list[str],
     inputs: torch.Tensor,
     outputs: torch.Tensor,
+    valid_mask: torch.Tensor,
     fc2_weight: torch.Tensor,
     lrp_model: RadDino,
-    processor: AutoImageProcessor,
+    source: DicomSource,
+    presenter: ImagePresenter,
     args: argparse.Namespace,
 ) -> None:
-    threshold, elbow_values, elbow_idx = find_activation_threshold(outputs, neuron_idx)
+    threshold, elbow_values, elbow_idx = find_activation_threshold(outputs, neuron_idx, valid_mask)
     print(f"[neuron {neuron_idx}] threshold={threshold:.4f}")
 
     with timed(f"neuron {neuron_idx}: cluster"):
         batch_idx, token_idx, hdmd, labels = cluster_hadamards(
-            inputs, outputs, fc2_weight, neuron_idx, threshold, args.min_cluster_size
+            inputs, outputs, valid_mask, fc2_weight, neuron_idx, threshold, args.min_cluster_size
         )
     n_clusters = len(set(labels) - {-1})
     print(f"[neuron {neuron_idx}] {len(batch_idx)} hits above threshold, {n_clusters} clusters")
 
     hits = build_hits(
         lrp_model.model,
-        processor,
-        dcm_paths,
+        source,
+        presenter,
+        sample_ids,
         neuron_idx,
         batch_idx,
         token_idx,
@@ -209,9 +213,12 @@ def main() -> None:
     with timed("load model"):
         model, hf_model, processor = load_model(args.device)
 
+    source = DicomSource(args.dcm_dir, processor)
+    presenter = ImagePresenter(processor, ACT_SHAPE)
+
     with timed("capture activations"):
-        dcm_paths, inputs, outputs = capture_activations(args, model, processor)
-    print(f"captured activations for {len(dcm_paths)} dicoms")
+        sample_ids, inputs, outputs, valid_mask = capture_activations(args, model, source)
+    print(f"captured activations for {len(sample_ids)} dicoms")
 
     # inputs/outputs are already cpu tensors (see get_activations) - the fc2 weight used below
     # for the hadamard product must match, so free the GPU copy of the model first.
@@ -223,7 +230,10 @@ def main() -> None:
         lrp_model = load_attnlrp_model()
 
     for neuron_idx in neuron_range(args):
-        process_neuron(neuron_idx, dcm_paths, inputs, outputs, fc2_weight, lrp_model, processor, args)
+        process_neuron(
+            neuron_idx, sample_ids, inputs, outputs, valid_mask,
+            fc2_weight, lrp_model, source, presenter, args,
+        )
 
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
 

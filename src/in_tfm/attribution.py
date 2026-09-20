@@ -28,6 +28,7 @@ import transformers.models.dinov2.modeling_dinov2 as modeling_dinov2
 from transformers.models.dinov2.modeling_dinov2 import Dinov2Model
 
 from .layers import LayerGetter
+from .sources import ModelBatch
 
 
 def neuron_ig(
@@ -93,24 +94,33 @@ def patch_for_attn_lrp(model: Dinov2Model) -> None:
 
 
 def compute_attnlrp_relevance(
-    model: Dinov2Model,
-    pixel_values: Float[torch.Tensor, "batch c h w"],
+    model: torch.nn.Module,
+    batch: ModelBatch,
     layer_getter: LayerGetter,
     neuron_idx: int,
     token_idx: int | None,
-) -> Float[np.ndarray, "batch h w"]:
-    """AttnLRP relevance of `pixel_values` for one MLP neuron, via gradient*input.
+) -> Float[np.ndarray, "batch ..."]:
+    """AttnLRP relevance for one MLP neuron, via gradient*input on the batch's gradient leaf.
 
     With `patch_for_attn_lrp` applied, backpropagating from any single scalar produces
     AttnLRP-conservative relevance at every patched op along the way; grad*input at the
-    (unpatched, but linear) pixel_values then gives per-pixel relevance for free.
+    (unpatched, but linear) leaf then gives per-element relevance for free.
 
-    token_idx=None explains the neuron's activation summed over all patch tokens ("this
-    neuron firing anywhere in the image"); pass a single flat token index to instead explain
-    just that one high-activating patch.
+    The leaf comes from the batch rather than being assumed to be the model input: images
+    differentiate `pixel_values` directly, text cannot differentiate integer `input_ids` and
+    substitutes embeddings. See sources.ModelBatch.
+
+    Returns relevance *unreduced* - still carrying the leaf's feature axis (channels for
+    images, hidden for text). Collapsing it is the presenter's call, since which axis to sum
+    differs by modality.
+
+    token_idx=None explains the neuron's activation summed over all tokens ("this neuron
+    firing anywhere in the input"); pass a single flat token index to instead explain just
+    that one high-activating position.
     """
     model.eval()
-    pixel_values = pixel_values.clone().detach().requires_grad_(True)
+    leaf = batch.grad_leaf.clone().detach().requires_grad_(True)
+    kwargs = _kwargs_with_leaf(batch, leaf)
 
     captured: dict[str, torch.Tensor] = {}
     handle = layer_getter(model).register_forward_hook(
@@ -118,12 +128,22 @@ def compute_attnlrp_relevance(
     )
     try:
         with torch.enable_grad():
-            model(pixel_values=pixel_values)
+            model(**kwargs)
             layer_out = captured["layer_out"][..., neuron_idx]  # (batch, seq_len)
             target = layer_out[:, token_idx] if token_idx is not None else layer_out.sum(dim=1)
             target.sum().backward()
     finally:
         handle.remove()
 
-    relevance = (pixel_values.grad * pixel_values).sum(1)  # sum over channels -> (batch, H, W)
-    return relevance.detach().cpu().numpy()
+    return (leaf.grad * leaf).detach().cpu().numpy()
+
+
+def _kwargs_with_leaf(batch: ModelBatch, leaf: torch.Tensor) -> dict[str, torch.Tensor]:
+    """Swaps the differentiable copy of the leaf back into the model kwargs.
+
+    The leaf is identified by identity, not by name, so this works whether it is
+    `pixel_values`, `inputs_embeds` or anything else a source chooses to hand back.
+    """
+    return {
+        k: leaf if v is batch.grad_leaf else v for k, v in batch.kwargs.items()
+    }
