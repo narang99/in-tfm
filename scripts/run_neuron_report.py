@@ -8,11 +8,9 @@ clustering are per-neuron, but the underlying fc2 input/output tensors aren't), 
 model is loaded once and patched a single time since patch_for_attn_lrp mutates process-wide
 state (see its docstring) - reloading/repatching per neuron would be redundant.
 
-Clustering runs on CPU via sklearn-contrib hdbscan. At full dataset scale a single neuron's
-Hadamard products can number in the tens of thousands at 3072 dimensions each - high-dimensional
-enough that HDBSCAN's tree-based acceleration doesn't help and it degrades to a near-quadratic
-brute-force comparison. Keep --n-dicoms small unless you have time to burn (cuml's GPU HDBSCAN
-is ~200x faster, but is CUDA-only and so unavailable here).
+Clustering picks a GPU backend when one is available - see in_tfm.clustering. On CPU, keep
+--n-dicoms small: hit count grows linearly with it while clustering cost grows with the square
+of the hit count, so 44 dicoms is ~30x the clustering work of 8, not ~5x.
 
 CLI wrapper around the same steps embs-v2.ipynb walks through interactively - see that
 notebook for the exploratory version (elbow plot, spot-checking clusters) this distills.
@@ -25,13 +23,13 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import torch
-from hdbscan import HDBSCAN
 from nnsight import NNsight
 from rad_dino import RadDino
 from transformers import AutoImageProcessor
 from transformers.image_processing_utils import BaseImageProcessor
 
 from in_tfm.activations import get_activations
+from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.attribution import compute_attnlrp_relevance, patch_for_attn_lrp
 from in_tfm.hadamard import hadamard_products, high_activation_hits
@@ -123,10 +121,7 @@ def cluster_hadamards(
 ):
     batch_idx, token_idx = high_activation_hits(outputs, neuron_idx, thresh)
     hdmd = hadamard_products(inputs, batch_idx, token_idx, fc2_weight, neuron_idx)
-
-    cluster = HDBSCAN(min_cluster_size=min_cluster_size)
-    cluster.fit(hdmd)
-    return batch_idx, token_idx, hdmd, cluster.labels_
+    return batch_idx, token_idx, hdmd, cluster_labels(hdmd, min_cluster_size)
 
 
 def build_hits(

@@ -9,22 +9,34 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "captum>=0.9.0",
-    "hdbscan>=0.8.44",
-    "ipykernel>=7.3.0",
+    "hdbscan>=0.8.39",
     "jaxtyping>=0.3.11",
-    "jupyter>=1.1.1",
     "lxt>=2.1",
-    "matplotlib>=3.11.2",
+    "matplotlib>=3.8",
     "nnsight>=0.7.0",
-    "numpy>=2.5.3",
-    "pandas>=3.0.6",
-    "pydantic>=2.13.5",
+    "numpy>=2.1",
+    "pydantic>=2.7",
     "pydicom>=3.0.2",
     "rad-dino>=0.1.1",
-    "scikit-learn>=1.9.1",
-    "torch>=2.14.0",
-    "tqdm>=4.70.1",
-    "transformers>=5.17.0",
+    "scikit-learn>=1.3",
+    "torch>=2.11",
+    "tqdm>=4.66",
+    "transformers>=5.16",
+]
+
+# Floors are deliberately low: Colab preinstalls torch/numpy/scikit-learn/transformers built
+# against its own CUDA and ABI, and any floor above those forces uv to reinstall them - which
+# for torch means replacing the cu128 build with a generic PyPI wheel. Raise a floor only for
+# an API this code actually needs.
+#   - transformers >=5.16: 5.x moved to AttentionInterface and dropped
+#     find_pruneable_heads_and_indices; see attribution.py and compat.py.
+#   - nnsight >=0.7: the .trace() context API used in activations.py.
+#   - hdbscan >=0.8.39: known to coexist with cuml without API breaks; see clustering.py.
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
 ]
 
 [project.scripts]
