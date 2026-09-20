@@ -43,7 +43,7 @@ def timed(label: str):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", default="google/gemma-3-270m")
-    parser.add_argument("--dataset", default="wikitext", help="hf dataset name")
+    parser.add_argument("--dataset", default="Salesforce/wikitext", help="hf dataset name")
     parser.add_argument("--dataset-config", default="wikitext-2-raw-v1")
     parser.add_argument("--split", default="train")
     parser.add_argument("--n-samples", type=int, default=64)
