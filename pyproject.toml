@@ -1,0 +1,33 @@
+[project]
+name = "in-tfm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "narang99", email = "hariom2711@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "captum>=0.9.0",
+    "hdbscan>=0.8.44",
+    "ipykernel>=7.3.0",
+    "jaxtyping>=0.3.11",
+    "jupyter>=1.1.1",
+    "lxt>=2.1",
+    "matplotlib>=3.11.2",
+    "nnsight>=0.7.0",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "pydantic>=2.13.5",
+    "scikit-learn>=1.9.1",
+    "torch>=2.14.0",
+    "tqdm>=4.70.1",
+    "transformers>=5.17.0",
+]
+
+[project.scripts]
+in-tfm = "in_tfm:main"
+
+[build-system]
+requires = ["uv_build>=0.8.13,<0.9.0"]
+build-backend = "uv_build"
