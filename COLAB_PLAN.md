@@ -200,17 +200,40 @@ and swap the +cu128 build for a generic wheel.
 
 **cuml is preinstalled** (26.02.000) - no RAPIDS install needed, GPU clustering is free.
 
-**Timings, 8 dicoms / neuron 90 / max-hits 4:**
+**Parity, 8 dicoms / neuron 90 / max-hits 4, both running the sorted-glob fix:**
 
-| phase | Mac (MPS) | T4 |
+|  | Mac (MPS) | T4 |
 |---|---|---|
-| load model | 3.52s | 1.46s |
-| capture activations | 166.66s | 2.04s |
-| cluster | 9.89s | 0.87s (cuml) |
-| write report (20 LRP passes) | 398.69s | 15.88s |
-| **total** | **581.71s** | **21.15s** |
+| dicoms selected | 0000-0001..0008 | identical |
+| threshold | 0.6243 | 0.6243 |
+| hits above threshold | 619 | 619 |
+| clusters found | 7 | 6 |
+| clusters kept | 4 | 5 |
+| **total** | **234.69s** | **21.15s** |
 
-~27x end to end. Capture is 80x faster; MPS was the whole problem.
+**11.1x end to end.** (Not the ~27x an earlier note claimed - that compared against the
+pre-fix mac baseline, which clustered differently and so ran a different number of LRP passes.
+234.69s vs 21.15s is the only like-for-like pair.)
+
+The deterministic half of the pipeline is identical across machines: same images, same
+threshold to 4dp, same hit count. Everything upstream of clustering ports exactly.
+
+**Clustering does not agree, and that is expected.** cuml's HDBSCAN and the CPU build are
+different implementations, not the same algorithm on different hardware:
+
+| cluster size | Mac (cpu hdbscan) | T4 (cuml) |
+|---|---|---|
+| | - | 287 |
+| | 131 | 131 |
+| | 41 | 44 |
+| | 30 | 30 |
+| | 13 | 13 |
+
+They agree on the tight, well-separated clusters (131/30/13) and disagree on the diffuse mass:
+cuml groups 287 points into a cluster that the CPU build leaves as noise. So a report generated
+on Colab can legitimately show a large cluster that the same data on the mac does not, and
+cluster ids are not comparable across backends. Worth remembering before reading anything into
+a cluster that appears only on one of them.
 
 ## Two bugs the port exposed
 
