@@ -3,10 +3,7 @@ name: colab-experiments
 description: >-
   Run an experiment on a Colab GPU by pushing code to GitHub and pulling it there, driving the
   notebook over colab-mcp. Use this whenever work needs a GPU the local machine doesn't have,
-  whenever a change is about to be tested on Colab, and when the user says "test this on colab",
-  "run it on the GPU", "my mac hangs", or "run the experiment". Also use it whenever an
-  experiment run needs verifying, because it carries the rules for telling a finished run from a
-  crashed one that left convincing-looking numbers behind.
+  whenever a change is about to be tested on Colab, and when the user says something like "test this on colab". 
 ---
 
 # Running experiments on Colab
