@@ -14,7 +14,7 @@ Two things make this more than "hand back a batch dict":
   positions - which cluster happily and mean nothing.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -106,3 +106,56 @@ class DicomSource:
         crop = self.processor.crop_size["height"]
         patch = getattr(self.processor, "patch_size", 14)
         return (crop // patch) ** 2 + 1
+
+
+class TextSource:
+    """A list of strings, tokenized and embedded for a decoder LM.
+
+    Unlike the image path this must hand back embeddings rather than the model's natural input:
+    `input_ids` are integer indices, so there is no gradient to take with respect to them. The
+    embedding lookup is the first differentiable point, which makes `inputs_embeds` the leaf and
+    means the source needs the model's embedding table.
+    """
+
+    def __init__(
+        self,
+        texts: Sequence[str],
+        tokenizer,
+        embed: Callable[[torch.Tensor], torch.Tensor],
+        max_length: int = 128,
+    ) -> None:
+        self.texts = list(texts)
+        self.tokenizer = tokenizer
+        self.embed = embed
+        self.max_length = max_length
+
+    def sample_ids(self) -> Sequence[SampleId]:
+        return [str(i) for i in range(len(self.texts))]
+
+    def text_for(self, sample_id: SampleId) -> str:
+        return self.texts[int(sample_id)]
+
+    def token_strings(self, sample_id: SampleId) -> list[str]:
+        """The tokens as the model sees them, aligned with the sequence axis of the
+        activations - so a token_idx from a hit indexes straight into this list."""
+        return self.tokenizer.convert_ids_to_tokens(self._encode([sample_id])["input_ids"][0])
+
+    def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
+        encoded = self._encode(ids)
+        mask = encoded["attention_mask"]
+        with torch.no_grad():
+            embeds = self.embed(encoded["input_ids"])
+        return ModelBatch(
+            kwargs={"inputs_embeds": embeds, "attention_mask": mask},
+            grad_leaf_key="inputs_embeds",
+            valid_mask=mask.bool(),
+        )
+
+    def _encode(self, ids: Sequence[SampleId]):
+        return self.tokenizer(
+            [self.text_for(i) for i in ids],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+        )

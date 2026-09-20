@@ -48,12 +48,15 @@ def neuron_ig(
     return attr.sum(dim=1)
 
 
-def patch_dinov2_attention(module: types.ModuleType) -> bool:
+def patch_eager_attention(module: types.ModuleType) -> bool:
     """lxt's own patch_attention() replaces ALL_ATTENTION_FUNCTIONS with a plain dict, which
     breaks this transformers version's AttentionInterface.get_interface(). Since
     get_interface("eager", default) just returns `default` unconditionally, it's enough (and
     simpler) to patch the module-level eager_attention_forward fallback directly, as long as
-    attn_implementation="eager" is forced in patch_for_attn_lrp below.
+    attn_implementation="eager" is forced by the caller.
+
+    Works for any modeling module exposing eager_attention_forward, which is the shared
+    interface Dinov2, Llama, Qwen and Gemma all use.
     """
     new_forward = wrap_attention_forward(module.eager_attention_forward)
     if check_already_patched(module.eager_attention_forward, new_forward):
@@ -84,7 +87,7 @@ def patch_for_attn_lrp(model: Dinov2Model) -> None:
         torch.nn.LayerNorm: partial(patch_method, layer_norm_forward),
         torch.nn.Dropout: partial(patch_method, dropout_forward),
         activation_cls: partial(patch_method, non_linear_forward, keep_original=True),
-        modeling_dinov2: patch_dinov2_attention,
+        modeling_dinov2: patch_eager_attention,
     }
 
     # NOTE: LayerNorm/Dropout are patched at the class level, i.e. process-wide - any other
@@ -142,3 +145,28 @@ def compute_attnlrp_relevance(
             f"(got kwargs: {sorted(batch.kwargs)})"
         )
     return (leaf.grad * leaf).detach().cpu().numpy()
+
+
+def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
+    """Monkey-patch a Gemma3 model in place for AttnLRP.
+
+    lxt ships a gemma3 patch map, and its MLP/RMSNorm rules are reused verbatim here. Only its
+    attention entry is swapped: lxt's `patch_attention` is the broken-on-transformers-5.x path
+    described in patch_eager_attention.
+
+    Gemma3RMSNorm gets the same treatment LayerNorm gets in the vision path - stop-gradient
+    through the normalizing statistic, so relevance flows only through the scaled input.
+    """
+    from lxt.efficient.models.gemma3 import gemma3_norm
+    from lxt.efficient.patches import gated_mlp_forward
+    from transformers.models.gemma3 import modeling_gemma3
+    from transformers.models.gemma3.modeling_gemma3 import Gemma3MLP, Gemma3RMSNorm
+
+    patch_map = {
+        Gemma3MLP: partial(patch_method, gated_mlp_forward),
+        Gemma3RMSNorm: partial(patch_method, gemma3_norm, method_name="_norm"),
+        torch.nn.Dropout: partial(patch_method, dropout_forward),
+        modeling_gemma3: patch_eager_attention,
+    }
+    model.config._attn_implementation = "eager"
+    monkey_patch(model, patch_map=patch_map, verbose=True)
