@@ -18,10 +18,10 @@ import torch
 from jaxtyping import Float
 from transformers.image_processing_utils import BaseImageProcessor
 
-from .dicom import inv_tfm
-from .html_report import colored_tokens, details, display_text, page, symmetric_scale
-from .sources import SampleId
-from .viz import mk_overlay, render_hadamard_tiles, save_image_grid, to_pil
+from ..dicom import inv_tfm
+from ..html_report import colored_tokens, details, display_text, page, symmetric_scale
+from ..sources import SampleId
+from ..viz import mk_overlay, render_hadamard_tiles, save_image_grid, to_pil
 
 
 class ClusterHit(NamedTuple):
