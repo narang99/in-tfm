@@ -55,7 +55,9 @@ def get_activations(
     (batch_idx, token_idx) pairs.
     """
     device = device or default_device()
-    it = dcm_base.glob("*.dcm")
+    # sorted, because glob order is filesystem-dependent - without this, the same --n-dicoms on
+    # two machines silently selects two different subsets and the thresholds/clusters diverge.
+    it = iter(sorted(dcm_base.glob("*.dcm")))
     all_dcm_paths: list[Path] = []
     all_inputs: list[torch.Tensor] = []
     all_outputs: list[torch.Tensor] = []
