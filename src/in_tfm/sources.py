@@ -129,6 +129,15 @@ class TextSource:
         self.embed = embed
         self.max_length = max_length
 
+        # Right padding is load-bearing, not a style choice. Gemma-family tokenizers default to
+        # left padding for generation, which shifts every real token by however much padding a
+        # batch happened to need - so a token_idx taken from the batched activations would
+        # index somewhere else entirely when a hit is later re-encoded on its own. With right
+        # padding, position i means the same token in both.
+        self.tokenizer.padding_side = "right"
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
     def sample_ids(self) -> Sequence[SampleId]:
         return [str(i) for i in range(len(self.texts))]
 
