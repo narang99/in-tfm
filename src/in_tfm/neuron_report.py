@@ -80,9 +80,11 @@ class NeuronClusterHits(BaseModel):
             results.append(
                 ClusterHit(
                     sample_id=self.sample_ids[bid],
+                    token_idx=int(tid),
                     relevance=relevance,
                     model_input=batch.grad_leaf.detach().cpu(),
                     hadamard=self.hdmds[i],
+                    display_ids=None if batch.display_ids is None else batch.display_ids[0].cpu(),
                 )
             )
             del batch
@@ -101,7 +103,7 @@ class NeuronClusterHits(BaseModel):
         self,
         cluster_id: int,
         count: int,
-        n_unique_images: int,
+        n_unique_samples: int,
         report_dir: Path,
         attr_fn: AttrFn,
         max_n: int,
@@ -112,7 +114,7 @@ class NeuronClusterHits(BaseModel):
         cluster_dir.mkdir(parents=True, exist_ok=True)
         torch.save(self._cluster_mean_hadamard(cluster_id), cluster_dir / "mean.pt")
 
-        header = f"## Cluster {cluster_id} (n={count}, unique_samples={n_unique_images})"
+        header = f"## Cluster {cluster_id} (n={count}, unique_samples={n_unique_samples})"
         hits = self.sample_cluster(cluster_id, max_n=max_n, attr_fn=attr_fn)
         if not hits:
             return f"{header}\n\nno hits sampled.\n"

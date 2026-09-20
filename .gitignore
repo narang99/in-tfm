@@ -12,3 +12,6 @@ wheels/
 # datasets
 /dicoms
 /reports
+/colab_reports
+/reports_sorted
+

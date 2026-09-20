@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import torch
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 from transformers.image_processing_utils import BaseImageProcessor
 
@@ -49,6 +49,16 @@ class ModelBatch(BaseModel):
     valid_mask: Bool[torch.Tensor, "batch seq"]
     """False at padding. All-True for fixed-size inputs like images."""
 
+    display_ids: Int[torch.Tensor, "batch seq"] | None = None
+    """Token ids exactly as fed, for presenters that cannot recover the input from the leaf.
+
+    Images don't need this - inv_tfm inverts the processor's normalization, so the picture is
+    recoverable from pixel_values. The embedding lookup has no usable inverse, so a text
+    presenter that wants to show tokens must either carry them or re-tokenize. Re-tokenizing
+    agrees with the activations only by convention, which is precisely how the left-padding
+    index bug arose.
+    """
+
     @property
     def grad_leaf(self) -> Float[torch.Tensor, "batch ..."]:
         return self.kwargs[self.grad_leaf_key]
@@ -63,6 +73,7 @@ class ModelBatch(BaseModel):
             kwargs={k: v.to(device) for k, v in self.kwargs.items()},
             grad_leaf_key=self.grad_leaf_key,
             valid_mask=self.valid_mask.to(device),
+            display_ids=None if self.display_ids is None else self.display_ids.to(device),
         )
 
 
@@ -106,3 +117,75 @@ class DicomSource:
         crop = self.processor.crop_size["height"]
         patch = getattr(self.processor, "patch_size", 14)
         return (crop // patch) ** 2 + 1
+
+
+class TextSource:
+    """A list of strings, tokenized and embedded for a decoder LM.
+
+    Unlike the image path this must hand back embeddings rather than the model's natural input:
+    `input_ids` are integer indices, so there is no gradient to take with respect to them. The
+    embedding lookup is the first differentiable point, which makes `inputs_embeds` the leaf and
+    means the source needs the model's embedding table.
+    """
+
+    def __init__(
+        self,
+        texts: Sequence[str],
+        tokenizer,
+        embed: torch.nn.Module,
+        max_length: int = 128,
+    ) -> None:
+        self.texts = list(texts)
+        self.tokenizer = tokenizer
+        self.embed = embed
+        self.max_length = max_length
+
+        # Right padding keeps token_idx meaningful. Gemma-family tokenizers default to left
+        # padding for generation, which shifts every real token by however much padding a batch
+        # happened to need - so a token_idx read off the batched activations indexes somewhere
+        # else when the hit is later re-encoded on its own. With right padding, position i is
+        # the same token in both.
+        #
+        # This is bookkeeping, not numerics: measured on gemma-3-270m, real-token activations
+        # are identical (max abs diff 1e-6) whether padded left, right, or not at all. RoPE is
+        # relative, so a constant position shift cancels in (i - j), and the attention mask
+        # excludes pad keys either way.
+        #
+        # That equivalence is architecture-dependent though - a model with learned absolute
+        # position embeddings would genuinely differ under left padding, since nothing cancels.
+        # Right padding is the choice that stays correct for any decoder this source is given.
+        self.tokenizer.padding_side = "right"
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+    def sample_ids(self) -> Sequence[SampleId]:
+        return [str(i) for i in range(len(self.texts))]
+
+    def text_for(self, sample_id: SampleId) -> str:
+        return self.texts[int(sample_id)]
+
+    def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
+        encoded = self._encode(ids)
+        mask = encoded["attention_mask"]
+        # the embedding table already sits on the accelerator by this point, while the
+        # tokenizer always returns cpu ids - index_select needs both on the same device
+        with torch.no_grad():
+            embeds = self.embed(encoded["input_ids"].to(self._embed_device()))
+        return ModelBatch(
+            kwargs={"inputs_embeds": embeds, "attention_mask": mask},
+            grad_leaf_key="inputs_embeds",
+            valid_mask=mask.bool(),
+            display_ids=encoded["input_ids"],
+        )
+
+    def _embed_device(self) -> torch.device:
+        return next(self.embed.parameters()).device
+
+    def _encode(self, ids: Sequence[SampleId]):
+        return self.tokenizer(
+            [self.text_for(i) for i in ids],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+        )
