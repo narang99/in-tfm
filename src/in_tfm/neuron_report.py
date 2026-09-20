@@ -84,6 +84,7 @@ class NeuronClusterHits(BaseModel):
                     relevance=relevance,
                     model_input=batch.grad_leaf.detach().cpu(),
                     hadamard=self.hdmds[i],
+                    display_ids=None if batch.display_ids is None else batch.display_ids[0].cpu(),
                 )
             )
             del batch

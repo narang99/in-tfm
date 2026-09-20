@@ -34,6 +34,8 @@ class ClusterHit(NamedTuple):
     model_input: torch.Tensor
     """The leaf that produced it, for presenters that show the input alongside the overlay."""
     hadamard: Float[np.ndarray, "hidden"]
+    display_ids: torch.Tensor | None = None
+    """Token ids as fed, when the leaf is not invertible - see sources.ModelBatch."""
 
 
 @runtime_checkable
@@ -122,12 +124,24 @@ class TextPresenter:
             for tok, n in counts.most_common(self.top_tokens)
         )
 
+    def _tokens(self, hit: ClusterHit) -> list[str]:
+        """Decoded from the ids that were actually fed, not from a fresh tokenization.
+
+        The image path renders inv_tfm(model_input) - the tensor the model consumed. This is
+        the same guarantee for text: whatever is printed next to a relevance number came from
+        the forward pass that produced it, rather than from an encode that merely ought to
+        match.
+        """
+        if hit.display_ids is None:
+            raise ValueError(f"no display_ids on hit for sample {hit.sample_id!r}")
+        return self.source.tokenizer.convert_ids_to_tokens(hit.display_ids)
+
     def _firing_token(self, hit: ClusterHit) -> str:
-        tokens = self.source.token_strings(hit.sample_id)
+        tokens = self._tokens(hit)
         return tokens[hit.token_idx] if hit.token_idx < len(tokens) else "<out-of-range>"
 
     def _hit_block(self, hit: ClusterHit) -> str:
-        tokens = self.source.token_strings(hit.sample_id)
+        tokens = self._tokens(hit)
         relevance = self._per_token_relevance(hit)
         lo = max(0, hit.token_idx - self.context_tokens)
         hi = min(len(tokens), hit.token_idx + self.context_tokens + 1)

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import torch
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 from transformers.image_processing_utils import BaseImageProcessor
 
@@ -49,6 +49,16 @@ class ModelBatch(BaseModel):
     valid_mask: Bool[torch.Tensor, "batch seq"]
     """False at padding. All-True for fixed-size inputs like images."""
 
+    display_ids: Int[torch.Tensor, "batch seq"] | None = None
+    """Token ids exactly as fed, for presenters that cannot recover the input from the leaf.
+
+    Images don't need this - inv_tfm inverts the processor's normalization, so the picture is
+    recoverable from pixel_values. The embedding lookup has no usable inverse, so a text
+    presenter that wants to show tokens must either carry them or re-tokenize. Re-tokenizing
+    agrees with the activations only by convention, which is precisely how the left-padding
+    index bug arose.
+    """
+
     @property
     def grad_leaf(self) -> Float[torch.Tensor, "batch ..."]:
         return self.kwargs[self.grad_leaf_key]
@@ -63,6 +73,7 @@ class ModelBatch(BaseModel):
             kwargs={k: v.to(device) for k, v in self.kwargs.items()},
             grad_leaf_key=self.grad_leaf_key,
             valid_mask=self.valid_mask.to(device),
+            display_ids=None if self.display_ids is None else self.display_ids.to(device),
         )
 
 
@@ -153,11 +164,6 @@ class TextSource:
     def text_for(self, sample_id: SampleId) -> str:
         return self.texts[int(sample_id)]
 
-    def token_strings(self, sample_id: SampleId) -> list[str]:
-        """The tokens as the model sees them, aligned with the sequence axis of the
-        activations - so a token_idx from a hit indexes straight into this list."""
-        return self.tokenizer.convert_ids_to_tokens(self._encode([sample_id])["input_ids"][0])
-
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
         encoded = self._encode(ids)
         mask = encoded["attention_mask"]
@@ -169,6 +175,7 @@ class TextSource:
             kwargs={"inputs_embeds": embeds, "attention_mask": mask},
             grad_leaf_key="inputs_embeds",
             valid_mask=mask.bool(),
+            display_ids=encoded["input_ids"],
         )
 
     def _embed_device(self) -> torch.device:
