@@ -31,24 +31,37 @@ source. A filesystem path for images, something like "wikitext:train:4412" for t
 
 
 class ModelBatch(BaseModel):
-    """One batch, in the three forms the pipeline needs it."""
+    """One batch, in the forms the pipeline needs it."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     kwargs: dict[str, torch.Tensor]
     """Splatted into the model: `model(**kwargs)`."""
 
-    grad_leaf: Float[torch.Tensor, "batch ..."]
-    """The tensor attribution differentiates. For images this *is* kwargs["pixel_values"]; for
-    text it is the embeddings, since input_ids carry no gradient."""
+    grad_leaf_key: str
+    """Which entry of `kwargs` attribution differentiates. For images that is "pixel_values";
+    text substitutes "inputs_embeds", since integer input_ids carry no gradient.
+
+    A key rather than the tensor itself: `.to()` copies kwargs and would break any
+    identity-based match, silently handing the model a tensor that is not the one gradients
+    were requested on."""
 
     valid_mask: Bool[torch.Tensor, "batch seq"]
     """False at padding. All-True for fixed-size inputs like images."""
 
+    @property
+    def grad_leaf(self) -> Float[torch.Tensor, "batch ..."]:
+        return self.kwargs[self.grad_leaf_key]
+
+    def differentiable(self) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+        """Model kwargs with the leaf replaced by a grad-tracking copy, plus that copy."""
+        leaf = self.kwargs[self.grad_leaf_key].clone().detach().requires_grad_(True)
+        return {**self.kwargs, self.grad_leaf_key: leaf}, leaf
+
     def to(self, device: str) -> "ModelBatch":
         return ModelBatch(
             kwargs={k: v.to(device) for k, v in self.kwargs.items()},
-            grad_leaf=self.grad_leaf.to(device),
+            grad_leaf_key=self.grad_leaf_key,
             valid_mask=self.valid_mask.to(device),
         )
 
@@ -78,15 +91,13 @@ class DicomSource:
 
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
         batch = get_batch(self.processor, [Path(i) for i in ids])
-        pixel_values = batch["pixel_values"]
+        n_images = batch["pixel_values"].shape[0]
         return ModelBatch(
             kwargs=dict(batch),
             # the image itself is the leaf - pixel-space relevance is the whole point of the
             # overlay, so there is nothing to substitute here
-            grad_leaf=pixel_values,
-            valid_mask=torch.ones(
-                pixel_values.shape[0], self._n_tokens(), dtype=torch.bool
-            ),
+            grad_leaf_key="pixel_values",
+            valid_mask=torch.ones(n_images, self._n_tokens(), dtype=torch.bool),
         )
 
     def _n_tokens(self) -> int:

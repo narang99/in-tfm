@@ -119,8 +119,7 @@ def compute_attnlrp_relevance(
     that one high-activating position.
     """
     model.eval()
-    leaf = batch.grad_leaf.clone().detach().requires_grad_(True)
-    kwargs = _kwargs_with_leaf(batch, leaf)
+    kwargs, leaf = batch.differentiable()
 
     captured: dict[str, torch.Tensor] = {}
     handle = layer_getter(model).register_forward_hook(
@@ -135,15 +134,11 @@ def compute_attnlrp_relevance(
     finally:
         handle.remove()
 
+    if leaf.grad is None:
+        # nothing connected the traced layer back to the leaf - usually the source named a
+        # grad_leaf_key the model doesn't actually consume, so the forward pass ignored it
+        raise RuntimeError(
+            f"no gradient reached {batch.grad_leaf_key!r}; check that the model consumes it "
+            f"(got kwargs: {sorted(batch.kwargs)})"
+        )
     return (leaf.grad * leaf).detach().cpu().numpy()
-
-
-def _kwargs_with_leaf(batch: ModelBatch, leaf: torch.Tensor) -> dict[str, torch.Tensor]:
-    """Swaps the differentiable copy of the leaf back into the model kwargs.
-
-    The leaf is identified by identity, not by name, so this works whether it is
-    `pixel_values`, `inputs_embeds` or anything else a source chooses to hand back.
-    """
-    return {
-        k: leaf if v is batch.grad_leaf else v for k, v in batch.kwargs.items()
-    }
