@@ -49,9 +49,9 @@ class ModelBatch(BaseModel):
     valid_mask: Bool[torch.Tensor, "batch seq"]
     """False at padding. All-True for fixed-size inputs like images.
 
-    Text pads every sequence out to a fixed width, so this is the only thing separating a real
-    token from a pad - and it has to be, since `pad_token` is the eos token here and the two
-    are the same integer."""
+    Text pads every sequence out to a fixed width, so this is what separates a real token from
+    a pad. Sniffing for the pad id is not a substitute: a tokenizer without its own pad token
+    falls back to eos below, and then the two are the same integer."""
 
     display_ids: Int[torch.Tensor, "batch seq"] | None = None
     """Token ids exactly as fed, for presenters that cannot recover the input from the leaf.
