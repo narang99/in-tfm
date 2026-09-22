@@ -76,19 +76,20 @@ class NeuronClusterHits(BaseModel):
         results: list[ClusterHit] = []
         for i in tqdm(idxs):
             bid, tid = self.batch_idx[i], self.token_idx[i]
-            batch = self.source.to_model_batch([self.sample_ids[bid]]).to(self.device)
-            relevance = attr_fn(model, batch, self.layer_getter, self.neuron_idx, tid)
+            sample_id = self.sample_ids[bid]
+            singleton_batch = self.source.to_model_batch([sample_id]).to(self.device)
+            relevance = attr_fn(model, singleton_batch, self.layer_getter, self.neuron_idx, tid)
             results.append(
                 ClusterHit(
-                    sample_id=self.sample_ids[bid],
+                    sample_id=sample_id,
                     token_idx=int(tid),
                     relevance=relevance,
-                    model_input=batch.grad_leaf.detach().cpu(),
+                    model_input=singleton_batch.grad_leaf.detach().cpu(),
                     hadamard=self.hdmds[i],
-                    display_ids=None if batch.display_ids is None else batch.display_ids[0].cpu(),
+                    display_ids=None if singleton_batch.display_ids is None else singleton_batch.display_ids[0].cpu(),
                 )
             )
-            del batch
+            del singleton_batch
             empty_cache()
             gc.collect()
         return results
@@ -131,7 +132,7 @@ class NeuronClusterHits(BaseModel):
         meta = {
             "neuron_idx": self.neuron_idx,
             "threshold": self.threshold,
-            "n_hits": int(len(self.labels)),
+            "n_hits": len(self.labels),
             "min_uniq_images_per_cluster": min_uniq_images,
             "n_clusters": len(cluster_ids),
             "clusters": {

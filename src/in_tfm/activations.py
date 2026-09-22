@@ -91,6 +91,8 @@ def get_activations(
 
 
 def cat_padded(tensors: list[torch.Tensor]) -> torch.Tensor:
+    # todo: this needs to be configurable in the function
+    # a callable or something which right pads / left pads depending on the model
     """Concatenate along batch, right-padding the sequence axis to the widest batch.
 
     Each batch is tokenized independently and pads to its own longest sequence, so widths
