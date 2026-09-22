@@ -252,6 +252,10 @@ have no effect - the re-run produced byte-identical numbers. Cell 1 now uses `-e
   clusters linger on disk. `index.html` only links current ones, so it is cosmetic, but a stale
   `cluster_N/` next to a fresh `meta.json` is misleading.
 - `--max-hits-per-cluster` is still the dominant knob: 15.9s of the 21.2s total is LRP passes.
+- Text batches now pad to `--max-length` rather than to the longest sample in the batch, so
+  attention runs over a fixed width. The set of real-token activations is unchanged, but the
+  GEMM shapes are not, so the recorded text numbers (threshold 0.0809, 366 hits) may move in
+  their low digits on the next run.
 - Stop the runtime when idle. Credits burn on wall-clock, not compute.
 
 ## 7. Open risk, restated

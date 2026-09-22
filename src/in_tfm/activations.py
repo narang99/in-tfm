@@ -55,6 +55,10 @@ def get_activations(
     (batch_idx, token_idx) pairs.
 
     The validity mask rides along so hit selection can skip padding - see sources.ModelBatch.
+
+    Batched on purpose: this runs over every sample in the corpus, while attribution later
+    runs on only the handful sampled for a report. Batching is where the throughput is, and
+    it is safe because sources pad to a fixed width - see cat_captures.
     """
     device = device or default_device()
     it = iter(source.sample_ids())
@@ -84,24 +88,28 @@ def get_activations(
 
     return (
         all_ids,
-        cat_padded(all_inputs),
-        cat_padded(all_outputs),
-        cat_padded(all_masks),
+        cat_captures(all_inputs),
+        cat_captures(all_outputs),
+        cat_captures(all_masks),
     )
 
 
-def cat_padded(tensors: list[torch.Tensor]) -> torch.Tensor:
-    # todo: this needs to be configurable in the function
-    # a callable or something which right pads / left pads depending on the model
-    """Concatenate along batch, right-padding the sequence axis to the widest batch.
+def cat_captures(tensors: list[torch.Tensor]) -> torch.Tensor:
+    """Concatenate per-batch captures along the batch axis, asserting they agree on width.
 
-    Each batch is tokenized independently and pads to its own longest sequence, so widths
-    differ between batches even though they agree within one. The padding added here is marked
-    invalid by the same mask (itself padded with False), so it never reaches a hit.
+    This used to pad ragged batches out to the widest one, which meant a sample's columns
+    depended on which batch it landed in - and a hit found here is later explained by a
+    re-run on that sample alone. Sources now emit a fixed sequence width instead
+    (sources.TextSource._encode; images are fixed-size by nature), so there is nothing to pad
+    and a column of the result is the same token position in every pass.
+
+    That check is the whole invariant: if a source goes back to batch-dependent widths, this
+    is where it surfaces, rather than as a wrong token in a report.
     """
-    max_seq = max(t.shape[1] for t in tensors)
-    padded = [
-        torch.nn.functional.pad(t, (0,) * (2 * (t.ndim - 2)) + (0, max_seq - t.shape[1]))
-        for t in tensors
-    ]
-    return torch.cat(padded, dim=0)
+    widths = {t.shape[1] for t in tensors}
+    if len(widths) > 1:
+        raise ValueError(
+            f"captured batches disagree on sequence width ({sorted(widths)}); a source must "
+            f"pad to a fixed width - see sources.TextSource._encode"
+        )
+    return torch.cat(tensors, dim=0)

@@ -47,7 +47,11 @@ class ModelBatch(BaseModel):
     were requested on."""
 
     valid_mask: Bool[torch.Tensor, "batch seq"]
-    """False at padding. All-True for fixed-size inputs like images."""
+    """False at padding. All-True for fixed-size inputs like images.
+
+    Text pads every sequence out to a fixed width, so this is the only thing separating a real
+    token from a pad - and it has to be, since `pad_token` is the eos token here and the two
+    are the same integer."""
 
     display_ids: Int[torch.Tensor, "batch seq"] | None = None
     """Token ids exactly as fed, for presenters that cannot recover the input from the leaf.
@@ -140,21 +144,14 @@ class TextSource:
         self.embed = embed
         self.max_length = max_length
 
-        # Right padding keeps token_idx meaningful. Gemma-family tokenizers default to left
-        # padding for generation, which shifts every real token by however much padding a batch
-        # happened to need - so a token_idx read off the batched activations indexes somewhere
-        # else when the hit is later re-encoded on its own. With right padding, position i is
-        # the same token in both.
+        # The padding side is left as the tokenizer's own - left, for Gemma. It used to be
+        # forced to "right", because a token index read off a batched capture had to still be
+        # valid when the sample was later re-encoded alone for attribution, and left padding
+        # shifts every real token by however much padding that particular batch needed.
         #
-        # This is bookkeeping, not numerics: measured on gemma-3-270m, real-token activations
-        # are identical (max abs diff 1e-6) whether padded left, right, or not at all. RoPE is
-        # relative, so a constant position shift cancels in (i - j), and the attention mask
-        # excludes pad keys either way.
-        #
-        # That equivalence is architecture-dependent though - a model with learned absolute
-        # position embeddings would genuinely differ under left padding, since nothing cancels.
-        # Right padding is the choice that stays correct for any decoder this source is given.
-        self.tokenizer.padding_side = "right"
+        # Padding every sequence to max_length removes that reason: a sample occupies the same
+        # columns in a batch of eight and in a batch of one, whichever side the padding is on.
+        # See `_encode`, and `activations.cat_captures` for the invariant it enforces.
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -182,10 +179,22 @@ class TextSource:
         return next(self.embed.parameters()).device
 
     def _encode(self, ids: Sequence[SampleId]):
+        """Every sequence comes back exactly `max_length` wide - padded up, truncated down.
+
+        `padding=True` would pad to the longest sequence in *this* batch, which makes a
+        sample's columns depend on what it was batched with. Capture runs in batches over the
+        whole corpus while attribution re-runs one sample at a time, so a batch-dependent
+        width means a hit's token index does not survive the trip between them. A fixed width
+        is what lets both passes speak the same coordinates.
+
+        The cost is attention over `max_length` columns even for a short text. Cheap when the
+        corpus is filtered to long samples (see run_llm_neuron_report.load_texts), wasteful
+        when it is not - `max_length` is the knob.
+        """
         return self.tokenizer(
             [self.text_for(i) for i in ids],
             return_tensors="pt",
-            padding=True,
+            padding="max_length",
             truncation=True,
             max_length=self.max_length,
         )
