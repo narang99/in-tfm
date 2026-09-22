@@ -54,9 +54,9 @@ class ModelBatch(BaseModel):
 
     Images don't need this - inv_tfm inverts the processor's normalization, so the picture is
     recoverable from pixel_values. The embedding lookup has no usable inverse, so a text
-    presenter that wants to show tokens must either carry them or re-tokenize. Re-tokenizing
-    agrees with the activations only by convention, which is precisely how the left-padding
-    index bug arose.
+    presenter that wants to show tokens must either carry them or re-tokenize. 
+    We prefer to carry instead of re-tokenizing to make sure 
+    we are deriving visualisations from source of truth
     """
 
     @property
