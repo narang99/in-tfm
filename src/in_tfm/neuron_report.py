@@ -27,7 +27,7 @@ from tqdm import tqdm
 
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
-from .html_report import page
+from .html_report import details, page
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter
 from .sources import SampleId, SampleSource
@@ -78,24 +78,49 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     report_dir = Path(report_dir)
     meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
     sections = [
-        _cluster_section(cid, cluster, cluster_dir_for(report_dir, cid), presenter)
-        for cid, cluster in meta.clusters.items()
+        _cluster_section(cid, cluster, position, cluster_dir_for(report_dir, cid), presenter)
+        for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
     report_path.write_text(_index_page(meta, sections))
     return report_path
 
 
+N_ACCENTS = 6
+"""Matches the `.accent-{i}` rules in html_report.REPORT_CSS. Blues, purples and ambers only:
+red and green already mean relevance sign inside the hits."""
+
+
 def _cluster_section(
-    cluster_id: int, cluster: ClusterMeta, cluster_dir: Path, presenter: ClusterPresenter
+    cluster_id: int,
+    cluster: ClusterMeta,
+    position: int,
+    cluster_dir: Path,
+    presenter: ClusterPresenter,
 ) -> str:
+    """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
+    cluster the hits on screen belong to and when that changes."""
     header = (
-        f"<h2>Cluster {cluster_id} "
-        f"(n={cluster.n_hits}, unique_samples={cluster.n_unique_images})</h2>"
+        '<header class="cluster-head">'
+        f'<span class="cluster-badge">Cluster {cluster_id}</span>'
+        f'<span class="cluster-stats">n={cluster.n_hits} &middot; '
+        f"{cluster.n_unique_images} unique samples</span></header>"
     )
     hits = load_hits(cluster_dir)
     body = presenter.render(hits, cluster_dir) if hits else "<p>no hits sampled.</p>"
-    return f'<section class="cluster">\n{header}\n{body}\n</section>'
+    return (
+        f'<section class="cluster accent-{position % N_ACCENTS}" id="cluster-{cluster_id}">\n'
+        f'{header}\n<div class="cluster-body">\n{body}\n</div>\n</section>'
+    )
+
+
+def _cluster_nav(meta: ReportMeta) -> str:
+    links = "".join(
+        f'<a class="accent-{i % N_ACCENTS}" href="#cluster-{cid}">Cluster {cid}'
+        f'<span class="n">{c.n_hits}</span></a>'
+        for i, (cid, c) in enumerate(meta.clusters.items())
+    )
+    return f'<nav class="cluster-nav">{links}</nav>'
 
 
 def _index_page(meta: ReportMeta, sections: list[str]) -> str:
@@ -105,7 +130,9 @@ def _index_page(meta: ReportMeta, sections: list[str]) -> str:
         f"<h1>{title}</h1>\n"
         f'<p class="meta">threshold: {meta.threshold:.4f} &middot; '
         f"{meta.n_hits} hits &middot; {len(sections)} clusters</p>\n"
-        '<img src="elbow.png" alt="elbow plot">\n' + "\n".join(sections),
+        + details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+        + f"\n{_cluster_nav(meta)}\n"
+        + "\n".join(sections),
     )
 
 

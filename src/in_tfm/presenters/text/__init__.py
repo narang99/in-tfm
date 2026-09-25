@@ -61,7 +61,8 @@ class TextPresenter:
         )
         (cluster_dir / "hits.html").write_text(page(f"{cluster_dir.name} hits", blocks))
         return (
-            f'<p class="firing">firing tokens: {self._firing_token_summary(hits)}</p>\n'
+            f'<div class="firing"><span class="label">firing tokens</span>'
+            f"{self._firing_token_summary(hits)}</div>\n"
             f'<p class="scale">shading is shared across these hits: '
             f"red {-vmax:.2f} to green {vmax:+.2f}, hover a token for its value</p>\n"
             + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
@@ -74,8 +75,8 @@ class TextPresenter:
         Counted over the sampled hits only, not every member of the cluster.
         """
         counts = Counter(self._firing_token(h) for h in hits)
-        return ", ".join(
-            f"{_code(tok)}x{n}" if n > 1 else _code(tok)
+        return "".join(
+            f'<span class="chip">{_code(tok)}' + (f'<span class="count">&times;{n}</span>' if n > 1 else "") + "</span>"
             for tok, n in counts.most_common(self.top_tokens)
         )
 
@@ -109,8 +110,14 @@ class TextPresenter:
             '<div class="hit">\n'
             f'<div class="hit-tag">sample {html.escape(str(hit.sample_id))} '
             f"&middot; token {hit.token_idx}</div>\n"
-            + colored_tokens(window.tokens, window.relevance, vmax, firing_idx=window.firing_pos)
-            + f'\n<div class="scale">top relevance over the whole sequence: '
+            + colored_tokens(
+                window.tokens,
+                window.relevance,
+                vmax,
+                firing_idx=window.firing_pos,
+                sink_idx=0 if window.starts_at_bos else None,
+            )
+            + f'\n<div class="top-rel"><span class="label">top relevance</span>'
             f"{self._top_relevance(tokens, self._per_token_relevance(hit))}</div>\n"
             "</div>"
         )
@@ -126,8 +133,15 @@ class TextPresenter:
     def _top_relevance(self, tokens: list[str], relevance: np.ndarray) -> str:
         n = min(len(tokens), len(relevance))
         order = np.argsort(-np.abs(relevance[:n]))[: self.top_tokens]
-        return ", ".join(f"{_code(tokens[i])}({relevance[i]:+.2f})" for i in order)
+        return "".join(
+            f'<span class="chip {"pos" if relevance[i] >= 0 else "neg"}">{_code(tokens[i])}'
+            f'<span class="count">{relevance[i]:+.2f}</span></span>'
+            for i in order
+        )
 
 
 def _code(token: str) -> str:
-    return f"<code>{html.escape(display_text(token))}</code>"
+    """Stripped, since a chip has its own padding and a leading SentencePiece space would show
+    as a stray gap; a bare-space token keeps a visible middle dot instead of vanishing."""
+    text = display_text(token).strip()
+    return f"<code>{html.escape(text or '\u00b7')}</code>"
