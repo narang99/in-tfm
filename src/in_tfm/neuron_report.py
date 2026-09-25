@@ -247,6 +247,7 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn = compute_attnlrp_relevance,
         max_n: int = 5,
         min_uniq_images: int = 2,
+        max_clusters: int | None = None,
     ) -> Path:
         """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
@@ -255,6 +256,10 @@ class NeuronClusterHits(BaseModel):
 
         Clusters drawn from fewer than `min_uniq_images` distinct source images are dropped -
         see cluster_unique_image_counts for why.
+
+        `max_clusters` keeps only the largest N. Attribution and rendering cost scale with the
+        number of clusters, and a neuron whose clusters are near-token-identities (any layer-0
+        neuron) can have dozens.
 
         `name` defaults to `neuron_{idx}` but can be overridden.
         """
@@ -266,7 +271,7 @@ class NeuronClusterHits(BaseModel):
         uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
         cluster_ids = [
             cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
-        ]
+        ][:max_clusters]
         meta = self._meta(cluster_ids, min_uniq_images)
         (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
 

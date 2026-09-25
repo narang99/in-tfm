@@ -47,7 +47,15 @@ def hadamard_products(
     weight: Float[torch.Tensor, "out_hidden hidden"],
     neuron_idx: int,
 ) -> Float[np.ndarray, "n_hits hidden"]:
-    pats = inputs[batch_idx, token_idx]  # (num_hits, hidden)
-    hdmd = pats * weight[neuron_idx]
-    hdmd = hdmd.detach().cpu().clone().numpy()
-    return normalize(hdmd, "l2")
+    return hadamard_from_rows(inputs[batch_idx, token_idx], weight, neuron_idx)
+
+
+def hadamard_from_rows(
+    rows: Float[torch.Tensor, "n_hits hidden"],
+    weight: Float[torch.Tensor, "out_hidden hidden"],
+    neuron_idx: int,
+) -> Float[np.ndarray, "n_hits hidden"]:
+    """For inputs already gathered at the hit positions - see neuron_capture.NeuronCapture,
+    which never holds the full (batch, seq, hidden) input."""
+    hdmd = rows.detach().cpu() * weight[neuron_idx].detach().cpu()
+    return normalize(hdmd.clone().numpy(), "l2")
