@@ -59,3 +59,9 @@ def hadamard_from_rows(
     which never holds the full (batch, seq, hidden) input."""
     hdmd = rows.detach().cpu() * weight[neuron_idx].detach().cpu()
     return normalize(hdmd.clone().numpy(), "l2")
+
+
+def normalized_rows(rows: Float[torch.Tensor, "n_hits hidden"]) -> Float[np.ndarray, "n_hits hidden"]:
+    """The Hadamard ablation: the same hits and the same L2 normalisation, but without the
+    weight row, so clusters reflect the input alone rather than what the neuron reads from it."""
+    return normalize(rows.detach().cpu().clone().numpy(), "l2")

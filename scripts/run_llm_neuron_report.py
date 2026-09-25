@@ -29,7 +29,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_lrp
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
-from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape
+from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits
@@ -60,6 +60,19 @@ def parse_args() -> argparse.Namespace:
         default="down_proj",
         help="down_proj: MLP neurons. q_proj / k_proj: query / key coordinates, "
         "neuron index = (kv_)head * head_dim + dim",
+    )
+    parser.add_argument(
+        "--polarity",
+        choices=["positive", "negative", "both"],
+        default="positive",
+        help="which tail of the activation distribution counts as a hit",
+    )
+    parser.add_argument(
+        "--cluster-on",
+        choices=["hadamard", "input"],
+        default="hadamard",
+        help="hadamard: input * weight row (default). input: the raw input at each hit, "
+        "L2-normalised the same way - an ablation of the weight row",
     )
     parser.add_argument("--neurons", type=int, nargs="+", help="neuron indices; overrides the range below")
     parser.add_argument("--neuron-start", type=int, default=90)
@@ -201,7 +214,7 @@ def report_neuron(
     args: argparse.Namespace,
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
-    hdmd = hadamard_from_rows(rows, weight, neuron_idx)
+    hdmd = normalized_rows(rows) if args.cluster_on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
         labels = cluster_labels(hdmd, args.min_cluster_size)
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
@@ -248,7 +261,8 @@ def main() -> None:
         model, hf_model, tokenizer = load_model(args)
 
     source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
-    presenter = TextPresenter(source)
+    clustered_label = "normalised inputs" if args.cluster_on == "input" else "hadamard products"
+    presenter = TextPresenter(source, clustered_label=clustered_label)
     capture = NeuronCapture(model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
 
     with timed("pass 1: scan"):

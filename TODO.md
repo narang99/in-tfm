@@ -1,0 +1,7 @@
+- Investigate tokens that are too common in the corpus (newline `↵`, `.`, `=`, `·`, `of`, `in`, ...)
+  - They dominate the largest clusters (e.g. layer 11 q_proj neuron 90), and may be a base-rate artifact instead of something the neuron detects.
+  - Approach: for each token, compare its share of the hits with its share of the corpus, and its hit rate (hits / occurrences).
+    - Needs only pass 1 (per-position activations) plus token ids; no attribution rendering, about 40s on a T4.
+    - A hit rate near the corpus average means the cluster is a base-rate effect. A much higher hit rate means the neuron is selective.
+    - For the `of` cluster (layer 11, neuron 90, hadamard cluster 21), compare the hit rate of `of` after a place noun with the hit rate of `of` overall.
+    - Also check whether the raw q_proj value scales with token norm, since it is hooked before `q_norm`.
