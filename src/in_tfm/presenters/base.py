@@ -6,17 +6,20 @@ importing each other through a half-initialized package.
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 import torch
 from jaxtyping import Float
+from pydantic import BaseModel, ConfigDict
 
 from ..sources import SampleId
 
 
-class ClusterHit(NamedTuple):
+class ClusterHit(BaseModel):
     """One sampled member of a cluster, with everything needed to render it."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     sample_id: SampleId
     token_idx: int

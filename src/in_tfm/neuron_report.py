@@ -60,12 +60,13 @@ class ReportMeta(BaseModel):
 def save_hits(hits: list[ClusterHit], cluster_dir: Path) -> None:
     """Stored as plain dicts rather than pickled `ClusterHit`s, so adding a defaulted field to
     `ClusterHit` does not orphan caches written before it."""
-    torch.save([hit._asdict() for hit in hits], cluster_dir / HITS_CACHE_NAME)
+    torch.save([hit.model_dump() for hit in hits], cluster_dir / HITS_CACHE_NAME)
 
 
 def load_hits(cluster_dir: Path) -> list[ClusterHit]:
     # weights_only=False: the cache holds numpy arrays, which the safe loader rejects
-    return [ClusterHit(**d) for d in torch.load(cluster_dir / HITS_CACHE_NAME, weights_only=False)]
+    saved = torch.load(cluster_dir / HITS_CACHE_NAME, weights_only=False)
+    return [ClusterHit.model_validate(d) for d in saved]
 
 
 def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:

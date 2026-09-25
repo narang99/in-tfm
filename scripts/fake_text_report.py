@@ -15,6 +15,7 @@ import zlib
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from in_tfm.neuron_report import (
     ClusterMeta,
@@ -105,9 +106,9 @@ def fake_hit(source: StubSource, sentence: str, sample_id: str) -> ClusterHit:
         sample_id=sample_id,
         token_idx=firing_token_idx,
         relevance=relevance,
-        model_input=np.zeros(1),  # type: ignore[arg-type]  # the text presenter never reads it
+        model_input=torch.zeros(1),  # the text presenter never reads it
         hadamard=rng.normal(size=HIDDEN).astype(np.float32),
-        display_ids=np.array([source.tokenizer.add(t) for t in tokens]),  # type: ignore[arg-type]
+        display_ids=torch.tensor([source.tokenizer.add(t) for t in tokens]),
     )
 
 
