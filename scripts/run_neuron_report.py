@@ -150,6 +150,7 @@ def build_hits(
         batch_idx=batch_idx,
         labels=labels,
         hdmds=hdmd,
+        hadamard_shape=ACT_SHAPE,
         threshold=threshold,
         elbow_values=elbow_values.numpy(),
         elbow_idx=elbow_idx,
@@ -214,7 +215,7 @@ def main() -> None:
         model, hf_model, processor = load_model(args.device)
 
     source = DicomSource(args.dcm_dir, processor)
-    presenter = ImagePresenter(processor, ACT_SHAPE)
+    presenter = ImagePresenter(processor)
 
     with timed("capture activations"):
         sample_ids, inputs, outputs, valid_mask = capture_activations(args, model, source)

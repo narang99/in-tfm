@@ -25,7 +25,7 @@ from in_tfm.activations import get_activations
 from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_lrp
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
-from in_tfm.hadamard import hadamard_products, high_activation_hits
+from in_tfm.hadamard import hadamard_products, high_activation_hits, near_square_shape
 from in_tfm.layers import LayerGetter, down_proj_getter, q_proj_getter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
@@ -133,6 +133,7 @@ def process_neuron(
         batch_idx=batch_idx,
         labels=labels,
         hdmds=hdmd,
+        hadamard_shape=near_square_shape(hdmd.shape[1]),
         threshold=threshold,
         elbow_values=elbow_values.numpy(),
         elbow_idx=elbow_idx,

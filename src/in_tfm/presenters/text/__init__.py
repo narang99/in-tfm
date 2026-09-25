@@ -15,8 +15,14 @@ import numpy as np
 from jaxtyping import Float
 
 from ...html_report import details, page
-from ..base import ClusterHit
+from ...viz import render_hadamard_tiles, save_image_grid
+from ..base import ClusterHit, HadamardShape
 from .colored_tokens import colored_tokens, display_text, symmetric_scale
+
+
+HADAMARD_TILE_GAP = 32
+"""Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
+pad of 4 reads as one block, since the tiles are dark and the gap is black."""
 
 
 class HitWindow(NamedTuple):
@@ -53,7 +59,9 @@ class TextPresenter:
         self.context_tokens = context_tokens
         self.top_tokens = top_tokens
 
-    def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
+    def render(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
         windows = [self._window(h) for h in hits]
         vmax = symmetric_scale([w.scale_relevance for w in windows])
         blocks = "\n".join(
@@ -61,10 +69,40 @@ class TextPresenter:
         )
         (cluster_dir / "hits.html").write_text(page(f"{cluster_dir.name} hits", blocks))
         return (
-            f'<p class="firing">firing tokens: {self._firing_token_summary(hits)}</p>\n'
+            f'<div class="firing"><span class="label">firing tokens</span>'
+            f"{self._firing_token_summary(hits)}</div>\n"
             f'<p class="scale">shading is shared across these hits: '
             f"red {-vmax:.2f} to green {vmax:+.2f}, hover a token for its value</p>\n"
             + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
+            + "\n"
+            + self._hadamard_section(hits, cluster_dir, hadamard_shape)
+        )
+
+    def _hadamard_section(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
+        """The vectors that were clustered, one tile per hit in the same order as the hits above.
+
+        Tiles share one color scale (see `render_hadamard_tiles`), so brightness is comparable
+        between hits. Tile width follows the shape's aspect ratio rather than being forced
+        square, since a hidden size rarely factors into a square.
+        """
+        height, width = hadamard_shape
+        tile_height = 150
+        tiles = render_hadamard_tiles(
+            [h.hadamard.reshape(hadamard_shape) for h in hits],
+            size=(round(tile_height * width / height), tile_height),
+        )
+        save_image_grid(
+            tiles,
+            cluster_dir / "hadamard.jpg",
+            cols=4,
+            pad=HADAMARD_TILE_GAP,
+            border=HADAMARD_TILE_GAP,
+        )
+        return details(
+            "hadamard products (what was clustered)",
+            f'<img src="{cluster_dir.name}/hadamard.jpg" alt="hadamard products">',
         )
 
     def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> str:
@@ -74,8 +112,8 @@ class TextPresenter:
         Counted over the sampled hits only, not every member of the cluster.
         """
         counts = Counter(self._firing_token(h) for h in hits)
-        return ", ".join(
-            f"{_code(tok)}x{n}" if n > 1 else _code(tok)
+        return "".join(
+            f'<span class="chip">{_code(tok)}' + (f'<span class="count">&times;{n}</span>' if n > 1 else "") + "</span>"
             for tok, n in counts.most_common(self.top_tokens)
         )
 
@@ -109,8 +147,14 @@ class TextPresenter:
             '<div class="hit">\n'
             f'<div class="hit-tag">sample {html.escape(str(hit.sample_id))} '
             f"&middot; token {hit.token_idx}</div>\n"
-            + colored_tokens(window.tokens, window.relevance, vmax, firing_idx=window.firing_pos)
-            + f'\n<div class="scale">top relevance over the whole sequence: '
+            + colored_tokens(
+                window.tokens,
+                window.relevance,
+                vmax,
+                firing_idx=window.firing_pos,
+                sink_idx=0 if window.starts_at_bos else None,
+            )
+            + f'\n<div class="top-rel"><span class="label">top relevance</span>'
             f"{self._top_relevance(tokens, self._per_token_relevance(hit))}</div>\n"
             "</div>"
         )
@@ -126,8 +170,15 @@ class TextPresenter:
     def _top_relevance(self, tokens: list[str], relevance: np.ndarray) -> str:
         n = min(len(tokens), len(relevance))
         order = np.argsort(-np.abs(relevance[:n]))[: self.top_tokens]
-        return ", ".join(f"{_code(tokens[i])}({relevance[i]:+.2f})" for i in order)
+        return "".join(
+            f'<span class="chip {"pos" if relevance[i] >= 0 else "neg"}">{_code(tokens[i])}'
+            f'<span class="count">{relevance[i]:+.2f}</span></span>'
+            for i in order
+        )
 
 
 def _code(token: str) -> str:
-    return f"<code>{html.escape(display_text(token))}</code>"
+    """Stripped, since a chip has its own padding and a leading SentencePiece space would show
+    as a stray gap; a bare-space token keeps a visible middle dot instead of vanishing."""
+    text = display_text(token).strip()
+    return f"<code>{html.escape(text or '\u00b7')}</code>"
