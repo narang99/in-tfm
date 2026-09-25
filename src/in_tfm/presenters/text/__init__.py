@@ -54,8 +54,15 @@ class TextPresenter:
     `mk_overlay` draws the 2D one over pixels.
     """
 
-    def __init__(self, source, context_tokens: int = 12, top_tokens: int = 10) -> None:
+    def __init__(
+        self,
+        source,
+        context_tokens: int = 12,
+        top_tokens: int = 10,
+        clustered_label: str = "hadamard products",
+    ) -> None:
         self.source = source
+        self.clustered_label = clustered_label
         self.context_tokens = context_tokens
         self.top_tokens = top_tokens
 
@@ -101,8 +108,8 @@ class TextPresenter:
             border=HADAMARD_TILE_GAP,
         )
         return details(
-            "hadamard products (what was clustered)",
-            f'<img src="{cluster_dir.name}/hadamard.jpg" alt="hadamard products">',
+            f"{self.clustered_label} (what was clustered)",
+            f'<img src="{cluster_dir.name}/hadamard.jpg" alt="{self.clustered_label}">',
         )
 
     def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> str:

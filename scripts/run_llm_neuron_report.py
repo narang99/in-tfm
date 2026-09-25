@@ -261,7 +261,8 @@ def main() -> None:
         model, hf_model, tokenizer = load_model(args)
 
     source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
-    presenter = TextPresenter(source)
+    clustered_label = "normalised inputs" if args.cluster_on == "input" else "hadamard products"
+    presenter = TextPresenter(source, clustered_label=clustered_label)
     capture = NeuronCapture(model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
 
     with timed("pass 1: scan"):
