@@ -176,7 +176,9 @@ class NeuronCapture:
         Bool[torch.Tensor, "batch seq"],
     ]:
         batch = self.source.to_model_batch(ids).to(self.device)
-        with self.model.trace(**batch.kwargs):
+        # nnsight leaves autograd on, which keeps every layer's intermediates alive for a
+        # backward pass that never comes - at 4 x 2048 tokens that alone exhausts a 15GB T4.
+        with torch.no_grad(), self.model.trace(**batch.kwargs):
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
