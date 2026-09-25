@@ -82,6 +82,15 @@ def merge_positions(
     )
 
 
+def flatten_heads(
+    per_head: Float[torch.Tensor, "batch heads seq head_dim"],
+) -> Float[torch.Tensor, "batch seq out_hidden"]:
+    """q_norm sees the projection viewed per head and transposed, so its output has heads before
+    seq. Undo that to get back the (heads * head_dim) neuron layout the projection has."""
+    batch, heads, seq, head_dim = per_head.shape
+    return per_head.transpose(1, 2).reshape(batch, seq, heads * head_dim)
+
+
 class NeuronCapture:
     def __init__(
         self,
@@ -91,6 +100,7 @@ class NeuronCapture:
         neuron_idxs: Sequence[int],
         batch_size: int = 8,
         device: str | None = None,
+        head_norm_getter: LayerGetter | None = None,
     ) -> None:
         self.device = device or default_device()
         self.model = model.to(self.device)
@@ -98,6 +108,7 @@ class NeuronCapture:
         self.layer_getter = layer_getter
         self.neuron_idxs = list(neuron_idxs)
         self.batch_size = batch_size
+        self.head_norm_getter = head_norm_getter
 
     def scan(self) -> ScanResult:
         ids = list(self.source.sample_ids())
@@ -182,6 +193,9 @@ class NeuronCapture:
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
+            normed = self.head_norm_getter(self.model).output.save() if self.head_norm_getter else None
+        if normed is not None:
+            outputs = flatten_heads(normed)
         return inputs.detach(), outputs.detach(), batch.valid_mask
 
     def _release(self) -> None:

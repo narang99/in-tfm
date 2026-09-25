@@ -30,7 +30,7 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
-from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
+from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_norm_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
@@ -66,6 +66,13 @@ def parse_args() -> argparse.Namespace:
         choices=["positive", "negative", "both"],
         default="positive",
         help="which tail of the activation distribution counts as a hit",
+    )
+    parser.add_argument(
+        "--select-on",
+        choices=["proj", "norm"],
+        default="proj",
+        help="proj: hits are chosen by the raw q_proj output (default). norm: by the output of "
+        "q_norm instead (q_proj only). Inputs and the weight row are q_proj's either way",
     )
     parser.add_argument(
         "--cluster-on",
@@ -263,7 +270,10 @@ def main() -> None:
     source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
     clustered_label = "normalised inputs" if args.cluster_on == "input" else "hadamard products"
     presenter = TextPresenter(source, clustered_label=clustered_label)
-    capture = NeuronCapture(model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
+    capture = NeuronCapture(
+        model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device,
+        head_norm_getter=q_norm_getter(args.layer_idx) if args.select_on == "norm" else None,
+    )
 
     with timed("pass 1: scan"):
         scan = capture.scan()
