@@ -26,7 +26,7 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_products, high_activation_hits
-from in_tfm.layers import down_proj_getter
+from in_tfm.layers import LayerGetter, down_proj_getter, q_proj_getter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
 from in_tfm.sources import TextSource
@@ -49,6 +49,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-samples", type=int, default=64)
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--layer-idx", type=int, default=10)
+    parser.add_argument(
+        "--target",
+        choices=["down_proj", "q_proj"],
+        default="down_proj",
+        help="down_proj: MLP neurons. q_proj: query coordinates, neuron index = head * head_dim + dim",
+    )
     parser.add_argument("--neuron-start", type=int, default=90)
     parser.add_argument("--neuron-end", type=int, default=90, help="inclusive")
     parser.add_argument("--batch-size", type=int, default=8)
@@ -76,6 +82,17 @@ def load_texts(args: argparse.Namespace) -> list[str]:
     return texts
 
 
+def layer_getter_for(args: argparse.Namespace) -> LayerGetter:
+    getters = {"down_proj": down_proj_getter, "q_proj": q_proj_getter}
+    return getters[args.target](args.layer_idx)
+
+
+def target_weight(hf_model: torch.nn.Module, args: argparse.Namespace) -> torch.Tensor:
+    """The weight whose row `neuron_idx` the Hadamard product is taken against."""
+    layer = hf_model.model.layers[args.layer_idx]
+    return layer.mlp.down_proj.weight if args.target == "down_proj" else layer.self_attn.q_proj.weight
+
+
 def load_model(args: argparse.Namespace) -> tuple[NNsight, torch.nn.Module, AutoTokenizer]:
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     hf_model = AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.float32)
@@ -89,7 +106,7 @@ def process_neuron(
     inputs: torch.Tensor,
     outputs: torch.Tensor,
     valid_mask: torch.Tensor,
-    down_proj_weight: torch.Tensor,
+    weight: torch.Tensor,
     lrp_model: torch.nn.Module,
     source: TextSource,
     presenter: TextPresenter,
@@ -99,7 +116,7 @@ def process_neuron(
     print(f"[neuron {neuron_idx}] threshold={threshold:.4f}")
 
     batch_idx, token_idx = high_activation_hits(outputs, neuron_idx, threshold, valid_mask)
-    hdmd = hadamard_products(inputs, batch_idx, token_idx, down_proj_weight, neuron_idx)
+    hdmd = hadamard_products(inputs, batch_idx, token_idx, weight, neuron_idx)
     with timed(f"neuron {neuron_idx}: cluster"):
         labels = cluster_labels(hdmd, args.min_cluster_size)
     print(f"[neuron {neuron_idx}] {len(batch_idx)} hits above threshold, "
@@ -110,7 +127,7 @@ def process_neuron(
         source=source,
         presenter=presenter,
         sample_ids=sample_ids,
-        layer_getter=down_proj_getter(args.layer_idx),
+        layer_getter=layer_getter_for(args),
         neuron_idx=neuron_idx,
         token_idx=token_idx,
         batch_idx=batch_idx,
@@ -150,7 +167,7 @@ def main() -> None:
         sample_ids, inputs, outputs, valid_mask = get_activations(
             model,
             source,
-            down_proj_getter(args.layer_idx),
+            layer_getter_for(args),
             n_iter=math.ceil(len(texts) / args.batch_size),
             bs=args.batch_size,
             device=args.device,
@@ -160,7 +177,7 @@ def main() -> None:
 
     model.to("cpu")
     empty_cache()
-    down_proj_weight = hf_model.model.layers[args.layer_idx].mlp.down_proj.weight
+    weight = target_weight(hf_model, args)
 
     with timed("patch for attnlrp"):
         patch_gemma3_for_attn_lrp(hf_model.model)
@@ -168,7 +185,7 @@ def main() -> None:
     for neuron_idx in range(args.neuron_start, args.neuron_end + 1):
         process_neuron(
             neuron_idx, sample_ids, inputs, outputs, valid_mask,
-            down_proj_weight, hf_model.model, source, presenter, args,
+            weight, hf_model.model, source, presenter, args,
         )
 
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
