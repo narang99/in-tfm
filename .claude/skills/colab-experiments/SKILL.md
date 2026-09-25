@@ -15,6 +15,20 @@ and "works in the notebook" are different claims until you have pushed.
 Dependency floors, install flags and notebook mechanics live in `CLAUDE.md` under "Running
 experiments on Colab" and are already in context. This skill is the loop and the verification.
 
+## Before the first cell
+
+- **The runtime is a CPU one on first connect.**
+  - After `open_colab_browser_connection`, the notebook always comes up on CPU.
+  - Prompt the user to switch the machine type to GPU (T4) *before* running anything.
+  - Do not run the setup cell first "to save time": changing the runtime restarts the VM and
+    throws the install away.
+  - Wait for the user to say the switch is done, then run setup.
+- **`HF_TOKEN` is in the notebook's secrets.**
+  - Gated models (e.g. `google/gemma-3-270m`) are fine to use; do not swap in an ungated mirror.
+  - Expose it to subprocesses from the kernel, and never print it:
+    `os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")` (`from google.colab import userdata`).
+  - If the download still fails (401/403), stop and prompt the user to get access to that model.
+
 ## The loop
 
 Setup cells run once per VM. Only the run cell re-runs.
