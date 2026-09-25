@@ -5,3 +5,7 @@
     - A hit rate near the corpus average means the cluster is a base-rate effect. A much higher hit rate means the neuron is selective.
     - For the `of` cluster (layer 11, neuron 90, hadamard cluster 21), compare the hit rate of `of` after a place noun with the hit rate of `of` overall.
     - Also check whether the raw q_proj value scales with token norm, since it is hooked before `q_norm`.
+- Refactor `scan` + `gather` in `src/in_tfm/neuron_capture.py` later
+  - They rely on complicated vectorized index bookkeeping (`np.unique`, `np.isin`, `np.flatnonzero`, `np.searchsorted`, `argsort` to restore order, `merge_positions` index maps).
+  - It is correct as far as we know (`check_consistent` verifies pass two against pass one), but hard to read and to reason about.
+  - Possible directions: name the intermediate steps as small functions, or add unit tests on small hand-made examples before restructuring.
