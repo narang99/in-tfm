@@ -29,7 +29,7 @@ from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
 from .html_report import details, page
 from .layers import LayerGetter
-from .presenters import ClusterHit, ClusterPresenter
+from .presenters import ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
 from .viz import save_elbow_plot
 
@@ -52,6 +52,8 @@ class ReportMeta(BaseModel):
     n_hits: int
     min_uniq_images_per_cluster: int
     n_clusters: int
+    hadamard_shape: HadamardShape
+    """Cached with the hits so a re-render can reshape their Hadamard vectors without the model."""
     clusters: dict[int, ClusterMeta]
     """Largest first - the order sections appear in the report."""
     sample_ids: list[SampleId]
@@ -78,7 +80,9 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     report_dir = Path(report_dir)
     meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
     sections = [
-        _cluster_section(cid, cluster, position, cluster_dir_for(report_dir, cid), presenter)
+        _cluster_section(
+            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
+        )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
@@ -97,6 +101,7 @@ def _cluster_section(
     position: int,
     cluster_dir: Path,
     presenter: ClusterPresenter,
+    hadamard_shape: HadamardShape,
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
@@ -107,7 +112,7 @@ def _cluster_section(
         f"{cluster.n_unique_images} unique samples</span></header>"
     )
     hits = load_hits(cluster_dir)
-    body = presenter.render(hits, cluster_dir) if hits else "<p>no hits sampled.</p>"
+    body = presenter.render(hits, cluster_dir, hadamard_shape) if hits else "<p>no hits sampled.</p>"
     return (
         f'<section class="cluster accent-{position % N_ACCENTS}" id="cluster-{cluster_id}">\n'
         f'{header}\n<div class="cluster-body">\n{body}\n</div>\n</section>'
@@ -168,6 +173,7 @@ class NeuronClusterHits(BaseModel):
     batch_idx: Int[np.ndarray, "n_hits"]
     labels: Int[np.ndarray, "n_hits"]
     hdmds: Float[np.ndarray, "n_hits hidden"]
+    hadamard_shape: HadamardShape
     threshold: float
     elbow_values: Float[np.ndarray, "n_pos"]
     elbow_idx: int
@@ -226,6 +232,7 @@ class NeuronClusterHits(BaseModel):
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
             n_clusters=len(cluster_ids),
+            hadamard_shape=self.hadamard_shape,
             clusters={
                 cid: ClusterMeta(n_hits=counts[cid], n_unique_images=uniq_images[cid])
                 for cid in cluster_ids

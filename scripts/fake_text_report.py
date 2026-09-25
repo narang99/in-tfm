@@ -27,7 +27,8 @@ from in_tfm.neuron_report import (
 from in_tfm.presenters import ClusterHit, TextPresenter
 from in_tfm.viz import save_elbow_plot
 
-HIDDEN = 16
+HADAMARD_SHAPE = (8, 16)
+HIDDEN = HADAMARD_SHAPE[0] * HADAMARD_SHAPE[1]
 BOS = "<bos>"
 
 FAKE_CLUSTERS: dict[int, list[str]] = {
@@ -81,7 +82,9 @@ class StubSource:
         self.tokenizer = StubTokenizer()
 
 
-def fake_hit(source: StubSource, sentence: str, sample_id: str) -> ClusterHit:
+def fake_hit(
+    source: StubSource, sentence: str, sample_id: str, cluster_pattern: np.ndarray
+) -> ClusterHit:
     tokens = [BOS]
     firing_token_idx = 0
     for i, word in enumerate(sentence.split()):
@@ -107,7 +110,7 @@ def fake_hit(source: StubSource, sentence: str, sample_id: str) -> ClusterHit:
         token_idx=firing_token_idx,
         relevance=relevance,
         model_input=torch.zeros(1),  # the text presenter never reads it
-        hadamard=rng.normal(size=HIDDEN).astype(np.float32),
+        hadamard=(cluster_pattern + 0.5 * rng.normal(size=HIDDEN)).astype(np.float32),
         display_ids=torch.tensor([source.tokenizer.add(t) for t in tokens]),
     )
 
@@ -118,10 +121,12 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
     clusters: dict[int, ClusterMeta] = {}
     for cid, examples in FAKE_CLUSTERS.items():
         hits = []
+        # hits in a cluster share a pattern, as real clustered Hadamard vectors do
+        cluster_pattern = np.random.default_rng(cid).normal(size=HIDDEN)
         for sentence in examples:
             sample_id = str(len(sample_ids))
             sample_ids.append(sample_id)
-            hits.append(fake_hit(source, sentence, sample_id))
+            hits.append(fake_hit(source, sentence, sample_id, cluster_pattern))
         cluster_dir = cluster_dir_for(report_dir, cid)
         cluster_dir.mkdir(exist_ok=True)
         save_hits(hits, cluster_dir)
@@ -133,6 +138,7 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
         n_hits=sum(c.n_hits for c in clusters.values()),
         min_uniq_images_per_cluster=2,
         n_clusters=len(clusters),
+        hadamard_shape=HADAMARD_SHAPE,
         clusters=clusters,
         sample_ids=sample_ids,
     )

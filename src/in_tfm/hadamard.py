@@ -13,6 +13,15 @@ from jaxtyping import Bool, Float, Int
 from sklearn.preprocessing import normalize
 
 
+def near_square_shape(n: int) -> tuple[int, int]:
+    """(h, w) with h * w == n and h <= w, as close to square as n's factors allow - a display
+    shape for a flat vector that has no natural 2D layout. A prime n degrades to (1, n)."""
+    h = int(np.sqrt(n))
+    while n % h:
+        h -= 1
+    return h, n // h
+
+
 def high_activation_hits(
     outputs: Float[torch.Tensor, "batch seq hidden"],
     neuron_idx: int,

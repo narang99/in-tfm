@@ -15,8 +15,14 @@ import numpy as np
 from jaxtyping import Float
 
 from ...html_report import details, page
-from ..base import ClusterHit
+from ...viz import render_hadamard_tiles, save_image_grid
+from ..base import ClusterHit, HadamardShape
 from .colored_tokens import colored_tokens, display_text, symmetric_scale
+
+
+HADAMARD_TILE_GAP = 32
+"""Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
+pad of 4 reads as one block, since the tiles are dark and the gap is black."""
 
 
 class HitWindow(NamedTuple):
@@ -53,7 +59,9 @@ class TextPresenter:
         self.context_tokens = context_tokens
         self.top_tokens = top_tokens
 
-    def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
+    def render(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
         windows = [self._window(h) for h in hits]
         vmax = symmetric_scale([w.scale_relevance for w in windows])
         blocks = "\n".join(
@@ -66,6 +74,35 @@ class TextPresenter:
             f'<p class="scale">shading is shared across these hits: '
             f"red {-vmax:.2f} to green {vmax:+.2f}, hover a token for its value</p>\n"
             + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
+            + "\n"
+            + self._hadamard_section(hits, cluster_dir, hadamard_shape)
+        )
+
+    def _hadamard_section(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
+        """The vectors that were clustered, one tile per hit in the same order as the hits above.
+
+        Tiles share one color scale (see `render_hadamard_tiles`), so brightness is comparable
+        between hits. Tile width follows the shape's aspect ratio rather than being forced
+        square, since a hidden size rarely factors into a square.
+        """
+        height, width = hadamard_shape
+        tile_height = 150
+        tiles = render_hadamard_tiles(
+            [h.hadamard.reshape(hadamard_shape) for h in hits],
+            size=(round(tile_height * width / height), tile_height),
+        )
+        save_image_grid(
+            tiles,
+            cluster_dir / "hadamard.jpg",
+            cols=4,
+            pad=HADAMARD_TILE_GAP,
+            border=HADAMARD_TILE_GAP,
+        )
+        return details(
+            "hadamard products (what was clustered)",
+            f'<img src="{cluster_dir.name}/hadamard.jpg" alt="hadamard products">',
         )
 
     def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> str:

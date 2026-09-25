@@ -16,6 +16,11 @@ from pydantic import BaseModel, ConfigDict
 from ..sources import SampleId
 
 
+HadamardShape = tuple[int, int]
+"""(height, width) that a flat Hadamard vector reshapes to for display. The vector has no
+inherent 2D layout, so this is a display choice made where the vector's length is known."""
+
+
 class ClusterHit(BaseModel):
     """One sampled member of a cluster, with everything needed to render it."""
 
@@ -36,6 +41,8 @@ class ClusterHit(BaseModel):
 
 @runtime_checkable
 class ClusterPresenter(Protocol):
-    def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
+    def render(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
         """Writes artifact files into cluster_dir; returns the html fragment linking them."""
         ...
