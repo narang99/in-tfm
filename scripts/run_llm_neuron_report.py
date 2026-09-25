@@ -12,21 +12,25 @@ firing token for each cluster so that claim is readable at a glance.
 """
 
 import argparse
-import math
+import random
+import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
+import numpy as np
 import torch
+from jaxtyping import Float, Int
 from nnsight import NNsight
+from pydantic import BaseModel, ConfigDict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from in_tfm.activations import get_activations
 from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_lrp
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
-from in_tfm.hadamard import hadamard_products, high_activation_hits, near_square_shape
+from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
+from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
 from in_tfm.sources import TextSource
@@ -53,10 +57,21 @@ def parse_args() -> argparse.Namespace:
         "--target",
         choices=["down_proj", "q_proj", "k_proj"],
         default="down_proj",
-        help="down_proj: MLP neurons. q_proj / k_proj: query / key coordinates, neuron index = (kv_)head * head_dim + dim",
+        help="down_proj: MLP neurons. q_proj / k_proj: query / key coordinates, "
+        "neuron index = (kv_)head * head_dim + dim",
     )
+    parser.add_argument("--neurons", type=int, nargs="+", help="neuron indices; overrides the range below")
     parser.add_argument("--neuron-start", type=int, default=90)
     parser.add_argument("--neuron-end", type=int, default=90, help="inclusive")
+    parser.add_argument(
+        "--unit",
+        choices=["paragraph", "article"],
+        default="paragraph",
+        help="article joins a wikitext article's paragraphs, so long --max-length is mostly real tokens",
+    )
+    parser.add_argument("--min-article-chars", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0, help="corpus shuffle and hit subsampling")
+    parser.add_argument("--max-hits", type=int, default=20000, help="hits kept per neuron before clustering")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--min-cluster-size", type=int, default=10)
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
@@ -66,20 +81,39 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+WIKITEXT_TITLE = re.compile(r"^ = [^=].* = \n?$")
+"""A level-1 heading; the `= =` of a section heading fails the `[^=]` after the first `= `."""
+
+
+def paragraphs(rows: list[str]) -> list[str]:
+    """Non-empty paragraphs only - wikitext is full of blank lines and bare `= Heading =`
+    markers, which tokenize to almost nothing and would pad out every batch."""
+    stripped = [row.strip() for row in rows]
+    return [text for text in stripped if len(text) > 200 and not text.startswith("=")]
+
+
+def articles(rows: list[str]) -> list[str]:
+    """Rows are single paragraphs; a level-1 heading starts a new article."""
+    joined: list[list[str]] = [[]]
+    for row in rows:
+        if WIKITEXT_TITLE.match(row):
+            joined.append([])
+        joined[-1].append(row)
+    return ["".join(parts).strip() for parts in joined]
+
+
 def load_texts(args: argparse.Namespace) -> list[str]:
-    """Non-empty lines only - wikitext is full of blank lines and bare `= Heading =` markers,
-    which tokenize to almost nothing and would pad out every batch."""
+    """Shuffled before truncating to `--n-samples`: the corpus is in file order, so taking the
+    first N would be N paragraphs of the same few articles."""
     from datasets import load_dataset
 
-    ds = load_dataset(args.dataset, args.dataset_config, split=args.split, streaming=True)
-    texts: list[str] = []
-    for row in ds:
-        text = row["text"].strip()
-        if len(text) > 200 and not text.startswith("="):
-            texts.append(text)
-        if len(texts) >= args.n_samples:
-            break
-    return texts
+    rows = list(load_dataset(args.dataset, args.dataset_config, split=args.split)["text"])
+    if args.unit == "paragraph":
+        texts = paragraphs(rows)
+    else:
+        texts = [a for a in articles(rows) if len(a) >= args.min_article_chars]
+    random.Random(args.seed).shuffle(texts)
+    return texts[: args.n_samples]
 
 
 def layer_getter_for(args: argparse.Namespace) -> LayerGetter:
@@ -101,27 +135,53 @@ def load_model(args: argparse.Namespace) -> tuple[NNsight, torch.nn.Module, Auto
     return NNsight(base).to(args.device), hf_model, tokenizer
 
 
-def process_neuron(
+class HitSelection(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    threshold: float
+    elbow_values: Float[torch.Tensor, "n_pos"]
+    elbow_idx: int
+    batch_idx: Int[np.ndarray, "n_hits"]
+    token_idx: Int[np.ndarray, "n_hits"]
+    n_above_threshold: int
+
+
+def select_hits(scan: ScanResult, neuron_idx: int, args: argparse.Namespace) -> HitSelection:
+    """Every position above the elbow threshold, subsampled to `--max-hits`: clustering 640-d
+    vectors is superlinear in hit count, and a common token can produce hundreds of thousands."""
+    column = scan.neuron_column(neuron_idx)
+    threshold, elbow_values, elbow_idx = find_activation_threshold(column, 0, scan.valid_mask)
+    batch_idx, token_idx = high_activation_hits(column, 0, threshold, scan.valid_mask)
+    n_above = len(batch_idx)
+    if n_above > args.max_hits:
+        keep = np.sort(np.random.default_rng(args.seed).choice(n_above, args.max_hits, replace=False))
+        batch_idx, token_idx = batch_idx[keep], token_idx[keep]
+    print(f"[neuron {neuron_idx}] threshold={threshold:.4f}, {n_above} hits above it, {len(batch_idx)} kept")
+    return HitSelection(
+        threshold=threshold,
+        elbow_values=elbow_values,
+        elbow_idx=elbow_idx,
+        batch_idx=batch_idx,
+        token_idx=token_idx,
+        n_above_threshold=n_above,
+    )
+
+
+def report_neuron(
     neuron_idx: int,
+    selection: HitSelection,
+    rows: Float[torch.Tensor, "n_hits hidden"],
     sample_ids: list[str],
-    inputs: torch.Tensor,
-    outputs: torch.Tensor,
-    valid_mask: torch.Tensor,
     weight: torch.Tensor,
     lrp_model: torch.nn.Module,
     source: TextSource,
     presenter: TextPresenter,
     args: argparse.Namespace,
 ) -> None:
-    threshold, elbow_values, elbow_idx = find_activation_threshold(outputs, neuron_idx, valid_mask)
-    print(f"[neuron {neuron_idx}] threshold={threshold:.4f}")
-
-    batch_idx, token_idx = high_activation_hits(outputs, neuron_idx, threshold, valid_mask)
-    hdmd = hadamard_products(inputs, batch_idx, token_idx, weight, neuron_idx)
+    hdmd = hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"neuron {neuron_idx}: cluster"):
         labels = cluster_labels(hdmd, args.min_cluster_size)
-    print(f"[neuron {neuron_idx}] {len(batch_idx)} hits above threshold, "
-          f"{len(set(labels) - {-1})} clusters")
+    print(f"[neuron {neuron_idx}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
         model=lrp_model,
@@ -130,14 +190,14 @@ def process_neuron(
         sample_ids=sample_ids,
         layer_getter=layer_getter_for(args),
         neuron_idx=neuron_idx,
-        token_idx=token_idx,
-        batch_idx=batch_idx,
+        token_idx=selection.token_idx,
+        batch_idx=selection.batch_idx,
         labels=labels,
         hdmds=hdmd,
         hadamard_shape=near_square_shape(hdmd.shape[1]),
-        threshold=threshold,
-        elbow_values=elbow_values.numpy(),
-        elbow_idx=elbow_idx,
+        threshold=selection.threshold,
+        elbow_values=selection.elbow_values.numpy(),
+        elbow_idx=selection.elbow_idx,
         device=args.device,
     )
     with timed(f"neuron {neuron_idx}: write report"):
@@ -153,29 +213,31 @@ def process_neuron(
 
 def main() -> None:
     args = parse_args()
+    neuron_idxs = args.neurons or list(range(args.neuron_start, args.neuron_end + 1))
     pipeline_start = time.perf_counter()
 
     with timed("load texts"):
         texts = load_texts(args)
-    print(f"loaded {len(texts)} texts")
+    print(f"loaded {len(texts)} {args.unit}s")
 
     with timed("load model"):
         model, hf_model, tokenizer = load_model(args)
 
     source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
     presenter = TextPresenter(source)
+    capture = NeuronCapture(model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
 
-    with timed("capture activations"):
-        sample_ids, inputs, outputs, valid_mask = get_activations(
-            model,
-            source,
-            layer_getter_for(args),
-            n_iter=math.ceil(len(texts) / args.batch_size),
-            bs=args.batch_size,
-            device=args.device,
-        )
-    print(f"captured activations for {len(sample_ids)} texts, shape {tuple(outputs.shape)}, "
-          f"{int(valid_mask.sum())}/{valid_mask.numel()} positions unpadded")
+    with timed("pass 1: scan"):
+        scan = capture.scan()
+    print(f"scanned {len(scan.sample_ids)} texts, activations {tuple(scan.activations.shape)}, "
+          f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded")
+
+    selections = {n: select_hits(scan, n, args) for n in neuron_idxs}
+    merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], args.max_length)
+    with timed("pass 2: gather"):
+        gathered = capture.gather(merged.batch_idx, merged.token_idx)
+    worst = capture.check_consistent(scan, gathered, merged.batch_idx, merged.token_idx)
+    print(f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}")
 
     model.to("cpu")
     empty_cache()
@@ -184,9 +246,9 @@ def main() -> None:
     with timed("patch for attnlrp"):
         patch_gemma3_for_attn_lrp(hf_model.model)
 
-    for neuron_idx in range(args.neuron_start, args.neuron_end + 1):
-        process_neuron(
-            neuron_idx, sample_ids, inputs, outputs, valid_mask,
+    for neuron_idx, index_map in zip(neuron_idxs, merged.index_maps):
+        report_neuron(
+            neuron_idx, selections[neuron_idx], gathered.inputs[index_map], scan.sample_ids,
             weight, hf_model.model, source, presenter, args,
         )
 
