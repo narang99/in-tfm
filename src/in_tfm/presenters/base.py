@@ -6,17 +6,25 @@ importing each other through a half-initialized package.
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 import torch
 from jaxtyping import Float
+from pydantic import BaseModel, ConfigDict
 
 from ..sources import SampleId
 
 
-class ClusterHit(NamedTuple):
+HadamardShape = tuple[int, int]
+"""(height, width) that a flat Hadamard vector reshapes to for display. The vector has no
+inherent 2D layout, so this is a display choice made where the vector's length is known."""
+
+
+class ClusterHit(BaseModel):
     """One sampled member of a cluster, with everything needed to render it."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     sample_id: SampleId
     token_idx: int
@@ -33,6 +41,8 @@ class ClusterHit(NamedTuple):
 
 @runtime_checkable
 class ClusterPresenter(Protocol):
-    def render(self, hits: Sequence[ClusterHit], cluster_dir: Path) -> str:
+    def render(
+        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    ) -> str:
         """Writes artifact files into cluster_dir; returns the html fragment linking them."""
         ...

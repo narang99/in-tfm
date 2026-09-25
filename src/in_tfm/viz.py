@@ -143,9 +143,15 @@ def show_grid(
 
 
 def compose_grid(
-    images: list[Image.Image], cols: int | None = None, pad: int = 4, bg: tuple[int, int, int] = (0, 0, 0)
+    images: list[Image.Image],
+    cols: int | None = None,
+    pad: int = 4,
+    bg: tuple[int, int, int] = (0, 0, 0),
+    border: int = 0,
 ) -> Image.Image:
     """Pastes same-size PIL images into a grid canvas.
+
+    `pad` separates tiles from each other; `border` is the extra margin around the whole grid.
 
     No matplotlib figure/axes involved, so this is the preferred way to batch images together
     for headless report generation - matplotlib is reserved for interactive notebook display.
@@ -153,19 +159,27 @@ def compose_grid(
     cols = cols or len(images)
     rows = math.ceil(len(images) / cols)
     w, h = images[0].size
-    canvas = Image.new("RGB", (cols * (w + pad) - pad, rows * (h + pad) - pad), bg)
+    canvas = Image.new(
+        "RGB", (cols * (w + pad) - pad + 2 * border, rows * (h + pad) - pad + 2 * border), bg
+    )
     for i, img in enumerate(images):
         row, col = divmod(i, cols)
-        canvas.paste(img, (col * (w + pad), row * (h + pad)))
+        canvas.paste(img, (border + col * (w + pad), border + row * (h + pad)))
     return canvas
 
 
-def save_image_grid(images: list[Image.Image], output_path: str | Path, cols: int | None = None) -> None:
+def save_image_grid(
+    images: list[Image.Image],
+    output_path: str | Path,
+    cols: int | None = None,
+    pad: int = 4,
+    border: int = 0,
+) -> None:
     if not images:
         return
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    compose_grid(images, cols).save(output_path)
+    compose_grid(images, cols, pad=pad, border=border).save(output_path)
 
 
 def render_hadamard_tiles(

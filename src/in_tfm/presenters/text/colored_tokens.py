@@ -44,20 +44,27 @@ def colored_tokens(
     values: Float[np.ndarray, "n"],
     vmax: float,
     firing_idx: int | None = None,
+    sink_idx: int | None = None,
 ) -> str:
-    """Tokens in reading order, each shaded by its value on a shared +/-`vmax` scale."""
+    """Tokens in reading order, each shaded by its value on a shared +/-`vmax` scale.
+
+    `sink_idx` is drawn unshaded: an attention-sink token's relevance is not comparable to the
+    rest (see `HitWindow.scale_relevance`), and a saturated block at the start of every hit
+    drowns the tokens the reader came to see. Its value stays in the hover title.
+    """
     spans = [
-        _token_span(tok, float(val), vmax, firing=(i == firing_idx))
+        _token_span(tok, float(val), vmax, firing=(i == firing_idx), sink=(i == sink_idx))
         for i, (tok, val) in enumerate(zip(tokens, values))
     ]
     return f'<div class="tokens">{"".join(spans)}</div>'
 
 
-def _token_span(token: str, value: float, vmax: float, firing: bool) -> str:
-    classes = "tok tok-firing" if firing else "tok"
+def _token_span(token: str, value: float, vmax: float, firing: bool, sink: bool) -> str:
+    classes = ["tok"] + (["tok-firing"] if firing else []) + (["tok-sink"] if sink else [])
+    style = "" if sink else _token_colors(value, vmax)
     title = f"{display_text(token)}  {value:+.3f}"
     return (
-        f'<span class="{classes}" style="{_token_colors(value, vmax)}"'
+        f'<span class="{" ".join(classes)}" style="{style}"'
         f' title="{html.escape(title, quote=True)}">{html.escape(display_text(token))}</span>'
     )
 
