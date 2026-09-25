@@ -17,6 +17,7 @@ import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
@@ -136,6 +137,18 @@ def load_model(args: argparse.Namespace) -> tuple[NNsight, torch.nn.Module, Auto
     return NNsight(base).to(args.device), hf_model, tokenizer
 
 
+Polarity = Literal["positive", "negative"]
+
+
+def polarities_for(args: argparse.Namespace) -> list[Polarity]:
+    return ["positive", "negative"] if args.polarity == "both" else [args.polarity]
+
+
+def report_name(neuron_idx: int, polarity: Polarity) -> str:
+    """Positive keeps the historical `neuron_{idx}` so existing reports are not renamed."""
+    return f"neuron_{neuron_idx}" if polarity == "positive" else f"neuron_{neuron_idx}_neg"
+
+
 class HitSelection(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -147,17 +160,24 @@ class HitSelection(BaseModel):
     n_above_threshold: int
 
 
-def select_hits(scan: ScanResult, neuron_idx: int, args: argparse.Namespace) -> HitSelection:
+def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: argparse.Namespace) -> HitSelection:
     """Every position above the elbow threshold, subsampled to `--max-hits`: clustering 640-d
-    vectors is superlinear in hit count, and a common token can produce hundreds of thousands."""
+    vectors is superlinear in hit count, and a common token can produce hundreds of thousands.
+
+    - The negative tail is found by negating the column: the elbow and hit helpers only look
+      at positive values, so the same code finds the most negative activations.
+    - `elbow_values` are then magnitudes, while `threshold` is reported signed."""
     column = scan.neuron_column(neuron_idx)
-    threshold, elbow_values, elbow_idx = find_activation_threshold(column, 0, scan.valid_mask)
-    batch_idx, token_idx = high_activation_hits(column, 0, threshold, scan.valid_mask)
+    if polarity == "negative":
+        column = -column
+    magnitude, elbow_values, elbow_idx = find_activation_threshold(column, 0, scan.valid_mask)
+    threshold = -magnitude if polarity == "negative" else magnitude
+    batch_idx, token_idx = high_activation_hits(column, 0, magnitude, scan.valid_mask)
     n_above = len(batch_idx)
     if n_above > args.max_hits:
         keep = np.sort(np.random.default_rng(args.seed).choice(n_above, args.max_hits, replace=False))
         batch_idx, token_idx = batch_idx[keep], token_idx[keep]
-    print(f"[neuron {neuron_idx}] threshold={threshold:.4f}, {n_above} hits above it, {len(batch_idx)} kept")
+    print(f"[neuron {neuron_idx} {polarity}] threshold={threshold:.4f}, {n_above} hits beyond it, {len(batch_idx)} kept")
     return HitSelection(
         threshold=threshold,
         elbow_values=elbow_values,
@@ -170,6 +190,7 @@ def select_hits(scan: ScanResult, neuron_idx: int, args: argparse.Namespace) -> 
 
 def report_neuron(
     neuron_idx: int,
+    polarity: Polarity,
     selection: HitSelection,
     rows: Float[torch.Tensor, "n_hits hidden"],
     sample_ids: list[str],
@@ -179,10 +200,11 @@ def report_neuron(
     presenter: TextPresenter,
     args: argparse.Namespace,
 ) -> None:
+    tag = f"neuron {neuron_idx} {polarity}"
     hdmd = hadamard_from_rows(rows, weight, neuron_idx)
-    with timed(f"neuron {neuron_idx}: cluster"):
+    with timed(f"{tag}: cluster"):
         labels = cluster_labels(hdmd, args.min_cluster_size)
-    print(f"[neuron {neuron_idx}] {len(set(labels) - {-1})} clusters")
+    print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
         model=lrp_model,
@@ -201,16 +223,16 @@ def report_neuron(
         elbow_idx=selection.elbow_idx,
         device=args.device,
     )
-    with timed(f"neuron {neuron_idx}: write report"):
+    with timed(f"{tag}: write report"):
         report_path = hits.write_report(
             args.out_dir,
-            name=f"neuron_{neuron_idx}",
+            name=report_name(neuron_idx, polarity),
             attr_fn=compute_attnlrp_relevance,
             max_n=args.max_hits_per_cluster,
             min_uniq_images=args.min_uniq_samples_per_cluster,
             max_clusters=args.max_clusters,
         )
-    print(f"[neuron {neuron_idx}] report -> {report_path}")
+    print(f"[{tag}] report -> {report_path}")
 
 
 def main() -> None:
@@ -234,7 +256,8 @@ def main() -> None:
     print(f"scanned {len(scan.sample_ids)} texts, activations {tuple(scan.activations.shape)}, "
           f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded")
 
-    selections = {n: select_hits(scan, n, args) for n in neuron_idxs}
+    targets = [(n, polarity) for n in neuron_idxs for polarity in polarities_for(args)]
+    selections = {t: select_hits(scan, *t, args) for t in targets}
     merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], args.max_length)
     with timed("pass 2: gather"):
         gathered = capture.gather(merged.batch_idx, merged.token_idx)
@@ -248,9 +271,9 @@ def main() -> None:
     with timed("patch for attnlrp"):
         patch_gemma3_for_attn_lrp(hf_model.model)
 
-    for neuron_idx, index_map in zip(neuron_idxs, merged.index_maps):
+    for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(
-            neuron_idx, selections[neuron_idx], gathered.inputs[index_map], scan.sample_ids,
+            neuron_idx, polarity, selections[(neuron_idx, polarity)], gathered.inputs[index_map], scan.sample_ids,
             weight, hf_model.model, source, presenter, args,
         )
 
