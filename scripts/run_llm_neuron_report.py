@@ -26,7 +26,7 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_products, high_activation_hits, near_square_shape
-from in_tfm.layers import LayerGetter, down_proj_getter, q_proj_getter
+from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
 from in_tfm.sources import TextSource
@@ -51,9 +51,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layer-idx", type=int, default=10)
     parser.add_argument(
         "--target",
-        choices=["down_proj", "q_proj"],
+        choices=["down_proj", "q_proj", "k_proj"],
         default="down_proj",
-        help="down_proj: MLP neurons. q_proj: query coordinates, neuron index = head * head_dim + dim",
+        help="down_proj: MLP neurons. q_proj / k_proj: query / key coordinates, neuron index = (kv_)head * head_dim + dim",
     )
     parser.add_argument("--neuron-start", type=int, default=90)
     parser.add_argument("--neuron-end", type=int, default=90, help="inclusive")
@@ -83,14 +83,15 @@ def load_texts(args: argparse.Namespace) -> list[str]:
 
 
 def layer_getter_for(args: argparse.Namespace) -> LayerGetter:
-    getters = {"down_proj": down_proj_getter, "q_proj": q_proj_getter}
+    getters = {"down_proj": down_proj_getter, "q_proj": q_proj_getter, "k_proj": k_proj_getter}
     return getters[args.target](args.layer_idx)
 
 
 def target_weight(hf_model: torch.nn.Module, args: argparse.Namespace) -> torch.Tensor:
     """The weight whose row `neuron_idx` the Hadamard product is taken against."""
     layer = hf_model.model.layers[args.layer_idx]
-    return layer.mlp.down_proj.weight if args.target == "down_proj" else layer.self_attn.q_proj.weight
+    modules = {"down_proj": layer.mlp.down_proj, "q_proj": layer.self_attn.q_proj, "k_proj": layer.self_attn.k_proj}
+    return modules[args.target].weight
 
 
 def load_model(args: argparse.Namespace) -> tuple[NNsight, torch.nn.Module, AutoTokenizer]:

@@ -52,3 +52,19 @@ def q_proj_getter(layer_idx: int) -> LayerGetter:
         return model.layers[layer_idx].self_attn.q_proj
 
     return getter
+
+
+def k_proj_getter(layer_idx: int) -> LayerGetter:
+    """The key projection, the counterpart of `q_proj_getter`. Its output is
+    (batch, seq, n_kv_heads * head_dim), so a flat neuron index is `kv_head * head_dim + d`.
+
+    Two differences from q_proj to keep in mind when reading a report:
+    - Gemma 3 uses grouped-query attention, so one kv head serves `n_heads // n_kv_heads` query
+      heads. A key neuron is therefore shared by several query heads' scores.
+    - Like q_proj this is the raw output, before `k_norm` and rope.
+    """
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        return model.layers[layer_idx].self_attn.k_proj
+
+    return getter
