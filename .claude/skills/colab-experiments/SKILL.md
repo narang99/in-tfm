@@ -85,6 +85,15 @@ Two audiences, two channels. Print the small structured stuff — metadata, timi
 cell stdout, which is all that's needed to judge an iteration. Zip the images and hand them to
 the user separately; don't try to move binaries through cell output.
 
+When zipping a report folder for download:
+
+- Keep every `mean.pt`. It is one vector per cluster (tiny), and comparing clusters across runs
+  (cosine similarity of prototypes) is impossible without it.
+- Exclude only `hits.pt`, the per-hit records, which is what makes a full report folder ~1 GB:
+  `zip -qr reports.zip <dir> -x '*/hits.pt'`
+- Never use a blanket `-x '*.pt'`. That silently drops `mean.pt` too, and it is only noticed
+  when someone tries to compare two runs.
+
 Before drawing conclusions from a cluster, an outlier or a pattern, ask whether the **corpus**
 could explain it. A preprocessing convention produces clusters that look exactly as legitimate
 as real ones, and nothing in the output distinguishes them — only knowing the data does.

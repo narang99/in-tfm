@@ -189,11 +189,15 @@ class NeuronCapture:
         batch = self.source.to_model_batch(ids).to(self.device)
         # nnsight leaves autograd on, which keeps every layer's intermediates alive for a
         # backward pass that never comes - at 4 x 2048 tokens that alone exhausts a 15GB T4.
+        # nnsight only writes back variables that were `.save()`d, so `normed` must already
+        # exist for the case where nothing is saved into it.
+        normed = None
         with torch.no_grad(), self.model.trace(**batch.kwargs):
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
-            normed = self.head_norm_getter(self.model).output.save() if self.head_norm_getter else None
+            if self.head_norm_getter is not None:
+                normed = self.head_norm_getter(self.model).output.save()
         if normed is not None:
             outputs = flatten_heads(normed)
         return inputs.detach(), outputs.detach(), batch.valid_mask
