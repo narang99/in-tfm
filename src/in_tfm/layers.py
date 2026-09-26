@@ -68,3 +68,12 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
         return model.layers[layer_idx].self_attn.k_proj
 
     return getter
+
+
+def q_norm_getter(layer_idx: int) -> LayerGetter:
+    """Gemma 3's per-head RMSNorm on the query, applied after q_proj and before rope."""
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        return model.layers[layer_idx].self_attn.q_norm
+
+    return getter
