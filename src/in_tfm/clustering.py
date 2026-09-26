@@ -7,7 +7,7 @@ hit count. At ~1200 hits the CPU build takes ~10s; at ~6500 it takes ~5 minutes,
 """
 
 from functools import cache
-from typing import Protocol
+from typing import Literal, Protocol
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -16,7 +16,7 @@ from jaxtyping import Float, Int
 class HDBSCANBackend(Protocol):
     """The slice of the HDBSCAN API used here - cuml and sklearn-contrib hdbscan agree on it."""
 
-    def __init__(self, min_cluster_size: int) -> None: ...
+    def __init__(self, min_cluster_size: int, cluster_selection_method: str) -> None: ...
     def fit(self, points: Float[np.ndarray, "n_points dim"]) -> object: ...
 
     labels_: Int[np.ndarray, "n_points"]
@@ -40,13 +40,24 @@ def resolve_hdbscan_backend() -> tuple[type[HDBSCANBackend], str]:
         return CpuHDBSCAN, "hdbscan (cpu)"
 
 
+SelectionMethod = Literal["eom", "leaf"]
+"""How HDBSCAN picks clusters from its condensed tree.
+
+- `eom` (excess of mass): may pick a large parent over its children, so distinct sub-clusters
+  can be merged into one big cluster.
+- `leaf`: takes the leaves, giving many smaller and more homogeneous clusters.
+"""
+
+
 def cluster_labels(
-    points: Float[np.ndarray, "n_points dim"], min_cluster_size: int
+    points: Float[np.ndarray, "n_points dim"],
+    min_cluster_size: int,
+    cluster_selection_method: SelectionMethod = "eom",
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop."""
     backend, name = resolve_hdbscan_backend()
-    print(f"[cluster] {len(points)} points x {points.shape[1]} dims via {name}")
+    print(f"[cluster] {len(points)} points x {points.shape[1]} dims via {name}, {cluster_selection_method}")
 
-    clusterer = backend(min_cluster_size=min_cluster_size)
+    clusterer = backend(min_cluster_size=min_cluster_size, cluster_selection_method=cluster_selection_method)
     clusterer.fit(points)
     return np.asarray(clusterer.labels_)
