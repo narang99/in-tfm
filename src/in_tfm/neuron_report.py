@@ -46,6 +46,9 @@ COSINE_ELBOW_PLOT_NAME = "cosine_elbow.png"
 class ClusterMeta(BaseModel):
     n_hits: int
     n_unique_images: int
+    activation_threshold: float
+    """The neuron-level activation threshold used to find this cluster's hits - same value as
+    `ReportMeta.threshold`, duplicated here so a cluster's meta is self-contained for inference."""
     inference_threshold: float
     """Cosine-similarity cutoff against this cluster's mean vector for matching new data at
     inference time - see `_cache_cluster`."""
@@ -273,6 +276,7 @@ class NeuronClusterHits(BaseModel):
                 cid: ClusterMeta(
                     n_hits=counts[cid],
                     n_unique_images=uniq_images[cid],
+                    activation_threshold=self.threshold,
                     inference_threshold=inference_thresholds[cid],
                 )
                 for cid in cluster_ids
