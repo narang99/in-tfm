@@ -27,21 +27,28 @@ from tqdm import tqdm
 
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
+from .hadamard import cosine_similarity
 from .html_report import details, page
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
+from .threshold import find_elbow_index_in_sorted_data
 from .viz import save_elbow_plot
 
 AttrFn = Callable[..., np.ndarray]
 
 
 HITS_CACHE_NAME = "hits.pt"
+MEAN_VECTOR_NAME = "mean.pt"
+COSINE_ELBOW_PLOT_NAME = "cosine_elbow.png"
 
 
 class ClusterMeta(BaseModel):
     n_hits: int
     n_unique_images: int
+    inference_threshold: float
+    """Cosine-similarity cutoff against this cluster's mean vector for matching new data at
+    inference time - see `_cache_cluster`."""
 
 
 class ReportMeta(BaseModel):
@@ -109,13 +116,18 @@ def _cluster_section(
         '<header class="cluster-head">'
         f'<span class="cluster-badge">Cluster {cluster_id}</span>'
         f'<span class="cluster-stats">n={cluster.n_hits} &middot; '
-        f"{cluster.n_unique_images} unique samples</span></header>"
+        f"{cluster.n_unique_images} unique samples &middot; "
+        f"inference threshold={cluster.inference_threshold:.4f}</span></header>"
     )
     hits = load_hits(cluster_dir)
     body = presenter.render(hits, cluster_dir, hadamard_shape) if hits else "<p>no hits sampled.</p>"
+    cosine_elbow = details(
+        "inference threshold (cosine similarity elbow plot)",
+        f'<img class="elbow" src="{cluster_dir.name}/{COSINE_ELBOW_PLOT_NAME}" alt="cosine similarity elbow plot">',
+    )
     return (
         f'<section class="cluster accent-{position % N_ACCENTS}" id="cluster-{cluster_id}">\n'
-        f'{header}\n<div class="cluster-body">\n{body}\n</div>\n</section>'
+        f'{header}\n<div class="cluster-body">\n{cosine_elbow}\n{body}\n</div>\n</section>'
     )
 
 
@@ -173,6 +185,10 @@ class NeuronClusterHits(BaseModel):
     batch_idx: Int[np.ndarray, "n_hits"]
     labels: Int[np.ndarray, "n_hits"]
     hdmds: Float[np.ndarray, "n_hits hidden"]
+    all_hdmd: Float[np.ndarray, "n_valid_tokens hidden"]
+    """Hadamard vectors for every valid token this neuron saw, not just the hits above the
+    activation threshold - HDBSCAN (`hdmds`/`labels`) is stricter than plain similarity, so the
+    inference threshold below is fit against the full distribution, not the hits it clustered."""
     hadamard_shape: HadamardShape
     threshold: float
     elbow_values: Float[np.ndarray, "n_pos"]
@@ -206,24 +222,44 @@ class NeuronClusterHits(BaseModel):
             gc.collect()
         return results
 
-    def _cluster_mean_hadamard(self, cluster_id: int) -> torch.Tensor:
+    def _cluster_mean_hadamard(self, cluster_id: int) -> Float[np.ndarray, "hidden"]:
         """Mean Hadamard product over every hit HDBSCAN placed in this cluster (not just the
         handful sampled for display) - a per-cluster prototype other data can later be matched
         against via cosine similarity."""
         cluster_hdmds = self.hdmds[self.labels == cluster_id]
-        return torch.from_numpy(cluster_hdmds.mean(axis=0))
+        return cluster_hdmds.mean(axis=0)
+
+    def _inference_threshold(
+        self, mean_vector: Float[np.ndarray, "hidden"], cluster_dir: Path
+    ) -> float:
+        """Fits the inference cutoff against every valid token's similarity to the cluster mean,
+        not just the hits HDBSCAN placed in the cluster - HDBSCAN is stricter than a plain
+        cosine-similarity cutoff, so its hits alone would understate how many tokens should
+        count as a match at inference time."""
+        similarities = np.sort(cosine_similarity(self.all_hdmd, mean_vector))
+        elbow_idx = find_elbow_index_in_sorted_data(torch.from_numpy(similarities))
+        save_elbow_plot(
+            similarities, elbow_idx, cluster_dir / COSINE_ELBOW_PLOT_NAME, ylabel="cosine similarity"
+        )
+        return float(similarities[elbow_idx])
 
     def _cache_cluster(
         self, cluster_id: int, report_dir: Path, attr_fn: AttrFn, max_n: int
-    ) -> None:
-        """Writes the cluster's presenter input (`hits.pt`) and its mean Hadamard prototype
-        (`mean.pt`) into its own `cluster_{id}/` subfolder."""
+    ) -> float:
+        """Writes the cluster's presenter input (`hits.pt`), its mean Hadamard prototype
+        (`mean.pt`) and its inference elbow plot into its own `cluster_{id}/` subfolder, and
+        returns the inference threshold for `meta.json`."""
         cluster_dir = cluster_dir_for(report_dir, cluster_id)
         cluster_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(self._cluster_mean_hadamard(cluster_id), cluster_dir / "mean.pt")
+        mean_vector = self._cluster_mean_hadamard(cluster_id)
+        torch.save(torch.from_numpy(mean_vector), cluster_dir / MEAN_VECTOR_NAME)
+        inference_threshold = self._inference_threshold(mean_vector, cluster_dir)
         save_hits(self.sample_cluster(cluster_id, max_n=max_n, attr_fn=attr_fn), cluster_dir)
+        return inference_threshold
 
-    def _meta(self, cluster_ids: list[int], min_uniq_images: int) -> ReportMeta:
+    def _meta(
+        self, cluster_ids: list[int], min_uniq_images: int, inference_thresholds: dict[int, float]
+    ) -> ReportMeta:
         counts = cluster_counts(self.labels)
         uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
         return ReportMeta(
@@ -234,7 +270,11 @@ class NeuronClusterHits(BaseModel):
             n_clusters=len(cluster_ids),
             hadamard_shape=self.hadamard_shape,
             clusters={
-                cid: ClusterMeta(n_hits=counts[cid], n_unique_images=uniq_images[cid])
+                cid: ClusterMeta(
+                    n_hits=counts[cid],
+                    n_unique_images=uniq_images[cid],
+                    inference_threshold=inference_thresholds[cid],
+                )
                 for cid in cluster_ids
             },
             sample_ids=list(self.sample_ids),
@@ -272,9 +312,10 @@ class NeuronClusterHits(BaseModel):
         cluster_ids = [
             cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
         ][:max_clusters]
-        meta = self._meta(cluster_ids, min_uniq_images)
-        (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
 
-        for cid in cluster_ids:
-            self._cache_cluster(cid, report_dir, attr_fn, max_n)
+        inference_thresholds = {
+            cid: self._cache_cluster(cid, report_dir, attr_fn, max_n) for cid in cluster_ids
+        }
+        meta = self._meta(cluster_ids, min_uniq_images, inference_thresholds)
+        (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
         return render_report(report_dir, self.presenter)

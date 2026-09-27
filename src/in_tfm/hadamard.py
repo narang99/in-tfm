@@ -65,3 +65,11 @@ def normalized_rows(rows: Float[torch.Tensor, "n_hits hidden"]) -> Float[np.ndar
     """The Hadamard ablation: the same hits and the same L2 normalisation, but without the
     weight row, so clusters reflect the input alone rather than what the neuron reads from it."""
     return normalize(rows.detach().cpu().clone().numpy(), "l2")
+
+
+def cosine_similarity(
+    vectors: Float[np.ndarray, "n hidden"], target: Float[np.ndarray, "hidden"]
+) -> Float[np.ndarray, "n"]:
+    """`vectors` are assumed already L2-normalized (e.g. `hadamard_from_rows`' output) - only
+    `target` (a cluster mean, not itself unit norm) is normalized here."""
+    return vectors @ (target / (np.linalg.norm(target) + 1e-12))
