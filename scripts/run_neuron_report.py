@@ -125,12 +125,9 @@ def cluster_hadamards(
 
 
 def all_token_hadamards(
-    inputs: torch.Tensor, valid_mask: torch.Tensor, fc2_weight: torch.Tensor, neuron_idx: int
+    inputs: torch.Tensor, valid_mask: torch.Tensor, weight: torch.Tensor, neuron_idx: int
 ):
-    """Hadamard vectors for every valid token this neuron saw, regardless of activation - the
-    distribution the inference cosine-similarity threshold is fit against (see
-    NeuronClusterHits._inference_threshold)."""
-    return hadamard_from_rows(inputs[valid_mask], fc2_weight, neuron_idx)
+    return hadamard_from_rows(inputs[valid_mask], weight, neuron_idx)
 
 
 def build_hits(

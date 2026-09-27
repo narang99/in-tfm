@@ -10,6 +10,7 @@ strongly the neuron fired.
 import numpy as np
 import torch
 from jaxtyping import Bool, Float, Int
+from sklearn.metrics.pairwise import cosine_similarity as _pairwise_cosine_similarity
 from sklearn.preprocessing import normalize
 
 
@@ -70,6 +71,4 @@ def normalized_rows(rows: Float[torch.Tensor, "n_hits hidden"]) -> Float[np.ndar
 def cosine_similarity(
     vectors: Float[np.ndarray, "n hidden"], target: Float[np.ndarray, "hidden"]
 ) -> Float[np.ndarray, "n"]:
-    """`vectors` are assumed already L2-normalized (e.g. `hadamard_from_rows`' output) - only
-    `target` (a cluster mean, not itself unit norm) is normalized here."""
-    return vectors @ (target / (np.linalg.norm(target) + 1e-12))
+    return _pairwise_cosine_similarity(vectors, target.reshape(1, -1)).ravel()
