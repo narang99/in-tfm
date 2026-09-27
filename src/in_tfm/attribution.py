@@ -147,6 +147,22 @@ def compute_attnlrp_relevance(
     return (leaf.grad * leaf).detach().cpu().numpy()
 
 
+def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
+    """Monkey-patch the attention-only shortformer model in place for AttnLRP.
+
+    Attention is the only rule needed. That model has no normalization and no MLP, so softmax is
+    its only nonlinearity and everything else is already linear in its input, where plain
+    gradient*input is a valid LRP rule.
+
+    It borrows HF's Llama attention kernel, so the patch lands on that module - see
+    `attn_only.AttnOnlyAttention.forward` for why reaching it through the module matters.
+    """
+    from transformers.models.llama import modeling_llama
+
+    model.config._attn_implementation = "eager"
+    patch_eager_attention(modeling_llama)
+
+
 def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
     """Monkey-patch a Gemma3 model in place for AttnLRP.
 
