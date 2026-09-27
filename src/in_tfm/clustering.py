@@ -52,7 +52,7 @@ SelectionMethod = Literal["eom", "leaf"]
 def cluster_labels(
     points: Float[np.ndarray, "n_points dim"],
     min_cluster_size: int,
-    cluster_selection_method: SelectionMethod = "eom",
+    cluster_selection_method: SelectionMethod = "leaf",
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop."""
     backend, name = resolve_hdbscan_backend()

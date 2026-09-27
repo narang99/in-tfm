@@ -98,9 +98,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cluster-selection",
         choices=["eom", "leaf"],
-        default="eom",
-        help="HDBSCAN cluster_selection_method. leaf gives many smaller clusters; eom can merge "
-        "sub-clusters into one large parent",
+        default="leaf",
+        help="HDBSCAN cluster_selection_method. leaf gives many smaller clusters (the default: "
+        "eom was seen to merge a whole neuron's hits into one under-clustered blob, see "
+        "experiments/hdbscan-leaf/). eom can merge sub-clusters into one large parent",
     )
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
     parser.add_argument("--max-clusters", type=int, default=None, help="report only the largest N clusters")
