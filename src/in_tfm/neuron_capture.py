@@ -150,10 +150,14 @@ class NeuronCapture:
         for chunk in tqdm(list(batched(ids, self.batch_size)), desc="similarity scan"):
             inputs, outputs, valid_mask = self._trace(chunk)
             del outputs
-            for neuron_idx, means in normalized_means.items():
-                hdmd = inputs * weight[neuron_idx].to(inputs.device)
-                hdmd = hdmd / (hdmd.norm(dim=-1, keepdim=True) + 1e-12)
-                sims[neuron_idx].append((hdmd @ means.to(inputs.device).T).cpu())
+            # `_trace` detaches what it captures, but `weight` is a live model parameter, so the
+            # multiply below would re-attach the result to the graph and keep every batch's
+            # Hadamard products alive - the exact leak this streaming scan exists to avoid.
+            with torch.no_grad():
+                for neuron_idx, means in normalized_means.items():
+                    hdmd = inputs * weight[neuron_idx].to(inputs.device)
+                    hdmd = hdmd / (hdmd.norm(dim=-1, keepdim=True) + 1e-12)
+                    sims[neuron_idx].append((hdmd @ means.to(inputs.device).T).cpu())
             masks.append(valid_mask.cpu())
             del inputs
             self._release()
