@@ -35,7 +35,7 @@ from in_tfm.attribution import (
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
-from in_tfm.inference import fit_and_patch_inference_thresholds, load_cluster_means
+from in_tfm.inference import load_cluster_means, measure_corpus_admission
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits, ReportMeta
@@ -229,17 +229,16 @@ def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: arg
     )
 
 
-def fit_inference_thresholds(
+def report_corpus_admission(
     report_path: Path,
     neuron_idx: int,
     weight: torch.Tensor,
     capture: NeuronCapture,
     presenter: TextPresenter,
 ) -> None:
-    """Runs the third model pass this pipeline needs: scoring every cluster's mean vector
-    against the cosine similarity of every valid token in the corpus, then elbow-fitting each
-    cluster's inference threshold from that - see neuron_report.py's module docstring for why
-    this can't happen inside write_report itself."""
+    """Scores every cluster's threshold against the whole corpus, to show how much of it each one
+    actually admits. The thresholds themselves are already fit by then, from the clusters' own
+    spread - this pass only measures their reach."""
     report_dir = report_path.parent
     meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
     cluster_ids = list(meta.clusters.keys())
@@ -247,9 +246,12 @@ def fit_inference_thresholds(
         return
     means = load_cluster_means(report_dir, cluster_ids)
     scan = capture.scan_cluster_similarities(weight, {neuron_idx: means})
-    fit_and_patch_inference_thresholds(
+    admission = measure_corpus_admission(
         report_dir, cluster_ids, scan.similarities[neuron_idx], scan.valid_mask, presenter
     )
+    for cid, fraction in sorted(admission.items(), key=lambda kv: -kv[1]):
+        size = meta.clusters[cid].n_hits / meta.n_hits
+        print(f"  cluster {cid}: admits {fraction:.2%} of the corpus, cluster is {size:.2%} of hits")
 
 
 def report_neuron(
@@ -300,10 +302,10 @@ def report_neuron(
     print(f"[{tag}] report -> {report_path}")
 
     if args.cluster_on == "hadamard":
-        with timed(f"{tag}: fit inference thresholds"):
-            fit_inference_thresholds(report_path, neuron_idx, weight, capture, presenter)
+        with timed(f"{tag}: corpus admission"):
+            report_corpus_admission(report_path, neuron_idx, weight, capture, presenter)
     else:
-        print(f"[{tag}] skipping inference threshold fit - only defined for --cluster-on hadamard")
+        print(f"[{tag}] skipping corpus admission - only defined for --cluster-on hadamard")
 
 
 def main() -> None:

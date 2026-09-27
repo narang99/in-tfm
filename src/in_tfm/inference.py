@@ -2,9 +2,9 @@
 against the cluster's mean Hadamard vector rather than re-running HDBSCAN - HDBSCAN never sees
 inference-time data, so it can't be the matching rule there.
 
-The threshold that decides a match is fit separately from report writing, in
-`fit_and_patch_inference_thresholds`, because fitting it needs a full model pass (see
-neuron_report.py's module docstring for why report writing itself never makes one).
+The threshold itself is fit at report time from the cluster's own spread, needing no model
+pass - see `neuron_report.NeuronClusterHits._inference_threshold`. What needs a pass is finding
+out how far that threshold reaches across a corpus, which is `measure_corpus_admission`.
 """
 
 from pathlib import Path
@@ -22,7 +22,6 @@ from .neuron_report import (
     render_report,
 )
 from .presenters import ClusterPresenter
-from .threshold import find_elbow_index_in_sorted_data
 from .viz import save_elbow_plot
 
 
@@ -69,29 +68,34 @@ def load_cluster_means(
     )
 
 
-def fit_and_patch_inference_thresholds(
+def measure_corpus_admission(
     report_dir: str | Path,
     cluster_ids: list[int],
     similarities: Float[torch.Tensor, "batch seq n_clusters"],
     valid_mask: Bool[torch.Tensor, "batch seq"],
     presenter: ClusterPresenter,
-) -> Path:
-    """Elbow-fits each cluster's inference threshold against its column of a similarity scan
-    (see `NeuronCapture.scan_cluster_similarities`) over every valid token in the corpus, writes
-    the cosine-similarity elbow plot, patches `meta.json`, and re-renders the report so the
-    plots and thresholds show up in `index.html`.
+) -> dict[int, float]:
+    """How much of a corpus each cluster's already-fitted threshold admits, plus the plot of the
+    similarity distribution it was applied to.
+
+    This is the diagnostic that catches a threshold which has drifted away from the concept it is
+    supposed to name. A cluster holding 0.4% of tokens whose threshold admits 20% of them is not
+    matching a concept, it is matching the bulk of the distribution.
 
     `cluster_ids` must be in the same order the similarity scan was given the cluster means in.
     """
     report_dir = Path(report_dir)
     meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
+    admission: dict[int, float] = {}
     for i, cid in enumerate(cluster_ids):
         values = np.sort(similarities[..., i][valid_mask].numpy())
-        elbow_idx = find_elbow_index_in_sorted_data(torch.from_numpy(values))
-        cluster_dir = cluster_dir_for(report_dir, cid)
+        threshold = meta.clusters[cid].inference_threshold
+        admission[cid] = float((values >= threshold).mean())
         save_elbow_plot(
-            values, elbow_idx, cluster_dir / COSINE_ELBOW_PLOT_NAME, ylabel="cosine similarity"
+            values,
+            int(np.searchsorted(values, threshold)),
+            cluster_dir_for(report_dir, cid) / COSINE_ELBOW_PLOT_NAME,
+            ylabel="cosine similarity",
         )
-        meta.clusters[cid].inference_threshold = float(values[elbow_idx])
-    (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
-    return render_report(report_dir, presenter)
+    render_report(report_dir, presenter)
+    return admission
