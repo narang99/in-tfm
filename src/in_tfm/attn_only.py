@@ -24,7 +24,6 @@ from jaxtyping import Bool, Float, Int
 from torch import nn
 from transformers import AutoTokenizer, PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutput
-from transformers.models.llama import modeling_llama
 
 ATTN_ONLY_2L_REPO = "callummcdougall/attn_only_2L_half"
 ATTN_ONLY_2L_WEIGHTS = "attn_only_2L_half.pth"
@@ -57,6 +56,32 @@ class AttnOnlyConfig(PretrainedConfig):
         super().__init__(**kwargs)
 
 
+def eager_attention_forward(
+    module: nn.Module,
+    query: Float[torch.Tensor, "batch head seq head_dim"],
+    key: Float[torch.Tensor, "batch head seq head_dim"],
+    value: Float[torch.Tensor, "batch head seq head_dim"],
+    attention_mask: Float[torch.Tensor, "batch 1 seq seq"] | None,
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs,
+) -> tuple[
+    Float[torch.Tensor, "batch seq head head_dim"], Float[torch.Tensor, "batch head seq seq"]
+]:
+    """Named and signed to match HF's per-model attention kernels, which is what
+    `attribution.patch_eager_attention` looks for when it installs the AttnLRP rule.
+
+    Kept here rather than borrowed from Llama so that patch stays scoped to this model, and so
+    nothing depends on the layout of another architecture's private helper.
+    """
+    scores = torch.matmul(query, key.transpose(2, 3)) * scaling
+    if attention_mask is not None:
+        scores = scores + attention_mask
+    weights = nn.functional.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
+    weights = nn.functional.dropout(weights, p=dropout, training=module.training)
+    return torch.matmul(weights, value).transpose(1, 2).contiguous(), weights
+
+
 class AttnOnlyAttention(nn.Module):
     """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj` so `layers.q_proj_getter` and
     `layers.k_proj_getter` resolve on this model with no special case."""
@@ -67,8 +92,6 @@ class AttnOnlyAttention(nn.Module):
         self.n_heads = config.num_attention_heads
         self.head_dim = config.head_dim
         self.scaling = self.head_dim**-0.5
-        # no grouped-query attention here, but HF's eager kernel reads this to expand kv heads
-        self.num_key_value_groups = 1
         inner = self.n_heads * self.head_dim
         self.q_proj = nn.Linear(config.hidden_size, inner)
         self.k_proj = nn.Linear(config.hidden_size, inner)
@@ -85,11 +108,9 @@ class AttnOnlyAttention(nn.Module):
         query = self._to_heads(self.q_proj(qk_input))
         key = self._to_heads(self.k_proj(qk_input))
         value = self._to_heads(self.v_proj(hidden_states))
-        # Reached through the module rather than imported by name on purpose: AttnLRP patches
-        # the module's global, and only a call-time lookup sees that patch. See
-        # attribution.patch_attn_only_for_attn_lrp.
-        attn_out, _ = modeling_llama.eager_attention_forward(
-            self, query, key, value, attention_mask, scaling=self.scaling, dropout=0.0
+        # Called as a module global, not a captured reference, so the AttnLRP patch is visible.
+        attn_out, _ = eager_attention_forward(
+            self, query, key, value, attention_mask, scaling=self.scaling
         )
         return self.o_proj(attn_out.reshape(*hidden_states.shape[:2], -1))
 

@@ -154,16 +154,13 @@ def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
     its only nonlinearity and everything else is already linear in its input, where plain
     gradient*input is a valid LRP rule.
 
-    It borrows HF's Llama attention kernel, so the patch lands on that module - see
-    `attn_only.AttnOnlyAttention.forward` for why reaching it through the module matters.
-
-    NOTE: that makes this process-wide, like the LayerNorm patch in `patch_for_attn_lrp`. Any
-    Llama-family model sharing this process also gets LRP-flavored attention afterwards.
+    Unlike the other two patch maps here, this one is scoped to a single module: that model owns
+    its own `eager_attention_forward`, so patching it cannot reach any other architecture.
     """
-    from transformers.models.llama import modeling_llama
+    from . import attn_only
 
     model.config._attn_implementation = "eager"
-    patch_eager_attention(modeling_llama)
+    patch_eager_attention(attn_only)
 
 
 def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
