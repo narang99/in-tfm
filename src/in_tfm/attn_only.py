@@ -56,6 +56,28 @@ class AttnOnlyConfig(PretrainedConfig):
         super().__init__(**kwargs)
 
 
+def causal_additive_mask(
+    attention_mask: Int[torch.Tensor, "batch seq"] | None,
+    seq: int,
+    like: torch.Tensor,
+) -> Float[torch.Tensor, "batch 1 seq seq"]:
+    """Causal, widened by the source's padding mask when there is one.
+
+    Blocked entries get `dtype.min` rather than `-inf`, which TransformerLens uses. A query row
+    that is entirely padding would softmax `-inf` to nan and poison the backward pass for the whole
+    batch. Those rows are dropped by `valid_mask` downstream either way, so a large finite penalty
+    loses nothing.
+    """
+    blocked: Bool[torch.Tensor, "batch 1 seq seq"] = torch.triu(
+        torch.ones(seq, seq, dtype=torch.bool, device=like.device), diagonal=1
+    )[None, None]
+    if attention_mask is not None:
+        blocked = blocked | ~attention_mask[:, None, None, :].bool()
+    return torch.zeros_like(blocked, dtype=like.dtype).masked_fill(
+        blocked, torch.finfo(like.dtype).min
+    )
+
+
 def eager_attention_forward(
     module: nn.Module,
     query: Float[torch.Tensor, "batch head seq head_dim"],
@@ -160,33 +182,11 @@ class AttnOnlyModel(nn.Module):
             inputs_embeds = self.embed_tokens(input_ids)
         seq = inputs_embeds.shape[1]
         position_embeds = self.pos_embed.weight[:seq]
-        mask = self._additive_mask(attention_mask, seq, inputs_embeds)
+        mask = causal_additive_mask(attention_mask, seq, inputs_embeds)
         hidden = inputs_embeds
         for layer in self.layers:
             hidden = layer(hidden, position_embeds, mask)
         return BaseModelOutput(last_hidden_state=hidden)
-
-    def _additive_mask(
-        self,
-        attention_mask: Int[torch.Tensor, "batch seq"] | None,
-        seq: int,
-        like: torch.Tensor,
-    ) -> Float[torch.Tensor, "batch 1 seq seq"]:
-        """Causal, widened by the source's padding mask when there is one.
-
-        Blocked entries get `dtype.min` rather than `-inf`, which TransformerLens uses. A query
-        row that is entirely padding would softmax `-inf` to nan and poison the backward pass for
-        the whole batch. Those rows are dropped by `valid_mask` downstream either way, so a large
-        finite penalty loses nothing.
-        """
-        blocked: Bool[torch.Tensor, "batch 1 seq seq"] = torch.triu(
-            torch.ones(seq, seq, dtype=torch.bool, device=like.device), diagonal=1
-        )[None, None]
-        if attention_mask is not None:
-            blocked = blocked | ~attention_mask[:, None, None, :].bool()
-        return torch.zeros_like(blocked, dtype=like.dtype).masked_fill(
-            blocked, torch.finfo(like.dtype).min
-        )
 
 
 class AttnOnlyForCausalLM(nn.Module):
@@ -235,6 +235,41 @@ def _converted_state_dict(
         )
         converted[f"{prefix}.o_proj.bias"] = tl_state[f"blocks.{idx}.attn.b_O"]
     return converted
+
+
+def attention_patterns(
+    model: AttnOnlyForCausalLM,
+    input_ids: Int[torch.Tensor, "batch seq"],
+    layer_idx: int,
+) -> Float[torch.Tensor, "batch head seq seq"]:
+    """Attention probabilities for one layer, rebuilt from the hooked `q_proj` and `k_proj`
+    outputs rather than returned by the forward pass.
+
+    The forward pass discards its attention weights, and threading them out would mean either
+    stateful capture or a second return path through every layer. Rebuilding is exact instead of
+    approximate: under shortformer the position is already inside the q_proj and k_proj inputs, so
+    their outputs are the same q and k the model scored with, and the softmax below is the one it
+    applied.
+    """
+    attn = model.model.layers[layer_idx].self_attn
+    captured: dict[str, torch.Tensor] = {}
+    handles = [
+        proj.register_forward_hook(
+            lambda _module, _inp, out, name=name: captured.__setitem__(name, out)
+        )
+        for name, proj in (("q", attn.q_proj), ("k", attn.k_proj))
+    ]
+    try:
+        with torch.no_grad():
+            model(input_ids=input_ids)
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    query, key = (attn._to_heads(captured[name]) for name in ("q", "k"))
+    scores = torch.matmul(query, key.transpose(2, 3)) * attn.scaling
+    mask = causal_additive_mask(None, input_ids.shape[1], scores)
+    return (scores + mask).softmax(dim=-1)
 
 
 def load_attn_only_2l(

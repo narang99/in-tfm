@@ -553,6 +553,19 @@ wheels = [
 ]
 
 [[package]]
+name = "circuitsvis"
+version = "1.43.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7d/55/0a0870e1c34b96013229286bb30b7a314ba52a6d676231ab16bb9b8d4176/circuitsvis-1.43.3.tar.gz", hash = "sha256:89c6be3c9d0c60eb932269a023a99f644c8b056af6cca354de7f17797a1f04cd", size = 1752475, upload-time = "2024-12-18T17:07:48.57Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/6c/08a436c581bedd20f717b990e3f7df90f2f02df618bc0bbf620fc72defa9/circuitsvis-1.43.3-py3-none-any.whl", hash = "sha256:c8f982f9975deac83214369097558e18b36c61c63a95ef898d40af546178ee87", size = 1786158, upload-time = "2024-12-18T17:07:46.03Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1107,6 +1120,18 @@ wheels = [
 ]
 
 [[package]]
+name = "importlib-metadata"
+version = "9.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zipp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6f/7e/1e7e8dc30634b93ebb3d58a3dea569ad146e656218d3960ab04f62047b29/importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99", size = 59124, upload-time = "2026-08-28T15:30:34.646Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/55/ecca97ae19075f1fac62def77731e7f535e6c1fb8f92ff08160c5e6dade8/importlib_metadata-9.0.1-py3-none-any.whl", hash = "sha256:bba5600596a7e21f3eef53281cf28d6a5195634d2f2b78ff9501a3272c6eaab0", size = 27920, upload-time = "2026-08-28T15:30:33.433Z" },
+]
+
+[[package]]
 name = "in-tfm"
 version = "0.1.0"
 source = { editable = "." }
@@ -1128,6 +1153,11 @@ dependencies = [
     { name = "transformers" },
 ]
 
+[package.optional-dependencies]
+viz = [
+    { name = "circuitsvis" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "ipykernel" },
@@ -1137,6 +1167,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "captum", specifier = ">=0.9.0" },
+    { name = "circuitsvis", marker = "extra == 'viz'", specifier = ">=1.43.3" },
     { name = "datasets", specifier = ">=2.14" },
     { name = "hdbscan", specifier = ">=0.8.39" },
     { name = "jaxtyping", specifier = ">=0.3.11" },
@@ -1152,6 +1183,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.66" },
     { name = "transformers", specifier = ">=5.16" },
 ]
+provides-extras = ["viz"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4030,6 +4062,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1d/3f/88e4c1597705d23e4c4171c7cf0ded4178d2f5299340bf713d87bf1ecf73/zennit-1.0.0.tar.gz", hash = "sha256:c6772100035172313d30986e5e65bc09327dc614fa8d2e9a155a465d3c83355d", size = 49677, upload-time = "2025-07-31T14:56:37.987Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/50/66c5826fa7d538ea85c5dd4a26c8ed5750cc51e5791896fba8d0ef45b2cf/zennit-1.0.0-py3-none-any.whl", hash = "sha256:fe338c7ef2e2fc3b0774f2b18562afc8177e64432c9db5466d7ce022613bbce0", size = 57449, upload-time = "2025-07-31T14:56:37.095Z" },
+]
+
+[[package]]
+name = "zipp"
+version = "4.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/d8/eab98a517c14134c0b2eb4e2387bc5f457334293ec5d2dd3857ec2966802/zipp-4.1.0.tar.gz", hash = "sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602", size = 26214, upload-time = "2026-05-18T20:08:57.967Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/13/547360d81e6d88d58492968ffda9f9542854f11310ee556fef14260cc886/zipp-4.1.0-py3-none-any.whl", hash = "sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f", size = 10238, upload-time = "2026-05-18T20:08:57.045Z" },
 ]
 
 [[package]]

@@ -46,6 +46,11 @@ dev = [
 [project.scripts]
 in-tfm = "in_tfm:main"
 
+[project.optional-dependencies]
+viz = [
+    "circuitsvis>=1.43.3",
+]
+
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]
 build-backend = "uv_build"
