@@ -32,7 +32,7 @@ from in_tfm.activations import get_activations
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.attribution import compute_attnlrp_relevance, patch_for_attn_lrp
-from in_tfm.hadamard import hadamard_from_rows, hadamard_products, high_activation_hits
+from in_tfm.hadamard import hadamard_products, high_activation_hits
 from in_tfm.layers import fc2_getter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import ImagePresenter
@@ -124,12 +124,6 @@ def cluster_hadamards(
     return batch_idx, token_idx, hdmd, cluster_labels(hdmd, min_cluster_size)
 
 
-def all_token_hadamards(
-    inputs: torch.Tensor, valid_mask: torch.Tensor, weight: torch.Tensor, neuron_idx: int
-):
-    return hadamard_from_rows(inputs[valid_mask], weight, neuron_idx)
-
-
 def build_hits(
     model,
     source: DicomSource,
@@ -140,7 +134,6 @@ def build_hits(
     token_idx,
     labels,
     hdmd,
-    all_hdmd,
     threshold: float,
     elbow_values: torch.Tensor,
     elbow_idx: int,
@@ -157,7 +150,6 @@ def build_hits(
         batch_idx=batch_idx,
         labels=labels,
         hdmds=hdmd,
-        all_hdmd=all_hdmd,
         hadamard_shape=ACT_SHAPE,
         threshold=threshold,
         elbow_values=elbow_values.numpy(),
@@ -188,8 +180,6 @@ def process_neuron(
     n_clusters = len(set(labels) - {-1})
     print(f"[neuron {neuron_idx}] {len(batch_idx)} hits above threshold, {n_clusters} clusters")
 
-    all_hdmd = all_token_hadamards(inputs, valid_mask, fc2_weight, neuron_idx)
-
     hits = build_hits(
         lrp_model.model,
         source,
@@ -200,7 +190,6 @@ def process_neuron(
         token_idx,
         labels,
         hdmd,
-        all_hdmd,
         threshold,
         elbow_values,
         elbow_idx,

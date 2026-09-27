@@ -30,9 +30,10 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
+from in_tfm.inference import fit_and_patch_inference_thresholds, load_cluster_means
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
-from in_tfm.neuron_report import NeuronClusterHits
+from in_tfm.neuron_report import NeuronClusterHits, ReportMeta
 from in_tfm.presenters import TextPresenter
 from in_tfm.sources import TextSource
 from in_tfm.threshold import find_activation_threshold
@@ -201,6 +202,29 @@ def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: arg
     )
 
 
+def fit_inference_thresholds(
+    report_path: Path,
+    neuron_idx: int,
+    weight: torch.Tensor,
+    capture: NeuronCapture,
+    presenter: TextPresenter,
+) -> None:
+    """Runs the third model pass this pipeline needs: scoring every cluster's mean vector
+    against the cosine similarity of every valid token in the corpus, then elbow-fitting each
+    cluster's inference threshold from that - see neuron_report.py's module docstring for why
+    this can't happen inside write_report itself."""
+    report_dir = report_path.parent
+    meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
+    cluster_ids = list(meta.clusters.keys())
+    if not cluster_ids:
+        return
+    means = load_cluster_means(report_dir, cluster_ids)
+    scan = capture.scan_cluster_similarities(weight, {neuron_idx: means})
+    fit_and_patch_inference_thresholds(
+        report_dir, cluster_ids, scan.similarities[neuron_idx], scan.valid_mask, presenter
+    )
+
+
 def report_neuron(
     neuron_idx: int,
     polarity: Polarity,
@@ -211,6 +235,7 @@ def report_neuron(
     lrp_model: torch.nn.Module,
     source: TextSource,
     presenter: TextPresenter,
+    capture: NeuronCapture,
     args: argparse.Namespace,
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
@@ -246,6 +271,12 @@ def report_neuron(
             max_clusters=args.max_clusters,
         )
     print(f"[{tag}] report -> {report_path}")
+
+    if args.cluster_on == "hadamard":
+        with timed(f"{tag}: fit inference thresholds"):
+            fit_inference_thresholds(report_path, neuron_idx, weight, capture, presenter)
+    else:
+        print(f"[{tag}] skipping inference threshold fit - only defined for --cluster-on hadamard")
 
 
 def main() -> None:
@@ -288,7 +319,7 @@ def main() -> None:
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(
             neuron_idx, polarity, selections[(neuron_idx, polarity)], gathered.inputs[index_map], scan.sample_ids,
-            weight, hf_model.model, source, presenter, args,
+            weight, hf_model.model, source, presenter, capture, args,
         )
 
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
