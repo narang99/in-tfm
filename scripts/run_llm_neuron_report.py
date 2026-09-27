@@ -30,7 +30,7 @@ from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
-from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
+from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_norm_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
@@ -68,6 +68,13 @@ def parse_args() -> argparse.Namespace:
         help="which tail of the activation distribution counts as a hit",
     )
     parser.add_argument(
+        "--select-on",
+        choices=["proj", "norm"],
+        default="proj",
+        help="proj: hits are chosen by the raw q_proj output (default). norm: by the output of "
+        "q_norm instead (q_proj only). Inputs and the weight row are q_proj's either way",
+    )
+    parser.add_argument(
         "--cluster-on",
         choices=["hadamard", "input"],
         default="hadamard",
@@ -88,6 +95,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-hits", type=int, default=20000, help="hits kept per neuron before clustering")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--min-cluster-size", type=int, default=10)
+    parser.add_argument(
+        "--cluster-selection",
+        choices=["eom", "leaf"],
+        default="leaf",
+        help="HDBSCAN cluster_selection_method. leaf gives many smaller clusters (the default: "
+        "eom was seen to merge a whole neuron's hits into one under-clustered blob, see "
+        "experiments/hdbscan-leaf/). eom can merge sub-clusters into one large parent",
+    )
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
     parser.add_argument("--max-clusters", type=int, default=None, help="report only the largest N clusters")
     parser.add_argument("--min-uniq-samples-per-cluster", type=int, default=2)
@@ -216,7 +231,7 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = normalized_rows(rows) if args.cluster_on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
-        labels = cluster_labels(hdmd, args.min_cluster_size)
+        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection)
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
@@ -263,7 +278,10 @@ def main() -> None:
     source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
     clustered_label = "normalised inputs" if args.cluster_on == "input" else "hadamard products"
     presenter = TextPresenter(source, clustered_label=clustered_label)
-    capture = NeuronCapture(model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
+    capture = NeuronCapture(
+        model, source, layer_getter_for(args), neuron_idxs, args.batch_size, args.device,
+        head_norm_getter=q_norm_getter(args.layer_idx) if args.select_on == "norm" else None,
+    )
 
     with timed("pass 1: scan"):
         scan = capture.scan()

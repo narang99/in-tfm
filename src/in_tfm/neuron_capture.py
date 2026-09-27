@@ -82,6 +82,15 @@ def merge_positions(
     )
 
 
+def flatten_heads(
+    per_head: Float[torch.Tensor, "batch heads seq head_dim"],
+) -> Float[torch.Tensor, "batch seq out_hidden"]:
+    """q_norm sees the projection viewed per head and transposed, so its output has heads before
+    seq. Undo that to get back the (heads * head_dim) neuron layout the projection has."""
+    batch, heads, seq, head_dim = per_head.shape
+    return per_head.transpose(1, 2).reshape(batch, seq, heads * head_dim)
+
+
 class NeuronCapture:
     def __init__(
         self,
@@ -91,6 +100,7 @@ class NeuronCapture:
         neuron_idxs: Sequence[int],
         batch_size: int = 8,
         device: str | None = None,
+        head_norm_getter: LayerGetter | None = None,
     ) -> None:
         self.device = device or default_device()
         self.model = model.to(self.device)
@@ -98,6 +108,7 @@ class NeuronCapture:
         self.layer_getter = layer_getter
         self.neuron_idxs = list(neuron_idxs)
         self.batch_size = batch_size
+        self.head_norm_getter = head_norm_getter
 
     def scan(self) -> ScanResult:
         ids = list(self.source.sample_ids())
@@ -178,10 +189,17 @@ class NeuronCapture:
         batch = self.source.to_model_batch(ids).to(self.device)
         # nnsight leaves autograd on, which keeps every layer's intermediates alive for a
         # backward pass that never comes - at 4 x 2048 tokens that alone exhausts a 15GB T4.
+        # nnsight only writes back variables that were `.save()`d, so `normed` must already
+        # exist for the case where nothing is saved into it.
+        normed = None
         with torch.no_grad(), self.model.trace(**batch.kwargs):
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
+            if self.head_norm_getter is not None:
+                normed = self.head_norm_getter(self.model).output.save()
+        if normed is not None:
+            outputs = flatten_heads(normed)
         return inputs.detach(), outputs.detach(), batch.valid_mask
 
     def _release(self) -> None:
