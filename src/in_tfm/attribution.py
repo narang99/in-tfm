@@ -156,6 +156,9 @@ def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
 
     It borrows HF's Llama attention kernel, so the patch lands on that module - see
     `attn_only.AttnOnlyAttention.forward` for why reaching it through the module matters.
+
+    NOTE: that makes this process-wide, like the LayerNorm patch in `patch_for_attn_lrp`. Any
+    Llama-family model sharing this process also gets LRP-flavored attention afterwards.
     """
     from transformers.models.llama import modeling_llama
 
