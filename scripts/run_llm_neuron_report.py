@@ -26,7 +26,12 @@ from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from in_tfm.attribution import compute_attnlrp_relevance, patch_gemma3_for_attn_lrp
+from in_tfm.attn_only import load_attn_only_2l
+from in_tfm.attribution import (
+    compute_attnlrp_relevance,
+    patch_attn_only_for_attn_lrp,
+    patch_gemma3_for_attn_lrp,
+)
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
@@ -48,6 +53,13 @@ def timed(label: str):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", default="google/gemma-3-270m")
+    parser.add_argument(
+        "--arch",
+        choices=["hf", "attn_only_2l"],
+        default="hf",
+        help="attn_only_2l: the 2-layer attention-only shortformer model, which ignores --model "
+        "and has no MLP, so only the q_proj / k_proj targets exist",
+    )
     parser.add_argument("--dataset", default="Salesforce/wikitext", help="hf dataset name")
     parser.add_argument("--dataset-config", default="wikitext-2-raw-v1")
     parser.add_argument("--split", default="train")
@@ -137,17 +149,32 @@ def layer_getter_for(args: argparse.Namespace) -> LayerGetter:
 
 
 def target_weight(hf_model: torch.nn.Module, args: argparse.Namespace) -> torch.Tensor:
-    """The weight whose row `neuron_idx` the Hadamard product is taken against."""
+    """The weight whose row `neuron_idx` the Hadamard product is taken against.
+
+    Resolved lazily rather than through a dict of all three modules, since an attention-only
+    model has no `mlp` to reach for.
+    """
     layer = hf_model.model.layers[args.layer_idx]
-    modules = {"down_proj": layer.mlp.down_proj, "q_proj": layer.self_attn.q_proj, "k_proj": layer.self_attn.k_proj}
-    return modules[args.target].weight
+    if args.target == "down_proj":
+        return layer.mlp.down_proj.weight
+    return getattr(layer.self_attn, args.target).weight
 
 
 def load_model(args: argparse.Namespace) -> tuple[NNsight, torch.nn.Module, AutoTokenizer]:
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    hf_model = AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.float32)
+    if args.arch == "attn_only_2l":
+        hf_model, tokenizer = load_attn_only_2l()
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
+        hf_model = AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.float32)
     base = hf_model.model  # the decoder stack; down_proj_getter indexes .layers on it
     return NNsight(base).to(args.device), hf_model, tokenizer
+
+
+def patch_for_lrp(hf_model: torch.nn.Module, args: argparse.Namespace) -> None:
+    if args.arch == "attn_only_2l":
+        patch_attn_only_for_attn_lrp(hf_model.model)
+    else:
+        patch_gemma3_for_attn_lrp(hf_model.model)
 
 
 Polarity = Literal["positive", "negative"]
@@ -283,7 +310,7 @@ def main() -> None:
     weight = target_weight(hf_model, args)
 
     with timed("patch for attnlrp"):
-        patch_gemma3_for_attn_lrp(hf_model.model)
+        patch_for_lrp(hf_model, args)
 
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(

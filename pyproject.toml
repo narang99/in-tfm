@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "captum>=0.9.0",
+    "datasets>=2.14",
     "hdbscan>=0.8.39",
     "jaxtyping>=0.3.11",
     "lxt>=2.1",
@@ -32,6 +33,9 @@ dependencies = [
 #     find_pruneable_heads_and_indices; see attribution.py and compat.py.
 #   - nnsight >=0.7: the .trace() context API used in activations.py.
 #   - hdbscan >=0.8.39: known to coexist with cuml without API breaks; see clustering.py.
+#   - datasets >=2.14: only `load_dataset(path, name, split=...)` is used, which is far older than
+#     that. Colab preinstalls datasets, so `uv add`'s resolved version is deliberately not the
+#     floor here - it would pull a reinstall and drag fsspec with it.
 
 [dependency-groups]
 dev = [
@@ -41,6 +45,11 @@ dev = [
 
 [project.scripts]
 in-tfm = "in_tfm:main"
+
+[project.optional-dependencies]
+viz = [
+    "circuitsvis>=1.43.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]

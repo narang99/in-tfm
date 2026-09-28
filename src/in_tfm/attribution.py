@@ -147,6 +147,22 @@ def compute_attnlrp_relevance(
     return (leaf.grad * leaf).detach().cpu().numpy()
 
 
+def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
+    """Monkey-patch the attention-only shortformer model in place for AttnLRP.
+
+    Attention is the only rule needed. That model has no normalization and no MLP, so softmax is
+    its only nonlinearity and everything else is already linear in its input, where plain
+    gradient*input is a valid LRP rule.
+
+    Unlike the other two patch maps here, this one is scoped to a single module: that model owns
+    its own `eager_attention_forward`, so patching it cannot reach any other architecture.
+    """
+    from . import attn_only
+
+    model.config._attn_implementation = "eager"
+    patch_eager_attention(attn_only)
+
+
 def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
     """Monkey-patch a Gemma3 model in place for AttnLRP.
 
