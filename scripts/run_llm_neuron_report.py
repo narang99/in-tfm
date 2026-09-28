@@ -35,9 +35,10 @@ from in_tfm.attribution import (
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
+from in_tfm.inference import load_cluster_means, measure_corpus_admission
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
-from in_tfm.neuron_report import NeuronClusterHits
+from in_tfm.neuron_report import NeuronClusterHits, ReportMeta
 from in_tfm.presenters import TextPresenter
 from in_tfm.sources import TextSource
 from in_tfm.threshold import find_activation_threshold
@@ -228,6 +229,31 @@ def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: arg
     )
 
 
+def report_corpus_admission(
+    report_path: Path,
+    neuron_idx: int,
+    weight: torch.Tensor,
+    capture: NeuronCapture,
+    presenter: TextPresenter,
+) -> None:
+    """Scores every cluster's threshold against the whole corpus, to show how much of it each one
+    actually admits. The thresholds themselves are already fit by then, from the clusters' own
+    spread - this pass only measures their reach."""
+    report_dir = report_path.parent
+    meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
+    cluster_ids = list(meta.clusters.keys())
+    if not cluster_ids:
+        return
+    means = load_cluster_means(report_dir, cluster_ids)
+    scan = capture.scan_cluster_similarities(weight, {neuron_idx: means})
+    admission = measure_corpus_admission(
+        report_dir, cluster_ids, scan.similarities[neuron_idx], scan.valid_mask, presenter
+    )
+    for cid, fraction in sorted(admission.items(), key=lambda kv: -kv[1]):
+        size = meta.clusters[cid].n_hits / meta.n_hits
+        print(f"  cluster {cid}: admits {fraction:.2%} of the corpus, cluster is {size:.2%} of hits")
+
+
 def report_neuron(
     neuron_idx: int,
     polarity: Polarity,
@@ -238,6 +264,7 @@ def report_neuron(
     lrp_model: torch.nn.Module,
     source: TextSource,
     presenter: TextPresenter,
+    capture: NeuronCapture,
     args: argparse.Namespace,
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
@@ -273,6 +300,12 @@ def report_neuron(
             max_clusters=args.max_clusters,
         )
     print(f"[{tag}] report -> {report_path}")
+
+    if args.cluster_on == "hadamard":
+        with timed(f"{tag}: corpus admission"):
+            report_corpus_admission(report_path, neuron_idx, weight, capture, presenter)
+    else:
+        print(f"[{tag}] skipping corpus admission - only defined for --cluster-on hadamard")
 
 
 def main() -> None:
@@ -315,7 +348,7 @@ def main() -> None:
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(
             neuron_idx, polarity, selections[(neuron_idx, polarity)], gathered.inputs[index_map], scan.sample_ids,
-            weight, hf_model.model, source, presenter, args,
+            weight, hf_model.model, source, presenter, capture, args,
         )
 
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
