@@ -26,6 +26,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from nnsight.modeling.base import NNsight
 from pydantic import BaseModel, ConfigDict
+from sklearn.preprocessing import normalize
 from tqdm import tqdm
 
 from .activations import cat_captures
@@ -55,6 +56,16 @@ class GatherResult(BaseModel):
     inputs: Float[torch.Tensor, "n_hits hidden"]
     activations: Float[torch.Tensor, "n_hits n_neurons"]
     """Re-read while gathering, so it can be compared against the scan."""
+
+
+class SimilarityScanResult(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    sample_ids: list[SampleId]
+    valid_mask: Bool[torch.Tensor, "batch seq"]
+    similarities: dict[int, Float[torch.Tensor, "batch seq n_clusters"]]
+    """Keyed by neuron_idx. Column order within a neuron's tensor matches the cluster order it
+    was scanned with - see `NeuronCapture.scan_cluster_similarities`."""
 
 
 class MergedPositions(BaseModel):
@@ -114,6 +125,42 @@ class NeuronCapture:
             neuron_idxs=self.neuron_idxs,
             activations=cat_captures(activations),
             valid_mask=cat_captures(masks),
+        )
+
+    def scan_cluster_similarities(
+        self,
+        weight: Float[torch.Tensor, "out_hidden hidden"],
+        cluster_means: dict[int, Float[np.ndarray, "n_clusters hidden"]],
+    ) -> SimilarityScanResult:
+        """Streams the corpus once and scores every neuron's cluster means against the
+        Hadamard vector at every valid position - the distribution a cluster's inference
+        threshold is fit against (see `in_tfm.inference.fit_and_patch_inference_thresholds`).
+
+        Never keeps a Hadamard vector for more than the current batch: `layer.input` is shared
+        across every neuron in `cluster_means`, so scoring several neurons' clusters still
+        costs one pass, the same way `scan` scores several neurons' raw activations in one -
+        each batch's Hadamard products are computed, reduced to similarity scores, and dropped
+        before the next batch is traced.
+        """
+        normalized_means = {n: torch.from_numpy(normalize(m, "l2")) for n, m in cluster_means.items()}
+        self.model = self.model.to(self.device)
+        ids = list(self.source.sample_ids())
+        masks: list[torch.Tensor] = []
+        sims: dict[int, list[torch.Tensor]] = {n: [] for n in cluster_means}
+        for chunk in tqdm(list(batched(ids, self.batch_size)), desc="similarity scan"):
+            inputs, outputs, valid_mask = self._trace(chunk)
+            del outputs
+            for neuron_idx, means in normalized_means.items():
+                hdmd = inputs * weight[neuron_idx].to(inputs.device)
+                hdmd = hdmd / (hdmd.norm(dim=-1, keepdim=True) + 1e-12)
+                sims[neuron_idx].append((hdmd @ means.to(inputs.device).T).cpu())
+            masks.append(valid_mask.cpu())
+            del inputs
+            self._release()
+        return SimilarityScanResult(
+            sample_ids=ids,
+            valid_mask=cat_captures(masks),
+            similarities={n: cat_captures(s) for n, s in sims.items()},
         )
 
     def gather(

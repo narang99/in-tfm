@@ -10,6 +10,7 @@ strongly the neuron fired.
 import numpy as np
 import torch
 from jaxtyping import Bool, Float, Int
+from sklearn.metrics.pairwise import cosine_similarity as _pairwise_cosine_similarity
 from sklearn.preprocessing import normalize
 
 
@@ -65,3 +66,9 @@ def normalized_rows(rows: Float[torch.Tensor, "n_hits hidden"]) -> Float[np.ndar
     """The Hadamard ablation: the same hits and the same L2 normalisation, but without the
     weight row, so clusters reflect the input alone rather than what the neuron reads from it."""
     return normalize(rows.detach().cpu().clone().numpy(), "l2")
+
+
+def cosine_similarity(
+    vectors: Float[np.ndarray, "n hidden"], target: Float[np.ndarray, "hidden"]
+) -> Float[np.ndarray, "n"]:
+    return _pairwise_cosine_similarity(vectors, target.reshape(1, -1)).ravel()

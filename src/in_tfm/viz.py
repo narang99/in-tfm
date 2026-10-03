@@ -193,15 +193,17 @@ def render_hadamard_tiles(
     return [apply_cmap(p, rd_bk_gn, vmin=-v_limit, vmax=v_limit, size=size) for p in patches]
 
 
-def save_elbow_plot(values: Float[np.ndarray, "n"], elbow_idx: int, output_path: str | Path) -> None:
-    """Line plot of sorted positive activations with the chosen elbow cutoff marked - a genuine
-    chart (axes, annotation), not an image composite, so matplotlib is the right tool here even
-    though this runs headlessly during report generation."""
+def save_elbow_plot(
+    values: Float[np.ndarray, "n"], elbow_idx: int, output_path: str | Path, ylabel: str = "activation"
+) -> None:
+    """Line plot of a sorted curve with the chosen elbow cutoff marked - a genuine chart (axes,
+    annotation), not an image composite, so matplotlib is the right tool here even though this
+    runs headlessly during report generation."""
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(values)
     ax.axvline(elbow_idx, color="red", linestyle="--", label=f"threshold={values[elbow_idx]:.3f}")
     ax.set_xlabel("sorted index")
-    ax.set_ylabel("activation")
+    ax.set_ylabel(ylabel)
     ax.legend()
     plt.tight_layout()
 
