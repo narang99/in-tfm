@@ -20,6 +20,8 @@ from ..base import ClusterHit, HadamardShape
 from .colored_tokens import colored_tokens, display_text, symmetric_scale
 
 
+GAP_MARKER = "…"
+
 HADAMARD_TILE_GAP = 32
 """Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
 pad of 4 reads as one block, since the tiles are dark and the gap is black."""
@@ -33,12 +35,16 @@ class HitWindow(NamedTuple):
     firing_pos: int
     """Index of the firing token within the slice, not within the sequence."""
     starts_at_bos: bool
+    """Whether the slice opens with position 0, the attention sink.
+    That is `<bos>` for Gemma, and the first word of the text for a model with no `<bos>`.
+    False when the hit fires at position 0 itself: nothing after it can affect that activation,
+    so it is the only token with any relevance and has to set the scale."""
 
     @property
     def scale_relevance(self) -> Float[np.ndarray, "..."]:
-        """The slice minus `<bos>`, for picking a color scale.
+        """The slice minus the sink, for picking a color scale.
 
-        `<bos>` carries the decoder's attention-sink relevance, an order of magnitude above
+        Position 0 carries the decoder's attention-sink relevance, an order of magnitude above
         every real token; leaving it in the scale would flatten the rest of the window to grey.
         It is still drawn, just clipped to the limit.
         """
@@ -146,7 +152,26 @@ class TextPresenter:
         n = min(len(tokens), len(relevance))
         lo = max(0, hit.token_idx - self.context_tokens)
         hi = min(n, hit.token_idx + self.context_tokens + 1)
-        return HitWindow(tokens[lo:hi], relevance[lo:hi], hit.token_idx - lo, starts_at_bos=lo == 0)
+        if lo == 0:
+            firing_is_the_sink = hit.token_idx == 0
+            return HitWindow(tokens[:hi], relevance[:hi], hit.token_idx, starts_at_bos=not firing_is_the_sink)
+        return self._window_behind_sink(tokens, relevance, lo, hi, hit.token_idx)
+
+    def _window_behind_sink(
+        self, tokens: list[str], relevance: np.ndarray, lo: int, hi: int, token_idx: int
+    ) -> HitWindow:
+        """Position 0 is pulled in front of a window that does not reach it.
+        It usually holds most of a hit's relevance, so a window without it looks unshaded
+        while the top relevance chips name a token that is nowhere on screen.
+        A gap marker with no value stands for the skipped tokens."""
+        prefix_tokens = [tokens[0], GAP_MARKER]
+        prefix_relevance = np.array([relevance[0], 0.0], dtype=relevance.dtype)
+        return HitWindow(
+            prefix_tokens + tokens[lo:hi],
+            np.concatenate([prefix_relevance, relevance[lo:hi]]),
+            token_idx - lo + len(prefix_tokens),
+            starts_at_bos=True,
+        )
 
     def _hit_block(self, hit: ClusterHit, window: HitWindow, vmax: float) -> str:
         tokens = self._tokens(hit)
@@ -162,7 +187,7 @@ class TextPresenter:
                 sink_idx=0 if window.starts_at_bos else None,
             )
             + f'\n<div class="top-rel"><span class="label">top relevance</span>'
-            f"{self._top_relevance(tokens, self._per_token_relevance(hit))}</div>\n"
+            f"{self._top_relevance(tokens, self._per_token_relevance(hit), skip_sink=hit.token_idx != 0)}</div>\n"
             "</div>"
         )
 
@@ -174,13 +199,23 @@ class TextPresenter:
             relevance = relevance[0]
         return relevance.sum(-1)
 
-    def _top_relevance(self, tokens: list[str], relevance: np.ndarray) -> str:
+    def _top_relevance(self, tokens: list[str], relevance: np.ndarray, skip_sink: bool = True) -> str:
+        """Ranked without position 0, which is shown separately as the sink: its relevance
+        would otherwise sit first in every hit and push the real tokens out of the list.
+        `skip_sink=False` ranks everything, for a hit that fires at position 0."""
         n = min(len(tokens), len(relevance))
-        order = np.argsort(-np.abs(relevance[:n]))[: self.top_tokens]
-        return "".join(
-            f'<span class="chip {"pos" if relevance[i] >= 0 else "neg"}">{_code(tokens[i])}'
-            f'<span class="count">{relevance[i]:+.2f}</span></span>'
-            for i in order
+        start = 1 if skip_sink else 0
+        order = start + np.argsort(-np.abs(relevance[start:n]))[: self.top_tokens]
+        chips = "".join(self._relevance_chip(tokens[i], relevance[i]) for i in order)
+        if not skip_sink:
+            return chips
+        return chips + self._relevance_chip(tokens[0], relevance[0], extra_class="sink", label="sink ")
+
+    def _relevance_chip(self, token: str, value: float, extra_class: str = "", label: str = "") -> str:
+        sign = "pos" if value >= 0 else "neg"
+        return (
+            f'<span class="chip {sign} {extra_class}">{label}{_code(token)}'
+            f'<span class="count">{value:+.2f}</span></span>'
         )
 
 

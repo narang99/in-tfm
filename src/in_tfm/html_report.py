@@ -56,6 +56,7 @@ html { scroll-behavior:smooth; scroll-padding-top:16px; }
 .chip .count { color:var(--muted); font-size:0.7rem; }
 .chip.pos .count { color:#00A550; }
 .chip.neg .count { color:#d33; }
+.chip.sink { border-style:dashed; color:var(--muted); }
 .top-rel { margin:6px 0 0; }
 .top-rel .chip { font-size:0.7rem; padding:0 6px; }
 .hit { padding:10px 0; border-top:1px solid var(--line); }
