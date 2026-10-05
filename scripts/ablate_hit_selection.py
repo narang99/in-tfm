@@ -12,7 +12,8 @@ import time
 
 import numpy as np
 import torch
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
 import run_llm_neuron_report as llm
@@ -143,7 +144,77 @@ def bucket_breakdown(
     return rows, max_note
 
 
-def markdown_table(results: list[ModeResult] | list[BucketRow]) -> str:
+MATCH_COSINE = 0.8
+"""Two clusters count as the same when their mean Hadamard vectors are at least this similar."""
+
+
+class Clustering(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    hdmd: np.ndarray
+    labels: np.ndarray
+    activations: np.ndarray
+
+
+class CoverageRow(BaseModel):
+    neuron: int
+    mode: str
+    n_elbow_clusters: int
+    n_captured: int
+    worst_captured_cosine: float
+    missed_elbow_cosines: list[float | None]
+    """Cosine of each uncaptured elbow cluster to its partner, None when it got no partner."""
+    n_clusters: int
+    n_new: int
+    n_new_below_elbow: int
+    elbow_clusters_closest_pair_cosine: float
+
+
+def unit_prototypes(clustering: Clustering) -> tuple[list[int], np.ndarray, np.ndarray]:
+    """Cluster ids, their unit-norm mean Hadamard vectors, and their mean activation."""
+    ids = sorted(set(clustering.labels) - {-1})
+    means = np.stack([clustering.hdmd[clustering.labels == c].mean(axis=0) for c in ids])
+    mean_activation = np.array([clustering.activations[clustering.labels == c].mean() for c in ids])
+    return ids, means / np.linalg.norm(means, axis=1, keepdims=True), mean_activation
+
+
+def closest_pair_cosine(prototypes: np.ndarray) -> float:
+    """How similar two different elbow clusters already are, for judging what a match means."""
+    similarity = prototypes @ prototypes.T
+    np.fill_diagonal(similarity, -1.0)
+    return float(similarity.max())
+
+
+def coverage(neuron: int, mode: str, elbow: Clustering, other: Clustering, elbow_value: float) -> CoverageRow:
+    """Is every elbow cluster matched by its own cluster of `other`, and what else does `other` find.
+    The matching is one to one (linear sum assignment on cosine), so a single cluster of `other`
+    cannot stand in for two elbow clusters. A pair only counts below `MATCH_COSINE` as a miss,
+    and clusters of `other` without a counted partner are new."""
+    _, elbow_protos, _ = unit_prototypes(elbow)
+    _, other_protos, other_activation = unit_prototypes(other)
+    similarity = elbow_protos @ other_protos.T
+    elbow_rows, other_cols = linear_sum_assignment(-similarity)
+    matched_cosine = np.full(len(elbow_protos), -1.0)  # -1: no partner left, `other` has fewer clusters
+    matched_cosine[elbow_rows] = similarity[elbow_rows, other_cols]
+    captured = matched_cosine >= MATCH_COSINE
+    partnered = np.zeros(len(other_protos), dtype=bool)
+    partnered[other_cols[captured[elbow_rows]]] = True
+    is_new = ~partnered
+    return CoverageRow(
+        neuron=neuron,
+        mode=mode,
+        n_elbow_clusters=len(elbow_protos),
+        n_captured=int(captured.sum()),
+        worst_captured_cosine=float(matched_cosine[captured].min()) if captured.any() else 0.0,
+        missed_elbow_cosines=[None if c < 0 else round(float(c), 3) for c in matched_cosine[~captured]],
+        n_clusters=len(other_protos),
+        n_new=int(is_new.sum()),
+        n_new_below_elbow=int((is_new & (other_activation < elbow_value)).sum()),
+        elbow_clusters_closest_pair_cosine=closest_pair_cosine(elbow_protos) if len(elbow_protos) > 1 else 0.0,
+    )
+
+
+def markdown_table(results: list[ModeResult] | list[BucketRow] | list[CoverageRow]) -> str:
     columns = list(type(results[0]).model_fields)
     rows = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
     for result in results:
@@ -177,6 +248,7 @@ def main() -> None:
     results: list[ModeResult] = []
     bucket_rows: list[BucketRow] = []
     max_notes: list[str] = []
+    clusterings: dict[tuple[int, str], Clustering] = {}
     for (neuron, mode), index_map in zip(targets, merged.index_maps):
         selection = selections[(neuron, mode)]
         hdmd = hadamard_from_rows(gathered.inputs[index_map], weight, neuron)
@@ -184,6 +256,9 @@ def main() -> None:
         labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method, args.min_samples)
         seconds = time.perf_counter() - start
         elbow_value = selections[(neuron, "elbow")].threshold
+        clusterings[(neuron, mode)] = Clustering(
+            hdmd=hdmd, labels=labels, activations=kept_activations(scan, neuron, selection)
+        )
         if mode != "elbow":
             rows, note = bucket_breakdown(
                 neuron, mode, selection, scan.neuron_column(neuron)[..., 0].numpy()[scan.valid_mask.numpy()],
@@ -198,6 +273,12 @@ def main() -> None:
             )
         )
 
+    coverage_rows = [
+        coverage(neuron, mode, clusterings[(neuron, "elbow")], clusterings[(neuron, mode)], selections[(neuron, "elbow")].threshold)
+        for neuron in neuron_idxs
+        for mode in MODES
+        if mode != "elbow"
+    ]
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "ablation.json").write_text(
         "[" + ",".join(r.model_dump_json() for r in results) + "]"
@@ -208,6 +289,9 @@ def main() -> None:
     bucket_table = markdown_table(bucket_rows) + "\n\n" + "\n".join(f"- {n}" for n in max_notes)
     (args.out_dir / "buckets.md").write_text(bucket_table + "\n")
     print(bucket_table)
+    coverage_table = markdown_table(coverage_rows)
+    (args.out_dir / "coverage.md").write_text(coverage_table + "\n")
+    print(coverage_table)
 
 
 if __name__ == "__main__":
