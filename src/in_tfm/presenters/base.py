@@ -46,3 +46,7 @@ class ClusterPresenter(Protocol):
     ) -> str:
         """Writes artifact files into cluster_dir; returns the html fragment linking them."""
         ...
+
+    def page_controls(self) -> str:
+        """Html placed at the top of the report page, for switches that affect every cluster."""
+        ...

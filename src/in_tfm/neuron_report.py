@@ -86,7 +86,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections))
+    report_path.write_text(_index_page(meta, sections, presenter.page_controls()))
     return report_path
 
 
@@ -128,13 +128,14 @@ def _cluster_nav(meta: ReportMeta) -> str:
     return f'<nav class="cluster-nav">{links}</nav>'
 
 
-def _index_page(meta: ReportMeta, sections: list[str]) -> str:
+def _index_page(meta: ReportMeta, sections: list[str], page_controls: str) -> str:
     title = f"Neuron {meta.neuron_idx}"
     return page(
         title,
         f"<h1>{title}</h1>\n"
         f'<p class="meta">threshold: {meta.threshold:.4f} &middot; '
         f"{meta.n_hits} hits &middot; {len(sections)} clusters</p>\n"
+        + f"{page_controls}\n"
         + details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
         + f"\n{_cluster_nav(meta)}\n"
         + "\n".join(sections),
