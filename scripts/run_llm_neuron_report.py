@@ -100,6 +100,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-hits", type=int, default=20000, help="hits kept per neuron before clustering")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--min-cluster-size", type=int, default=10)
+    parser.add_argument(
+        "--min-samples", type=int, default=None, help="HDBSCAN min_samples, defaults to --min-cluster-size"
+    )
+    parser.add_argument("--cluster-selection-method", choices=["eom", "leaf"], default="leaf")
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
     parser.add_argument("--min-uniq-samples-per-cluster", type=int, default=2)
     parser.add_argument("--out-dir", type=Path, default=Path("reports_llm"))
@@ -242,7 +246,7 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = normalized_rows(rows) if args.cluster_on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
-        labels = cluster_labels(hdmd, args.min_cluster_size)
+        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method, args.min_samples)
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
