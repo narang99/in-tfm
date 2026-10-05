@@ -101,7 +101,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--min-cluster-size", type=int, default=10)
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
-    parser.add_argument("--max-clusters", type=int, default=None, help="report only the largest N clusters")
     parser.add_argument("--min-uniq-samples-per-cluster", type=int, default=2)
     parser.add_argument("--out-dir", type=Path, default=Path("reports_llm"))
     parser.add_argument("--device", default=default_device())
@@ -270,7 +269,6 @@ def report_neuron(
             attr_fn=compute_attnlrp_relevance,
             max_n=args.max_hits_per_cluster,
             min_uniq_images=args.min_uniq_samples_per_cluster,
-            max_clusters=args.max_clusters,
         )
     print(f"[{tag}] report -> {report_path}")
 

@@ -63,7 +63,7 @@ html { scroll-behavior:smooth; scroll-padding-top:16px; }
 .hit-tag { font-size:0.65rem; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
   color:var(--muted); margin-bottom:4px; }
 .tokens { line-height:2; font-size:0.85rem; }
-.tok { display:inline-block; white-space:pre-wrap; padding:3px 0; border-radius:2px;
+.tok { display:inline-block; white-space:pre-wrap; padding:3px 0; margin-right:3px; border-radius:2px;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   background:var(--bg-l); color:var(--fg-l); }
 @media (prefers-color-scheme: dark) { .tok { background:var(--bg-d); color:var(--fg-d); } }
