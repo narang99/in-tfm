@@ -20,6 +20,9 @@ from matplotlib.colors import Colormap
 from ...colormaps import token_cmap_dark, token_cmap_light
 
 SENTENCEPIECE_SPACE = "\u2581"
+BYTE_LEVEL_BPE_SPACE = "\u0120"
+BYTE_LEVEL_BPE_NEWLINE = "\u010a"
+BYTE_LEVEL_BPE_TAB = "\u0109"
 
 
 def symmetric_scale(values: Sequence[Float[np.ndarray, "n"]]) -> float:
@@ -34,9 +37,11 @@ def symmetric_scale(values: Sequence[Float[np.ndarray, "n"]]) -> float:
 
 
 def display_text(token: str) -> str:
-    """SentencePiece marks a leading space with U+2581 and circuitsvis-style spans render it
-    literally; show it as the space it stands for."""
-    return token.replace(SENTENCEPIECE_SPACE, " ").replace("\n", "↵")
+    """SentencePiece marks a leading space with U+2581, and byte-level BPE (GPT-2, GPT-NeoX) with
+    U+0120 (`Ġ`), a newline with `Ċ` and a tab with `ĉ`.
+    Spans render them literally, so show the characters they stand for."""
+    spaced = token.replace(SENTENCEPIECE_SPACE, " ").replace(BYTE_LEVEL_BPE_SPACE, " ")
+    return spaced.replace(BYTE_LEVEL_BPE_NEWLINE, "\n").replace(BYTE_LEVEL_BPE_TAB, "\t").replace("\n", "↵")
 
 
 def colored_tokens(
