@@ -2,7 +2,8 @@ import numpy as np
 import torch
 
 from in_tfm.presenters.base import ClusterHit
-from in_tfm.presenters.text import GAP_MARKER, TextPresenter
+from in_tfm.presenters.text import TextPresenter
+from in_tfm.presenters.text.colored_tokens import colored_tokens
 
 
 class FakeTokenizer:
@@ -17,6 +18,7 @@ class FakeSource:
 def hit_at(token_idx: int, length: int = 60) -> ClusterHit:
     relevance = np.zeros((1, length, 2), dtype=np.float32)
     relevance[0, 0] = 5.0
+    relevance[0, token_idx] += 1.0
     return ClusterHit(
         sample_id="s",
         token_idx=token_idx,
@@ -27,27 +29,31 @@ def hit_at(token_idx: int, length: int = 60) -> ClusterHit:
     )
 
 
-def test_window_far_from_the_start_keeps_position_zero_in_front():
-    window = TextPresenter(FakeSource(), context_tokens=3)._window(hit_at(30))
-    assert window.tokens[:2] == ["t0", GAP_MARKER]
-    assert window.tokens[window.firing_pos] == "t30"
-    assert window.starts_at_bos
+def test_relevance_runs_from_the_start_to_the_firing_token():
+    presenter = TextPresenter(FakeSource())
+    assert len(presenter._relevance_up_to_firing(hit_at(30))) == 31
+    assert len(presenter._relevance_up_to_firing(hit_at(0))) == 1
 
 
-def test_window_at_the_start_is_not_changed():
-    window = TextPresenter(FakeSource(), context_tokens=3)._window(hit_at(1))
-    assert window.tokens == ["t0", "t1", "t2", "t3", "t4"]
-    assert window.firing_pos == 1
-
-
-def test_top_relevance_lists_the_sink_last_and_not_among_the_ranked_tokens():
+def test_top_relevance_can_leave_out_position_zero():
     presenter = TextPresenter(FakeSource(), top_tokens=2)
-    html = presenter._top_relevance([f"t{i}" for i in range(4)], np.array([9.0, 1.0, 3.0, 2.0]))
-    assert html.index("t2") < html.index("t3") < html.index("t0")
-    assert "sink" in html
+    tokens = [f"t{i}" for i in range(4)]
+    relevance = np.array([9.0, 1.0, 3.0, 2.0])
+    with_sink = presenter._top_relevance(tokens, relevance, first=0)
+    without_sink = presenter._top_relevance(tokens, relevance, first=1)
+    assert "t0" in with_sink
+    assert "t0" not in without_sink
+    assert without_sink.index("t2") < without_sink.index("t3")
 
 
-def test_a_hit_firing_at_position_zero_is_not_the_sink():
-    window = TextPresenter(FakeSource(), context_tokens=3)._window(hit_at(0))
-    assert not window.starts_at_bos
-    assert window.scale_relevance.max() == 10.0
+def test_each_token_carries_colors_for_both_views():
+    html = colored_tokens(["a", "b"], np.array([5.0, 1.0]), vmax=5.0, vmax_without_first=1.0, firing_idx=1)
+    assert html.count("--x-bg-l") == 2
+    assert html.count("--bg-l") == 2
+    assert 'class="tok tok-first"' in html
+    assert 'class="tok tok-firing"' in html
+
+
+def test_the_report_shows_both_scales_in_one_page():
+    html = TextPresenter(FakeSource())._hit_block(hit_at(3), np.array([5.0, 0.0, 0.0, 1.0]), 5.0, 1.0)
+    assert "when-sink" in html and "when-no-sink" in html

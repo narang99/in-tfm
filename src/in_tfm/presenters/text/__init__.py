@@ -1,54 +1,30 @@
 """Text rendering of a cluster's hits: the token heatmap that stands in for the image
 path's pixel overlay.
 
-The shading itself lives in `colored_tokens`; this module is only about which slice of which
-sequence gets shaded, and on what scale.
+The shading itself lives in `colored_tokens`; this module is only about which tokens get shaded,
+and on what scale.
+Each hit shows the text from the start up to the firing token.
+The attention sink (position 0) counts toward the scale by default, and the report's toggle
+switches to the view that excludes it.
 """
 
 import html
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import NamedTuple
 
 import numpy as np
 from jaxtyping import Float
 
-from ...html_report import details, page
+from ...html_report import SINK_TOGGLE, details, page
 from ...viz import render_hadamard_tiles, save_image_grid
 from ..base import ClusterHit, HadamardShape
 from .colored_tokens import colored_tokens, display_text, symmetric_scale
 
 
-GAP_MARKER = "…"
-
 HADAMARD_TILE_GAP = 32
 """Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
 pad of 4 reads as one block, since the tiles are dark and the gap is black."""
-
-
-class HitWindow(NamedTuple):
-    """One hit's context slice, ready to shade."""
-
-    tokens: list[str]
-    relevance: Float[np.ndarray, "window"]
-    firing_pos: int
-    """Index of the firing token within the slice, not within the sequence."""
-    starts_at_bos: bool
-    """Whether the slice opens with position 0, the attention sink.
-    That is `<bos>` for Gemma, and the first word of the text for a model with no `<bos>`.
-    False when the hit fires at position 0 itself: nothing after it can affect that activation,
-    so it is the only token with any relevance and has to set the scale."""
-
-    @property
-    def scale_relevance(self) -> Float[np.ndarray, "..."]:
-        """The slice minus the sink, for picking a color scale.
-
-        Position 0 carries the decoder's attention-sink relevance, an order of magnitude above
-        every real token; leaving it in the scale would flatten the rest of the window to grey.
-        It is still drawn, just clipped to the limit.
-        """
-        return self.relevance[1:] if self.starts_at_bos else self.relevance
 
 
 class TextPresenter:
@@ -63,29 +39,32 @@ class TextPresenter:
     def __init__(
         self,
         source,
-        context_tokens: int = 12,
         top_tokens: int = 10,
         clustered_label: str = "hadamard products",
     ) -> None:
         self.source = source
         self.clustered_label = clustered_label
-        self.context_tokens = context_tokens
         self.top_tokens = top_tokens
+
+    def page_controls(self) -> str:
+        return SINK_TOGGLE
 
     def render(
         self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
     ) -> str:
-        windows = [self._window(h) for h in hits]
-        vmax = symmetric_scale([w.scale_relevance for w in windows])
+        relevances = [self._relevance_up_to_firing(h) for h in hits]
+        vmax = symmetric_scale(relevances)
+        vmax_without_first = symmetric_scale([r[1:] for r in relevances])
         blocks = "\n".join(
-            self._hit_block(hit, window, vmax) for hit, window in zip(hits, windows)
+            self._hit_block(hit, relevance, vmax, vmax_without_first) for hit, relevance in zip(hits, relevances)
         )
         (cluster_dir / "hits.html").write_text(page(f"{cluster_dir.name} hits", blocks))
         return (
             f'<div class="firing"><span class="label">firing tokens</span>'
             f"{self._firing_token_summary(hits)}</div>\n"
             f'<p class="scale">shading is shared across these hits: '
-            f"red {-vmax:.2f} to green {vmax:+.2f}, hover a token for its value</p>\n"
+            + _both_views(_scale_text(vmax), _scale_text(vmax_without_first))
+            + ", hover a token for its value</p>\n"
             + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
             + "\n"
             + self._hadamard_section(hits, cluster_dir, hadamard_shape)
@@ -146,49 +125,24 @@ class TextPresenter:
         tokens = self._tokens(hit)
         return tokens[hit.token_idx] if hit.token_idx < len(tokens) else "<out-of-range>"
 
-    def _window(self, hit: ClusterHit) -> HitWindow:
-        tokens = self._tokens(hit)
-        relevance = self._per_token_relevance(hit)
-        n = min(len(tokens), len(relevance))
-        lo = max(0, hit.token_idx - self.context_tokens)
-        hi = min(n, hit.token_idx + self.context_tokens + 1)
-        if lo == 0:
-            firing_is_the_sink = hit.token_idx == 0
-            return HitWindow(tokens[:hi], relevance[:hi], hit.token_idx, starts_at_bos=not firing_is_the_sink)
-        return self._window_behind_sink(tokens, relevance, lo, hi, hit.token_idx)
+    def _relevance_up_to_firing(self, hit: ClusterHit) -> np.ndarray:
+        """The whole text from the start, since the firing token only sees what came before it."""
+        return self._per_token_relevance(hit)[: hit.token_idx + 1]
 
-    def _window_behind_sink(
-        self, tokens: list[str], relevance: np.ndarray, lo: int, hi: int, token_idx: int
-    ) -> HitWindow:
-        """Position 0 is pulled in front of a window that does not reach it.
-        It usually holds most of a hit's relevance, so a window without it looks unshaded
-        while the top relevance chips name a token that is nowhere on screen.
-        A gap marker with no value stands for the skipped tokens."""
-        prefix_tokens = [tokens[0], GAP_MARKER]
-        prefix_relevance = np.array([relevance[0], 0.0], dtype=relevance.dtype)
-        return HitWindow(
-            prefix_tokens + tokens[lo:hi],
-            np.concatenate([prefix_relevance, relevance[lo:hi]]),
-            token_idx - lo + len(prefix_tokens),
-            starts_at_bos=True,
-        )
-
-    def _hit_block(self, hit: ClusterHit, window: HitWindow, vmax: float) -> str:
-        tokens = self._tokens(hit)
+    def _hit_block(
+        self, hit: ClusterHit, relevance: np.ndarray, vmax: float, vmax_without_first: float
+    ) -> str:
+        tokens = self._tokens(hit)[: len(relevance)]
         return (
             '<div class="hit">\n'
             f'<div class="hit-tag">sample {html.escape(str(hit.sample_id))} '
             f"&middot; token {hit.token_idx}</div>\n"
-            + colored_tokens(
-                window.tokens,
-                window.relevance,
-                vmax,
-                firing_idx=window.firing_pos,
-                sink_idx=0 if window.starts_at_bos else None,
+            + colored_tokens(tokens, relevance, vmax, vmax_without_first, firing_idx=len(tokens) - 1)
+            + '\n<div class="top-rel"><span class="label">top relevance</span>'
+            + _both_views(
+                self._top_relevance(tokens, relevance, first=0), self._top_relevance(tokens, relevance, first=1)
             )
-            + f'\n<div class="top-rel"><span class="label">top relevance</span>'
-            f"{self._top_relevance(tokens, self._per_token_relevance(hit), skip_sink=hit.token_idx != 0)}</div>\n"
-            "</div>"
+            + "</div>\n</div>"
         )
 
     def _per_token_relevance(self, hit: ClusterHit) -> np.ndarray:
@@ -199,24 +153,25 @@ class TextPresenter:
             relevance = relevance[0]
         return relevance.sum(-1)
 
-    def _top_relevance(self, tokens: list[str], relevance: np.ndarray, skip_sink: bool = True) -> str:
-        """Ranked without position 0, which is shown separately as the sink: its relevance
-        would otherwise sit first in every hit and push the real tokens out of the list.
-        `skip_sink=False` ranks everything, for a hit that fires at position 0."""
-        n = min(len(tokens), len(relevance))
-        start = 1 if skip_sink else 0
-        order = start + np.argsort(-np.abs(relevance[start:n]))[: self.top_tokens]
-        chips = "".join(self._relevance_chip(tokens[i], relevance[i]) for i in order)
-        if not skip_sink:
-            return chips
-        return chips + self._relevance_chip(tokens[0], relevance[0], extra_class="sink", label="sink ")
-
-    def _relevance_chip(self, token: str, value: float, extra_class: str = "", label: str = "") -> str:
-        sign = "pos" if value >= 0 else "neg"
-        return (
-            f'<span class="chip {sign} {extra_class}">{label}{_code(token)}'
-            f'<span class="count">{value:+.2f}</span></span>'
+    def _top_relevance(self, tokens: list[str], relevance: np.ndarray, first: int) -> str:
+        """Ranked by absolute relevance among positions from `first` on, so `first=1` leaves out
+        the attention sink."""
+        order = first + np.argsort(-np.abs(relevance[first:]))[: self.top_tokens]
+        return "".join(
+            f'<span class="chip {"pos" if relevance[i] >= 0 else "neg"}">{_code(tokens[i])}'
+            f'<span class="count">{relevance[i]:+.2f}</span></span>'
+            for i in order
         )
+
+
+def _scale_text(vmax: float) -> str:
+    return f"red {-vmax:.2f} to green {vmax:+.2f}"
+
+
+def _both_views(with_sink: str, without_sink: str) -> str:
+    """Both versions are in the page, and the stylesheet shows the one the report's sink toggle
+    has selected."""
+    return f'<span class="when-sink">{with_sink}</span><span class="when-no-sink">{without_sink}</span>'
 
 
 def _code(token: str) -> str:

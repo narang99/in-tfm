@@ -56,7 +56,6 @@ html { scroll-behavior:smooth; scroll-padding-top:16px; }
 .chip .count { color:var(--muted); font-size:0.7rem; }
 .chip.pos .count { color:#00A550; }
 .chip.neg .count { color:#d33; }
-.chip.sink { border-style:dashed; color:var(--muted); }
 .top-rel { margin:6px 0 0; }
 .top-rel .chip { font-size:0.7rem; padding:0 6px; }
 .hit { padding:10px 0; border-top:1px solid var(--line); }
@@ -67,10 +66,19 @@ html { scroll-behavior:smooth; scroll-padding-top:16px; }
 .tok { display:inline-block; white-space:pre-wrap; padding:3px 0; margin-right:3px; border-radius:2px;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   background:var(--bg-l); color:var(--fg-l); }
-@media (prefers-color-scheme: dark) { .tok { background:var(--bg-d); color:var(--fg-d); } }
+body.hide-sink .tok { background:var(--x-bg-l); color:var(--x-fg-l); }
+@media (prefers-color-scheme: dark) {
+  .tok { background:var(--bg-d); color:var(--fg-d); }
+  body.hide-sink .tok { background:var(--x-bg-d); color:var(--x-fg-d); } }
 .tok-firing { outline:2px solid var(--fg); outline-offset:1px; }
-.tok-sink { background:transparent; color:var(--muted); border:1px dashed var(--line);
+body.hide-sink .tok-first { background:transparent; color:var(--muted); border:1px dashed var(--line);
   font-size:0.7rem; padding:2px 4px; margin-right:6px; }
+.when-sink { display:contents; }
+.when-no-sink { display:none; }
+body.hide-sink .when-sink { display:none; }
+body.hide-sink .when-no-sink { display:contents; }
+.sink-toggle { display:inline-flex; align-items:center; gap:6px; margin:8px 0; cursor:pointer;
+  color:var(--muted); font-size:0.85rem; }
 .scale { color:var(--muted); font-size:0.7rem; margin:2px 0 4px; }
 img { max-width:100%; border-radius:4px; }
 details > img { display:block; margin-top:8px; }
@@ -78,6 +86,19 @@ img.elbow { max-width:420px; }
 details { margin-top:10px; }
 details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
 """
+
+
+SINK_TOGGLE = """<label class="sink-toggle"><input type="checkbox" id="hide-sink">
+exclude the attention sink (position 0) from shading and top relevance</label>
+<script>
+const hideSink = document.getElementById("hide-sink");
+const syncSink = () => document.body.classList.toggle("hide-sink", hideSink.checked);
+hideSink.addEventListener("change", syncSink);
+window.addEventListener("pageshow", syncSink);
+syncSink();
+</script>"""
+"""A browser can restore the checkbox state on reload without firing `change`, so the class is
+synced again on `pageshow`."""
 
 
 def page(title: str, body: str) -> str:
