@@ -32,7 +32,7 @@ from in_tfm.attribution import (
     patch_attn_only_for_attn_lrp,
     patch_gemma3_for_attn_lrp,
 )
-from in_tfm.bucketing import bucketed_sample
+from in_tfm.bucketing import bucketed_sample, merged_bucket_edges
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
@@ -221,6 +221,8 @@ class PickedHits(BaseModel):
     n_above_threshold: int
     bucket_ids: Int[np.ndarray, "n_hits"] | None = None
     """Merged bucket per hit, bucketed selection only."""
+    bucket_edges: Float[np.ndarray, "n_edges"] | None = None
+    """Lower edge of every merged bucket, then the max. Bucketed selection only."""
 
 
 class HitSelection(PickedHits):
@@ -253,6 +255,7 @@ def bucketed_hits(column: Float[torch.Tensor, "batch seq 1"], floor: float, scan
         token_idx=positions[kept, 1],
         n_above_threshold=len(above),
         bucket_ids=bucket_ids,
+        bucket_edges=merged_bucket_edges(above, args.n_buckets, floor, args.min_bucket_size),
     )
 
 
@@ -312,6 +315,7 @@ def report_neuron(
         threshold=selection.threshold,
         elbow_values=selection.elbow_values.numpy(),
         elbow_idx=selection.elbow_idx,
+        bucket_edges=selection.bucket_edges,
         device=args.device,
     )
     with timed(f"{tag}: write report"):

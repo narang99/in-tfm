@@ -211,6 +211,29 @@ def save_elbow_plot(values: Float[np.ndarray, "n"], elbow_idx: int, output_path:
     plt.close(fig)
 
 
+def save_bucket_edges_plot(
+    values: Float[np.ndarray, "n"], edges: Float[np.ndarray, "n_edges"], output_path: str | Path
+) -> None:
+    """The same sorted-activation curve as the elbow plot, with a vertical line where each
+    bucket starts. `edges` are activation values, so each is placed at the index of the first
+    sorted value at or above it. The last edge is the max and is not drawn."""
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(values)
+    for edge in edges[:-1]:
+        index = int(np.searchsorted(values, edge))
+        ax.axvline(index, color="red", linestyle="--", linewidth=0.8)
+        ax.text(index, ax.get_ylim()[1], f"{edge:.2f}", rotation=90, va="top", ha="right", fontsize=7, color="red")
+    ax.set_xlabel("sorted index")
+    ax.set_ylabel("activation")
+    ax.set_title(f"{len(edges) - 1} buckets, lower edge of each marked")
+    plt.tight_layout()
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
 def to_pil(img: np.ndarray | torch.Tensor, size: tuple[int, int]) -> Image.Image:
     """Accepts either (H,W,3) or (3,H,W) - channel-first is transposed before the rest."""
     if isinstance(img, torch.Tensor):

@@ -52,6 +52,17 @@ def merged_bucket_ids(
     return merge_small_buckets(np.bincount(buckets, minlength=n_buckets), min_bucket_size)[buckets]
 
 
+def merged_bucket_edges(
+    values: Float[np.ndarray, "n"], n_buckets: int, floor: float, min_bucket_size: int
+) -> Float[np.ndarray, "n_groups_plus_1"]:
+    """Lower edge of every merged bucket, then the max."""
+    edges = bucket_edges(values, n_buckets, floor)
+    sizes = np.bincount(assign_buckets(values, edges), minlength=n_buckets)
+    group_of = merge_small_buckets(sizes, min_bucket_size)
+    first_raw_bucket_of_each_group = np.flatnonzero(np.diff(group_of, prepend=-1))
+    return np.append(edges[first_raw_bucket_of_each_group], edges[-1])
+
+
 def bucket_quotas(sizes: Int[np.ndarray, "n_buckets"], budget: int) -> Int[np.ndarray, "n_buckets"]:
     """Equal share per bucket, where a small bucket gives all it has.
     The unused share is spread over the larger buckets, so the whole budget is spent whenever
