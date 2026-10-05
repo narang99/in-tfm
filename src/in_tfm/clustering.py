@@ -19,7 +19,9 @@ ClusterSelectionMethod = Literal["eom", "leaf"]
 class HDBSCANBackend(Protocol):
     """The slice of the HDBSCAN API used here - cuml and sklearn-contrib hdbscan agree on it."""
 
-    def __init__(self, min_cluster_size: int, cluster_selection_method: ClusterSelectionMethod) -> None: ...
+    def __init__(
+        self, min_cluster_size: int, cluster_selection_method: ClusterSelectionMethod, min_samples: int | None
+    ) -> None: ...
     def fit(self, points: Float[np.ndarray, "n_points dim"]) -> object: ...
 
     labels_: Int[np.ndarray, "n_points"]
@@ -47,14 +49,20 @@ def cluster_labels(
     points: Float[np.ndarray, "n_points dim"],
     min_cluster_size: int,
     cluster_selection_method: ClusterSelectionMethod = "leaf",
+    min_samples: int | None = None,
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop.
 
     `leaf` is the default over HDBSCAN's own `eom`: eom merges toward a few large clusters and
-    sends the rest to noise, while leaf keeps the finest clusters in the tree."""
+    sends the rest to noise, while leaf keeps the finest clusters in the tree.
+
+    `min_samples=None` leaves HDBSCAN's own default, which is `min_cluster_size`.
+    A smaller value makes it less strict about what counts as dense, so fewer points are noise."""
     backend, name = resolve_hdbscan_backend()
     print(f"[cluster] {len(points)} points x {points.shape[1]} dims via {name}")
 
-    clusterer = backend(min_cluster_size=min_cluster_size, cluster_selection_method=cluster_selection_method)
+    clusterer = backend(
+        min_cluster_size=min_cluster_size, cluster_selection_method=cluster_selection_method, min_samples=min_samples
+    )
     clusterer.fit(points)
     return np.asarray(clusterer.labels_)

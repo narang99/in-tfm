@@ -31,7 +31,7 @@ from .html_report import details, page
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
-from .viz import save_elbow_plot
+from .viz import save_bucket_edges_plot, save_elbow_plot
 
 AttrFn = Callable[..., np.ndarray]
 
@@ -49,6 +49,8 @@ class ReportMeta(BaseModel):
 
     neuron_idx: int
     threshold: float
+    bucket_edges: list[float] | None = None
+    """Set when hits were picked by bucketed sampling, which decides the plot the report shows."""
     n_hits: int
     min_uniq_images_per_cluster: int
     n_clusters: int
@@ -128,6 +130,12 @@ def _cluster_nav(meta: ReportMeta) -> str:
     return f'<nav class="cluster-nav">{links}</nav>'
 
 
+def _activation_plot(meta: ReportMeta) -> str:
+    if meta.bucket_edges is None:
+        return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+    return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
+
+
 def _index_page(meta: ReportMeta, sections: list[str]) -> str:
     title = f"Neuron {meta.neuron_idx}"
     return page(
@@ -135,7 +143,7 @@ def _index_page(meta: ReportMeta, sections: list[str]) -> str:
         f"<h1>{title}</h1>\n"
         f'<p class="meta">threshold: {meta.threshold:.4f} &middot; '
         f"{meta.n_hits} hits &middot; {len(sections)} clusters</p>\n"
-        + details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+        + _activation_plot(meta)
         + f"\n{_cluster_nav(meta)}\n"
         + "\n".join(sections),
     )
@@ -177,6 +185,7 @@ class NeuronClusterHits(BaseModel):
     threshold: float
     elbow_values: Float[np.ndarray, "n_pos"]
     elbow_idx: int
+    bucket_edges: Float[np.ndarray, "n_edges"] | None = None
     device: str = Field(default_factory=default_device)
 
     def sample_cluster(
@@ -229,6 +238,7 @@ class NeuronClusterHits(BaseModel):
         return ReportMeta(
             neuron_idx=self.neuron_idx,
             threshold=self.threshold,
+            bucket_edges=None if self.bucket_edges is None else self.bucket_edges.tolist(),
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
             n_clusters=len(cluster_ids),
@@ -266,7 +276,10 @@ class NeuronClusterHits(BaseModel):
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        save_elbow_plot(self.elbow_values, self.elbow_idx, report_dir / "elbow.png")
+        if self.bucket_edges is None:
+            save_elbow_plot(self.elbow_values, self.elbow_idx, report_dir / "elbow.png")
+        else:
+            save_bucket_edges_plot(self.elbow_values, self.bucket_edges, report_dir / "buckets.png")
 
         uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
         cluster_ids = [

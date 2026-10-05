@@ -181,7 +181,7 @@ def main() -> None:
         selection = selections[(neuron, mode)]
         hdmd = hadamard_from_rows(gathered.inputs[index_map], weight, neuron)
         start = time.perf_counter()
-        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method)
+        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method, args.min_samples)
         seconds = time.perf_counter() - start
         elbow_value = selections[(neuron, "elbow")].threshold
         if mode != "elbow":

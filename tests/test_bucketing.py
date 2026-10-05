@@ -1,6 +1,12 @@
 import numpy as np
 
-from in_tfm.bucketing import assign_buckets, bucket_quotas, bucketed_sample, merge_small_buckets
+from in_tfm.bucketing import (
+    assign_buckets,
+    bucket_quotas,
+    bucketed_sample,
+    merge_small_buckets,
+    merged_bucket_edges,
+)
 
 
 def test_quotas_spill_over_from_small_buckets():
@@ -48,3 +54,10 @@ def test_small_lowest_group_joins_the_group_above():
 
 def test_everything_merges_when_total_is_small():
     assert merge_small_buckets(np.array([10, 5, 3]), min_size=100).tolist() == [0, 0, 0]
+
+
+def test_merged_edges_drop_the_boundaries_inside_merged_buckets():
+    values = np.concatenate([np.full(500, 0.1), np.full(300, 1.1), np.full(5, 1.9), np.array([4.0])])
+    edges = merged_bucket_edges(values, n_buckets=4, floor=0.0, min_bucket_size=100)
+    assert edges[0] == 0.0 and edges[-1] == 4.0
+    assert len(edges) < 5
