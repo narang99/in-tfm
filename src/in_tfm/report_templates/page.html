@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+{% include "report.css" %}
+
+{% for color in accents %}
+.accent-{{ loop.index0 }} { --accent:{{ color }}; }
+{% endfor %}
+</style>
+</head>
+<body>
+{{ body|safe }}
+</body>
+</html>
+

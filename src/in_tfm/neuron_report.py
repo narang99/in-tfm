@@ -27,7 +27,15 @@ from tqdm import tqdm
 
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
-from .html_report import details, page
+from .html_report import (
+    ClusterLink,
+    accent_class,
+    cluster_nav,
+    cluster_section,
+    details,
+    neuron_index,
+    page,
+)
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
@@ -92,11 +100,6 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     return report_path
 
 
-N_ACCENTS = 6
-"""Matches the `.accent-{i}` rules in html_report.REPORT_CSS. Blues, purples and ambers only:
-red and green already mean relevance sign inside the hits."""
-
-
 def _cluster_section(
     cluster_id: int,
     cluster: ClusterMeta,
@@ -107,27 +110,18 @@ def _cluster_section(
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
-    header = (
-        '<header class="cluster-head">'
-        f'<span class="cluster-badge">Cluster {cluster_id}</span>'
-        f'<span class="cluster-stats">n={cluster.n_hits} &middot; '
-        f"{cluster.n_unique_images} unique samples</span></header>"
-    )
     hits = load_hits(cluster_dir)
     body = presenter.render(hits, cluster_dir, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return (
-        f'<section class="cluster accent-{position % N_ACCENTS}" id="cluster-{cluster_id}">\n'
-        f'{header}\n<div class="cluster-body">\n{body}\n</div>\n</section>'
-    )
+    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
-    links = "".join(
-        f'<a class="accent-{i % N_ACCENTS}" href="#cluster-{cid}">Cluster {cid}'
-        f'<span class="n">{c.n_hits}</span></a>'
-        for i, (cid, c) in enumerate(meta.clusters.items())
+    return cluster_nav(
+        [
+            ClusterLink(cluster_id=cid, n_hits=c.n_hits, accent_class=accent_class(i))
+            for i, (cid, c) in enumerate(meta.clusters.items())
+        ]
     )
-    return f'<nav class="cluster-nav">{links}</nav>'
 
 
 def _activation_plot(meta: ReportMeta) -> str:
@@ -138,16 +132,17 @@ def _activation_plot(meta: ReportMeta) -> str:
 
 def _index_page(meta: ReportMeta, sections: list[str], page_controls: str) -> str:
     title = f"Neuron {meta.neuron_idx}"
-    return page(
-        title,
-        f"<h1>{title}</h1>\n"
-        f'<p class="meta">threshold: {meta.threshold:.4f} &middot; '
-        f"{meta.n_hits} hits &middot; {len(sections)} clusters</p>\n"
-        + f"{page_controls}\n"
-        + _activation_plot(meta)
-        + f"\n{_cluster_nav(meta)}\n"
-        + "\n".join(sections),
+    body = neuron_index(
+        title=title,
+        threshold=meta.threshold,
+        n_hits=meta.n_hits,
+        n_clusters=len(sections),
+        page_controls=page_controls,
+        activation_plot=_activation_plot(meta),
+        cluster_nav=_cluster_nav(meta),
+        sections=sections,
     )
+    return page(title, body)
 
 
 def cluster_counts(labels: Int[np.ndarray, "n_hits"]) -> dict[int, int]:
