@@ -145,28 +145,3 @@ def compute_attnlrp_relevance(
             f"(got kwargs: {sorted(batch.kwargs)})"
         )
     return (leaf.grad * leaf).detach().cpu().numpy()
-
-
-def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
-    """Monkey-patch a Gemma3 model in place for AttnLRP.
-
-    lxt ships a gemma3 patch map, and its MLP/RMSNorm rules are reused verbatim here. Only its
-    attention entry is swapped: lxt's `patch_attention` is the broken-on-transformers-5.x path
-    described in patch_eager_attention.
-
-    Gemma3RMSNorm gets the same treatment LayerNorm gets in the vision path - stop-gradient
-    through the normalizing statistic, so relevance flows only through the scaled input.
-    """
-    from lxt.efficient.models.gemma3 import gemma3_norm
-    from lxt.efficient.patches import gated_mlp_forward
-    from transformers.models.gemma3 import modeling_gemma3
-    from transformers.models.gemma3.modeling_gemma3 import Gemma3MLP, Gemma3RMSNorm
-
-    patch_map = {
-        Gemma3MLP: partial(patch_method, gated_mlp_forward),
-        Gemma3RMSNorm: partial(patch_method, gemma3_norm, method_name="_norm"),
-        torch.nn.Dropout: partial(patch_method, dropout_forward),
-        modeling_gemma3: patch_eager_attention,
-    }
-    model.config._attn_implementation = "eager"
-    monkey_patch(model, patch_map=patch_map, verbose=True)

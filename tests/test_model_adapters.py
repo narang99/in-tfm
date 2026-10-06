@@ -1,9 +1,11 @@
 import pytest
 import torch
 from nnsight import NNsight
+from transformers import Gemma3ForCausalLM, Gemma3TextConfig
 
 from in_tfm.layers import q_proj_getter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, AttnOnlyConfig, AttnOnlyForCausalLM
+from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.sources import ModelBatch
 
 N_HEADS, HEAD_DIM, HIDDEN, VOCAB, MAX_LENGTH = 2, 4, 8, 20, 6
@@ -30,7 +32,21 @@ def tiny_attn_only_adapter() -> AttnOnly2LAdapter:
     return AttnOnly2LAdapter(AttnOnlyForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH)
 
 
-@pytest.fixture(params=[tiny_attn_only_adapter], ids=["attn_only_2l"])
+def tiny_gemma3_adapter() -> Gemma3Adapter:
+    config = Gemma3TextConfig(
+        vocab_size=VOCAB,
+        hidden_size=HIDDEN,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=N_HEADS,
+        num_key_value_heads=1,
+        head_dim=HEAD_DIM,
+        max_position_embeddings=MAX_LENGTH,
+    )
+    return Gemma3Adapter(Gemma3ForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH)
+
+
+@pytest.fixture(params=[tiny_attn_only_adapter, tiny_gemma3_adapter], ids=["attn_only_2l", "gemma3"])
 def adapter(request):
     return request.param()
 
