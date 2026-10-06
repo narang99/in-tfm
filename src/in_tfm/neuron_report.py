@@ -37,7 +37,7 @@ from .html_report import (
     page,
 )
 from .layers import LayerGetter
-from .presenters import ClusterHit, ClusterPresenter, HadamardShape
+from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
 from .viz import save_bucket_edges_plot, save_elbow_plot
 
@@ -111,7 +111,8 @@ def _cluster_section(
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
     hits = load_hits(cluster_dir)
-    body = presenter.render(hits, cluster_dir, hadamard_shape) if hits else "<p>no hits sampled.</p>"
+    artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
+    body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
     return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
 
 

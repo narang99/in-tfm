@@ -1,0 +1,6 @@
+{% macro details(summary, start_open=false) %}
+<details{% if start_open %} open{% endif %}>
+<summary>{{ summary }}</summary>
+{{ caller() }}
+</details>
+{%- endmacro %}

@@ -1,0 +1,4 @@
+{% from "components.html" import details %}
+<img src="{{ view.original_url }}" alt="original">
+<img src="{{ view.overlay_url }}" alt="overlay">
+{% call details("hadamard patterns") %}<img src="{{ view.hadamard_url }}" alt="hadamard">{% endcall %}

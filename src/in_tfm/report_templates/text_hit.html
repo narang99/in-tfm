@@ -1,0 +1,11 @@
+{% macro css_vars(colors, prefix="") -%}
+--{{ prefix }}bg-l:{{ colors.bg_light }};--{{ prefix }}fg-l:{{ colors.fg_light }};--{{ prefix }}bg-d:{{ colors.bg_dark }};--{{ prefix }}fg-d:{{ colors.fg_dark }}
+{%- endmacro %}
+{% macro rel_chips(chips) -%}
+{% for chip in chips %}<span class="chip {{ "pos" if chip.value >= 0 else "neg" }}"><code>{{ chip.text }}</code><span class="count">{{ "%+.2f"|format(chip.value) }}</span></span>{% endfor %}
+{%- endmacro %}
+<div class="hit">
+<div class="hit-tag">sample {{ hit.sample_id }} &middot; token {{ hit.token_idx }}</div>
+<div class="tokens">{% for tok in hit.tokens %}<span class="tok{% if tok.firing %} tok-firing{% endif %}{% if tok.first %} tok-first{% endif %}" style="{{ css_vars(tok.colors) }};{{ css_vars(tok.colors_without_first, "x-") }}" title="{{ tok.title }}">{{ tok.text }}</span>{% endfor %}</div>
+<div class="top-rel"><span class="label">top relevance</span><span class="when-sink">{{ rel_chips(hit.top_relevance) }}</span><span class="when-no-sink">{{ rel_chips(hit.top_relevance_without_first) }}</span></div>
+</div>

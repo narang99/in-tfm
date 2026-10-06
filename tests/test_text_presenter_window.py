@@ -1,9 +1,12 @@
 import numpy as np
 import torch
 
+from in_tfm.html_report import render_template
+from in_tfm.presenters import ClusterArtifacts
 from in_tfm.presenters.base import ClusterHit
 from in_tfm.presenters.text import TextPresenter
-from in_tfm.presenters.text.colored_tokens import colored_tokens
+from in_tfm.presenters.text.colored_tokens import token_views
+from in_tfm.presenters.text.views import HitView
 
 
 class FakeTokenizer:
@@ -39,15 +42,22 @@ def test_top_relevance_can_leave_out_position_zero():
     presenter = TextPresenter(FakeSource(), top_tokens=2)
     tokens = [f"t{i}" for i in range(4)]
     relevance = np.array([9.0, 1.0, 3.0, 2.0])
-    with_sink = presenter._top_relevance(tokens, relevance, first=0)
-    without_sink = presenter._top_relevance(tokens, relevance, first=1)
+    with_sink = [chip.text for chip in presenter._top_relevance(tokens, relevance, first=0)]
+    without_sink = [chip.text for chip in presenter._top_relevance(tokens, relevance, first=1)]
     assert "t0" in with_sink
-    assert "t0" not in without_sink
-    assert without_sink.index("t2") < without_sink.index("t3")
+    assert without_sink == ["t2", "t3"]
 
 
 def test_each_token_carries_colors_for_both_views():
-    html = colored_tokens(["a", "b"], np.array([5.0, 1.0]), vmax=5.0, vmax_without_first=1.0, firing_idx=1)
+    tokens = token_views(["a", "b"], np.array([5.0, 1.0]), vmax=5.0, vmax_without_first=1.0, firing_idx=1)
+    assert [t.first for t in tokens] == [True, False]
+    assert [t.firing for t in tokens] == [False, True]
+    assert tokens[1].colors != tokens[1].colors_without_first
+
+
+def test_token_html_has_both_color_sets_and_marks_first_and_firing():
+    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(1, length=2), np.array([5.0, 1.0]), 5.0, 1.0)
+    html = render_template("text_hit.html", hit=hit_view)
     assert html.count("--x-bg-l") == 2
     assert html.count("--bg-l") == 2
     assert 'class="tok tok-first"' in html
@@ -55,5 +65,25 @@ def test_each_token_carries_colors_for_both_views():
 
 
 def test_the_report_shows_both_scales_in_one_page():
-    html = TextPresenter(FakeSource())._hit_block(hit_at(3), np.array([5.0, 0.0, 0.0, 1.0]), 5.0, 1.0)
+    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(3), np.array([5.0, 0.0, 0.0, 1.0]), 5.0, 1.0)
+    html = render_template("text_hit.html", hit=hit_view)
     assert "when-sink" in html and "when-no-sink" in html
+
+
+def test_render_writes_artifacts_and_links_them_relative_to_the_report(tmp_path):
+    cluster_dir = tmp_path / "cluster_4"
+    cluster_dir.mkdir()
+    hit = hit_at(3).model_copy(update={"hadamard": np.arange(4, dtype=np.float32) - 1.5})
+    html = TextPresenter(FakeSource()).render([hit], ClusterArtifacts(cluster_dir=cluster_dir), (2, 2))
+    assert 'src="cluster_4/hadamard.jpg"' in html
+    assert (cluster_dir / "hadamard.jpg").exists()
+    assert (cluster_dir / "hits.html").exists()
+    assert "1 sampled hits in context" in html
+
+
+def test_token_text_is_escaped():
+    tokens = token_views(["<b>"], np.array([1.0]), vmax=1.0, vmax_without_first=1.0)
+    hit_view = HitView(sample_id="s", token_idx=0, tokens=tokens, top_relevance=[], top_relevance_without_first=[])
+    html = render_template("text_hit.html", hit=hit_view)
+    assert "&lt;b&gt;" in html
+    assert "<b>" not in html

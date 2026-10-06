@@ -7,8 +7,16 @@ completely between images and text:
 - what a rendered hit even is - a JPEG overlay, or highlighted text
 """
 
+from .artifacts import ClusterArtifacts
 from .base import ClusterHit, ClusterPresenter, HadamardShape
 from .image import ImagePresenter
 from .text import TextPresenter
 
-__all__ = ["ClusterHit", "ClusterPresenter", "HadamardShape", "ImagePresenter", "TextPresenter"]
+__all__ = [
+    "ClusterArtifacts",
+    "ClusterHit",
+    "ClusterPresenter",
+    "HadamardShape",
+    "ImagePresenter",
+    "TextPresenter",
+]

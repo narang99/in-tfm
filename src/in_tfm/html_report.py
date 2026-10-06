@@ -32,25 +32,25 @@ def accent_class(position: int) -> str:
     return f"accent-{position % len(ACCENTS)}"
 
 
-def _render(template: str, **context: object) -> str:
+def render_template(template: str, **context: object) -> str:
     return _env.get_template(template).render(**context)
 
 
-SINK_TOGGLE = _render("sink_toggle.html")
+SINK_TOGGLE = render_template("sink_toggle.html")
 
 
 def page(title: str, body: str) -> str:
-    return _render("page.html", title=title, body=body, accents=ACCENTS)
+    return render_template("page.html", title=title, body=body, accents=ACCENTS)
 
 
 def details(summary: str, body: str, start_open: bool = False) -> str:
-    return _render("details.html", summary=summary, body=body, start_open=start_open)
+    return render_template("details.html", summary=summary, body=body, start_open=start_open)
 
 
 def cluster_section(
     cluster_id: int, position: int, n_hits: int, n_unique_images: int, body: str
 ) -> str:
-    return _render(
+    return render_template(
         "cluster_section.html",
         cluster_id=cluster_id,
         accent_class=accent_class(position),
@@ -61,7 +61,7 @@ def cluster_section(
 
 
 def cluster_nav(links: Sequence[ClusterLink]) -> str:
-    return _render("cluster_nav.html", links=links)
+    return render_template("cluster_nav.html", links=links)
 
 
 def neuron_index(
@@ -74,7 +74,7 @@ def neuron_index(
     cluster_nav: str,
     sections: Sequence[str],
 ) -> str:
-    return _render(
+    return render_template(
         "neuron_index.html",
         title=title,
         threshold=threshold,
