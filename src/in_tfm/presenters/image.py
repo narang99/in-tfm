@@ -20,6 +20,9 @@ class ImagePresenter:
         self.processor = processor
         self.alpha = alpha
 
+    def page_controls(self) -> str:
+        return ""
+
     def render(
         self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
     ) -> str:

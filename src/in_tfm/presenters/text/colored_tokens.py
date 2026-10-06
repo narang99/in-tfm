@@ -20,6 +20,9 @@ from matplotlib.colors import Colormap
 from ...colormaps import token_cmap_dark, token_cmap_light
 
 SENTENCEPIECE_SPACE = "\u2581"
+BYTE_LEVEL_BPE_SPACE = "\u0120"
+BYTE_LEVEL_BPE_NEWLINE = "\u010a"
+BYTE_LEVEL_BPE_TAB = "\u0109"
 
 
 def symmetric_scale(values: Sequence[Float[np.ndarray, "n"]]) -> float:
@@ -34,34 +37,37 @@ def symmetric_scale(values: Sequence[Float[np.ndarray, "n"]]) -> float:
 
 
 def display_text(token: str) -> str:
-    """SentencePiece marks a leading space with U+2581 and circuitsvis-style spans render it
-    literally; show it as the space it stands for."""
-    return token.replace(SENTENCEPIECE_SPACE, " ").replace("\n", "↵")
+    """SentencePiece marks a leading space with U+2581, and byte-level BPE (GPT-2, GPT-NeoX) with
+    U+0120 (`Ġ`), a newline with `Ċ` and a tab with `ĉ`.
+    Spans render them literally, so show the characters they stand for."""
+    spaced = token.replace(SENTENCEPIECE_SPACE, " ").replace(BYTE_LEVEL_BPE_SPACE, " ")
+    return spaced.replace(BYTE_LEVEL_BPE_NEWLINE, "\n").replace(BYTE_LEVEL_BPE_TAB, "\t").replace("\n", "↵")
 
 
 def colored_tokens(
     tokens: Sequence[str],
     values: Float[np.ndarray, "n"],
     vmax: float,
+    vmax_without_first: float,
     firing_idx: int | None = None,
-    sink_idx: int | None = None,
 ) -> str:
     """Tokens in reading order, each shaded by its value on a shared +/-`vmax` scale.
 
-    `sink_idx` is drawn unshaded: an attention-sink token's relevance is not comparable to the
-    rest (see `HitWindow.scale_relevance`), and a saturated block at the start of every hit
-    drowns the tokens the reader came to see. Its value stays in the hover title.
+    Every span carries colors for two scales, and the stylesheet picks one:
+    - the default `vmax`, which every token counts toward
+    - `vmax_without_first`, for the view that excludes the attention sink (position 0), which is
+      then drawn unshaded
     """
     spans = [
-        _token_span(tok, float(val), vmax, firing=(i == firing_idx), sink=(i == sink_idx))
+        _token_span(tok, float(val), vmax, vmax_without_first, firing=(i == firing_idx), first=(i == 0))
         for i, (tok, val) in enumerate(zip(tokens, values))
     ]
     return f'<div class="tokens">{"".join(spans)}</div>'
 
 
-def _token_span(token: str, value: float, vmax: float, firing: bool, sink: bool) -> str:
-    classes = ["tok"] + (["tok-firing"] if firing else []) + (["tok-sink"] if sink else [])
-    style = "" if sink else _token_colors(value, vmax)
+def _token_span(token: str, value: float, vmax: float, vmax_without_first: float, firing: bool, first: bool) -> str:
+    classes = ["tok"] + (["tok-firing"] if firing else []) + (["tok-first"] if first else [])
+    style = f"{_token_colors(value, vmax)};{_token_colors(value, vmax_without_first, prefix='x-')}"
     title = f"{display_text(token)}  {value:+.3f}"
     return (
         f'<span class="{" ".join(classes)}" style="{style}"'
@@ -69,7 +75,7 @@ def _token_span(token: str, value: float, vmax: float, firing: bool, sink: bool)
     )
 
 
-def _token_colors(value: float, vmax: float) -> str:
+def _token_colors(value: float, vmax: float, prefix: str = "") -> str:
     """Light- and dark-mode colors as custom properties, picked by a media query in REPORT_CSS.
 
     The color has to live on the element (it is per token), but a media query cannot reach into
@@ -77,7 +83,10 @@ def _token_colors(value: float, vmax: float) -> str:
     """
     light = _hex(token_cmap_light, value, vmax)
     dark = _hex(token_cmap_dark, value, vmax)
-    return f"--bg-l:{light};--fg-l:{_readable_fg(light)};--bg-d:{dark};--fg-d:{_readable_fg(dark)}"
+    return (
+        f"--{prefix}bg-l:{light};--{prefix}fg-l:{_readable_fg(light)};"
+        f"--{prefix}bg-d:{dark};--{prefix}fg-d:{_readable_fg(dark)}"
+    )
 
 
 def _hex(cmap: Colormap, value: float, vmax: float) -> str:

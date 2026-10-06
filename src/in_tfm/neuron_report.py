@@ -31,7 +31,7 @@ from .html_report import details, page
 from .layers import LayerGetter
 from .presenters import ClusterHit, ClusterPresenter, HadamardShape
 from .sources import SampleId, SampleSource
-from .viz import save_elbow_plot
+from .viz import save_bucket_edges_plot, save_elbow_plot
 
 AttrFn = Callable[..., np.ndarray]
 
@@ -49,6 +49,8 @@ class ReportMeta(BaseModel):
 
     neuron_idx: int
     threshold: float
+    bucket_edges: list[float] | None = None
+    """Set when hits were picked by bucketed sampling, which decides the plot the report shows."""
     n_hits: int
     min_uniq_images_per_cluster: int
     n_clusters: int
@@ -86,7 +88,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections))
+    report_path.write_text(_index_page(meta, sections, presenter.page_controls()))
     return report_path
 
 
@@ -128,14 +130,21 @@ def _cluster_nav(meta: ReportMeta) -> str:
     return f'<nav class="cluster-nav">{links}</nav>'
 
 
-def _index_page(meta: ReportMeta, sections: list[str]) -> str:
+def _activation_plot(meta: ReportMeta) -> str:
+    if meta.bucket_edges is None:
+        return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+    return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
+
+
+def _index_page(meta: ReportMeta, sections: list[str], page_controls: str) -> str:
     title = f"Neuron {meta.neuron_idx}"
     return page(
         title,
         f"<h1>{title}</h1>\n"
         f'<p class="meta">threshold: {meta.threshold:.4f} &middot; '
         f"{meta.n_hits} hits &middot; {len(sections)} clusters</p>\n"
-        + details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+        + f"{page_controls}\n"
+        + _activation_plot(meta)
         + f"\n{_cluster_nav(meta)}\n"
         + "\n".join(sections),
     )
@@ -177,6 +186,7 @@ class NeuronClusterHits(BaseModel):
     threshold: float
     elbow_values: Float[np.ndarray, "n_pos"]
     elbow_idx: int
+    bucket_edges: Float[np.ndarray, "n_edges"] | None = None
     device: str = Field(default_factory=default_device)
 
     def sample_cluster(
@@ -229,6 +239,7 @@ class NeuronClusterHits(BaseModel):
         return ReportMeta(
             neuron_idx=self.neuron_idx,
             threshold=self.threshold,
+            bucket_edges=None if self.bucket_edges is None else self.bucket_edges.tolist(),
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
             n_clusters=len(cluster_ids),
@@ -247,7 +258,6 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn = compute_attnlrp_relevance,
         max_n: int = 5,
         min_uniq_images: int = 2,
-        max_clusters: int | None = None,
     ) -> Path:
         """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
@@ -257,21 +267,20 @@ class NeuronClusterHits(BaseModel):
         Clusters drawn from fewer than `min_uniq_images` distinct source images are dropped -
         see cluster_unique_image_counts for why.
 
-        `max_clusters` keeps only the largest N. Attribution and rendering cost scale with the
-        number of clusters, and a neuron whose clusters are near-token-identities (any layer-0
-        neuron) can have dozens.
-
         `name` defaults to `neuron_{idx}` but can be overridden.
         """
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        save_elbow_plot(self.elbow_values, self.elbow_idx, report_dir / "elbow.png")
+        if self.bucket_edges is None:
+            save_elbow_plot(self.elbow_values, self.elbow_idx, report_dir / "elbow.png")
+        else:
+            save_bucket_edges_plot(self.elbow_values, self.bucket_edges, report_dir / "buckets.png")
 
         uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
         cluster_ids = [
             cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
-        ][:max_clusters]
+        ]
         meta = self._meta(cluster_ids, min_uniq_images)
         (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
 

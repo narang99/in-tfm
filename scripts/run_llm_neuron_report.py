@@ -32,6 +32,7 @@ from in_tfm.attribution import (
     patch_attn_only_for_attn_lrp,
     patch_gemma3_for_attn_lrp,
 )
+from in_tfm.bucketing import bucketed_sample, merged_bucket_edges
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
@@ -98,10 +99,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-article-chars", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0, help="corpus shuffle and hit subsampling")
     parser.add_argument("--max-hits", type=int, default=20000, help="hits kept per neuron before clustering")
+    parser.add_argument(
+        "--hit-selection",
+        choices=["elbow", "bucketed"],
+        default="elbow",
+        help="elbow: everything above the elbow, uniformly subsampled to --max-hits. "
+        "bucketed: equal-width activation buckets, an equal share of --max-hits from each",
+    )
+    parser.add_argument("--n-buckets", type=int, default=10)
+    parser.add_argument(
+        "--min-bucket-size",
+        type=int,
+        default=100,
+        help="bucketed only: buckets with fewer positions than this are merged with their neighbour",
+    )
+    parser.add_argument(
+        "--bucket-floor-fraction",
+        type=float,
+        default=0.0,
+        help="bucketed only: lowest bucket starts at this fraction of the max activation",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--min-cluster-size", type=int, default=10)
+    parser.add_argument(
+        "--min-samples", type=int, default=None, help="HDBSCAN min_samples, defaults to --min-cluster-size"
+    )
+    parser.add_argument("--cluster-selection-method", choices=["eom", "leaf"], default="leaf")
     parser.add_argument("--max-hits-per-cluster", type=int, default=10)
-    parser.add_argument("--max-clusters", type=int, default=None, help="report only the largest N clusters")
     parser.add_argument("--min-uniq-samples-per-cluster", type=int, default=2)
     parser.add_argument("--out-dir", type=Path, default=Path("reports_llm"))
     parser.add_argument("--device", default=default_device())
@@ -189,43 +213,73 @@ def report_name(neuron_idx: int, polarity: Polarity) -> str:
     return f"neuron_{neuron_idx}" if polarity == "positive" else f"neuron_{neuron_idx}_neg"
 
 
-class HitSelection(BaseModel):
+class PickedHits(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    threshold: float
-    elbow_values: Float[torch.Tensor, "n_pos"]
-    elbow_idx: int
     batch_idx: Int[np.ndarray, "n_hits"]
     token_idx: Int[np.ndarray, "n_hits"]
     n_above_threshold: int
+    bucket_ids: Int[np.ndarray, "n_hits"] | None = None
+    """Merged bucket per hit, bucketed selection only."""
+    bucket_edges: Float[np.ndarray, "n_edges"] | None = None
+    """Lower edge of every merged bucket, then the max. Bucketed selection only."""
 
 
-def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: argparse.Namespace) -> HitSelection:
-    """Every position above the elbow threshold, subsampled to `--max-hits`: clustering 640-d
-    vectors is superlinear in hit count, and a common token can produce hundreds of thousands.
+class HitSelection(PickedHits):
+    threshold: float
+    elbow_values: Float[torch.Tensor, "n_pos"]
+    elbow_idx: int
 
-    - The negative tail is found by negating the column: the elbow and hit helpers only look
-      at positive values, so the same code finds the most negative activations.
-    - `elbow_values` are then magnitudes, while `threshold` is reported signed."""
-    column = scan.neuron_column(neuron_idx)
-    if polarity == "negative":
-        column = -column
-    magnitude, elbow_values, elbow_idx = find_activation_threshold(column, 0, scan.valid_mask)
-    threshold = -magnitude if polarity == "negative" else magnitude
+
+def elbow_hits(column: Float[torch.Tensor, "batch seq 1"], magnitude: float, scan: ScanResult, args: argparse.Namespace) -> PickedHits:
     batch_idx, token_idx = high_activation_hits(column, 0, magnitude, scan.valid_mask)
     n_above = len(batch_idx)
     if n_above > args.max_hits:
         keep = np.sort(np.random.default_rng(args.seed).choice(n_above, args.max_hits, replace=False))
         batch_idx, token_idx = batch_idx[keep], token_idx[keep]
-    print(f"[neuron {neuron_idx} {polarity}] threshold={threshold:.4f}, {n_above} hits beyond it, {len(batch_idx)} kept")
-    return HitSelection(
-        threshold=threshold,
-        elbow_values=elbow_values,
-        elbow_idx=elbow_idx,
-        batch_idx=batch_idx,
-        token_idx=token_idx,
-        n_above_threshold=n_above,
+    return PickedHits(batch_idx=batch_idx, token_idx=token_idx, n_above_threshold=n_above)
+
+
+def bucketed_hits(column: Float[torch.Tensor, "batch seq 1"], floor: float, scan: ScanResult, args: argparse.Namespace) -> PickedHits:
+    """Row-major order of `argwhere` on the mask matches boolean-mask indexing, so row i of
+    `positions` is the position of `values[i]`."""
+    valid = scan.valid_mask.numpy()
+    values = column[..., 0].numpy()[valid]
+    positions = np.argwhere(valid)
+    kept, bucket_ids = bucketed_sample(
+        values, args.n_buckets, args.max_hits, floor, args.min_bucket_size, np.random.default_rng(args.seed)
     )
+    above = values[values > floor]
+    return PickedHits(
+        batch_idx=positions[kept, 0],
+        token_idx=positions[kept, 1],
+        n_above_threshold=len(above),
+        bucket_ids=bucket_ids,
+        bucket_edges=merged_bucket_edges(above, args.n_buckets, floor, args.min_bucket_size),
+    )
+
+
+def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, args: argparse.Namespace) -> HitSelection:
+    """Positions to cluster, capped at `--max-hits`: clustering 640-d vectors is superlinear in
+    hit count, and a common token can produce hundreds of thousands.
+
+    - The negative tail is found by negating the column: the elbow and hit helpers only look
+      at positive values, so the same code finds the most negative activations.
+    - `elbow_values` are then magnitudes, while `threshold` is reported signed.
+    - With `--hit-selection bucketed` the elbow is still computed for the plot, but the
+      reported threshold is the bucket floor."""
+    column = scan.neuron_column(neuron_idx)
+    if polarity == "negative":
+        column = -column
+    magnitude, elbow_values, elbow_idx = find_activation_threshold(column, 0, scan.valid_mask)
+    if args.hit_selection == "bucketed":
+        magnitude = args.bucket_floor_fraction * elbow_values[-1].item()
+        picked = bucketed_hits(column, magnitude, scan, args)
+    else:
+        picked = elbow_hits(column, magnitude, scan, args)
+    threshold = -magnitude if polarity == "negative" else magnitude
+    print(f"[neuron {neuron_idx} {polarity}] threshold={threshold:.4f}, {picked.n_above_threshold} hits beyond it, {len(picked.batch_idx)} kept")
+    return HitSelection(threshold=threshold, elbow_values=elbow_values, elbow_idx=elbow_idx, **dict(picked))
 
 
 def report_neuron(
@@ -243,7 +297,7 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = normalized_rows(rows) if args.cluster_on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
-        labels = cluster_labels(hdmd, args.min_cluster_size)
+        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method, args.min_samples)
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
@@ -261,6 +315,7 @@ def report_neuron(
         threshold=selection.threshold,
         elbow_values=selection.elbow_values.numpy(),
         elbow_idx=selection.elbow_idx,
+        bucket_edges=selection.bucket_edges,
         device=args.device,
     )
     with timed(f"{tag}: write report"):
@@ -270,7 +325,6 @@ def report_neuron(
             attr_fn=compute_attnlrp_relevance,
             max_n=args.max_hits_per_cluster,
             min_uniq_images=args.min_uniq_samples_per_cluster,
-            max_clusters=args.max_clusters,
         )
     print(f"[{tag}] report -> {report_path}")
 
