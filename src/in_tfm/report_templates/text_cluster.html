@@ -1,7 +1,6 @@
-{% from "components.html" import details %}
-{% macro scale_text(vmax) %}red {{ "%.2f"|format(-vmax) }} to green {{ "%+.2f"|format(vmax) }}{% endmacro %}
+{% from "components.html" import details, sink_views %}
 <div class="firing"><span class="label">firing tokens</span>{% for chip in view.firing_tokens %}<span class="chip"><code>{{ chip.text }}</code>{% if chip.count > 1 %}<span class="count">&times;{{ chip.count }}</span>{% endif %}</span>{% endfor %}</div>
-<p class="scale">shading is shared across these hits: <span class="when-sink">{{ scale_text(view.vmax) }}</span><span class="when-no-sink">{{ scale_text(view.vmax_without_first) }}</span>, hover a token for its value</p>
+<p class="scale">shading is shared across these hits: {% call(vmax) sink_views(view.scale) %}red {{ "%.2f"|format(-vmax) }} to green {{ "%+.2f"|format(vmax) }}{% endcall %}, hover a token for its value</p>
 {% call details(view.hits|length ~ " sampled hits in context", true) %}
 {{ hits_html|safe }}
 {%- endcall %}

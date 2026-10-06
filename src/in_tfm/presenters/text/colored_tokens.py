@@ -17,7 +17,7 @@ from jaxtyping import Float
 from matplotlib.colors import Colormap
 
 from ...colormaps import token_cmap_dark, token_cmap_light
-from .views import TokenColors, TokenView
+from .views import SinkViews, TokenColors, TokenView
 
 SENTENCEPIECE_SPACE = "\u2581"
 BYTE_LEVEL_BPE_SPACE = "\u0120"
@@ -47,16 +47,13 @@ def display_text(token: str) -> str:
 def token_views(
     tokens: Sequence[str],
     values: Float[np.ndarray, "n"],
-    vmax: float,
-    vmax_without_first: float,
+    vmax: SinkViews[float],
     firing_idx: int | None = None,
 ) -> list[TokenView]:
     """Tokens in reading order, each shaded by its value on a shared +/-`vmax` scale.
 
-    Every token carries colors for two scales, and the stylesheet picks one:
-    - the default `vmax`, which every token counts toward
-    - `vmax_without_first`, for the view that excludes the attention sink (position 0), which is
-      then drawn unshaded
+    Every token carries colors for both sink views.
+    The one without the sink draws position 0 unshaded.
     """
     return [
         TokenView(
@@ -64,8 +61,10 @@ def token_views(
             title=f"{display_text(tok)}  {float(val):+.3f}",
             firing=i == firing_idx,
             first=i == 0,
-            colors=_token_colors(float(val), vmax),
-            colors_without_first=_token_colors(float(val), vmax_without_first),
+            colors=SinkViews(
+                with_sink=_token_colors(float(val), vmax.with_sink),
+                without_sink=_token_colors(float(val), vmax.without_sink),
+            ),
         )
         for i, (tok, val) in enumerate(zip(tokens, values))
     ]

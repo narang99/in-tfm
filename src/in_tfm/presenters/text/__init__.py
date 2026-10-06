@@ -18,7 +18,7 @@ from ...viz import render_hadamard_tiles
 from ..artifacts import ClusterArtifacts
 from ..base import ClusterHit, HadamardShape
 from .colored_tokens import display_text, symmetric_scale, token_views
-from .views import FiringChip, HitView, RelevanceChip, TextClusterView
+from .views import FiringChip, HitView, RelevanceChip, SinkViews, TextClusterView
 
 
 HADAMARD_TILE_GAP = 32
@@ -60,16 +60,14 @@ class TextPresenter:
         self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
     ) -> TextClusterView:
         relevances = [self._relevance_up_to_firing(h) for h in hits]
-        vmax = symmetric_scale(relevances)
-        vmax_without_first = symmetric_scale([r[1:] for r in relevances])
+        scale = SinkViews(
+            with_sink=symmetric_scale(relevances),
+            without_sink=symmetric_scale([r[1:] for r in relevances]),
+        )
         return TextClusterView(
             firing_tokens=self._firing_token_summary(hits),
-            vmax=vmax,
-            vmax_without_first=vmax_without_first,
-            hits=[
-                self._hit_view(hit, relevance, vmax, vmax_without_first)
-                for hit, relevance in zip(hits, relevances)
-            ],
+            scale=scale,
+            hits=[self._hit_view(hit, relevance, scale) for hit, relevance in zip(hits, relevances)],
             clustered_label=self.clustered_label,
             hadamard_url=self._save_hadamard_tiles(hits, artifacts, hadamard_shape),
         )
@@ -126,17 +124,17 @@ class TextPresenter:
         return self._per_token_relevance(hit)[: hit.token_idx + 1]
 
     def _hit_view(
-        self, hit: ClusterHit, relevance: np.ndarray, vmax: float, vmax_without_first: float
+        self, hit: ClusterHit, relevance: np.ndarray, scale: SinkViews[float]
     ) -> HitView:
         tokens = self._tokens(hit)[: len(relevance)]
         return HitView(
             sample_id=str(hit.sample_id),
             token_idx=hit.token_idx,
-            tokens=token_views(
-                tokens, relevance, vmax, vmax_without_first, firing_idx=len(tokens) - 1
+            tokens=token_views(tokens, relevance, scale, firing_idx=len(tokens) - 1),
+            top_relevance=SinkViews(
+                with_sink=self._top_relevance(tokens, relevance, first=0),
+                without_sink=self._top_relevance(tokens, relevance, first=1),
             ),
-            top_relevance=self._top_relevance(tokens, relevance, first=0),
-            top_relevance_without_first=self._top_relevance(tokens, relevance, first=1),
         )
 
     def _per_token_relevance(self, hit: ClusterHit) -> np.ndarray:

@@ -1,3 +1,4 @@
+{% from "components.html" import sink_views %}
 {% macro css_vars(colors, prefix="") -%}
 --{{ prefix }}bg-l:{{ colors.bg_light }};--{{ prefix }}fg-l:{{ colors.fg_light }};--{{ prefix }}bg-d:{{ colors.bg_dark }};--{{ prefix }}fg-d:{{ colors.fg_dark }}
 {%- endmacro %}
@@ -6,6 +7,6 @@
 {%- endmacro %}
 <div class="hit">
 <div class="hit-tag">sample {{ hit.sample_id }} &middot; token {{ hit.token_idx }}</div>
-<div class="tokens">{% for tok in hit.tokens %}<span class="tok{% if tok.firing %} tok-firing{% endif %}{% if tok.first %} tok-first{% endif %}" style="{{ css_vars(tok.colors) }};{{ css_vars(tok.colors_without_first, "x-") }}" title="{{ tok.title }}">{{ tok.text }}</span>{% endfor %}</div>
-<div class="top-rel"><span class="label">top relevance</span><span class="when-sink">{{ rel_chips(hit.top_relevance) }}</span><span class="when-no-sink">{{ rel_chips(hit.top_relevance_without_first) }}</span></div>
+<div class="tokens">{% for tok in hit.tokens %}<span class="tok{% if tok.firing %} tok-firing{% endif %}{% if tok.first %} tok-first{% endif %}" style="{{ css_vars(tok.colors.with_sink) }};{{ css_vars(tok.colors.without_sink, "x-") }}" title="{{ tok.title }}">{{ tok.text }}</span>{% endfor %}</div>
+<div class="top-rel"><span class="label">top relevance</span>{% call(chips) sink_views(hit.top_relevance) %}{{ rel_chips(chips) }}{% endcall %}</div>
 </div>

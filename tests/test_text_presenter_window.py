@@ -6,7 +6,7 @@ from in_tfm.presenters import ClusterArtifacts
 from in_tfm.presenters.base import ClusterHit
 from in_tfm.presenters.text import TextPresenter
 from in_tfm.presenters.text.colored_tokens import token_views
-from in_tfm.presenters.text.views import HitView
+from in_tfm.presenters.text.views import HitView, SinkViews
 
 
 class FakeTokenizer:
@@ -16,6 +16,10 @@ class FakeTokenizer:
 
 class FakeSource:
     tokenizer = FakeTokenizer()
+
+
+def scale(with_sink: float, without_sink: float) -> SinkViews[float]:
+    return SinkViews(with_sink=with_sink, without_sink=without_sink)
 
 
 def hit_at(token_idx: int, length: int = 60) -> ClusterHit:
@@ -49,14 +53,14 @@ def test_top_relevance_can_leave_out_position_zero():
 
 
 def test_each_token_carries_colors_for_both_views():
-    tokens = token_views(["a", "b"], np.array([5.0, 1.0]), vmax=5.0, vmax_without_first=1.0, firing_idx=1)
+    tokens = token_views(["a", "b"], np.array([5.0, 1.0]), scale(5.0, 1.0), firing_idx=1)
     assert [t.first for t in tokens] == [True, False]
     assert [t.firing for t in tokens] == [False, True]
-    assert tokens[1].colors != tokens[1].colors_without_first
+    assert tokens[1].colors.with_sink != tokens[1].colors.without_sink
 
 
 def test_token_html_has_both_color_sets_and_marks_first_and_firing():
-    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(1, length=2), np.array([5.0, 1.0]), 5.0, 1.0)
+    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(1, length=2), np.array([5.0, 1.0]), scale(5.0, 1.0))
     html = render_template("text_hit.html", hit=hit_view)
     assert html.count("--x-bg-l") == 2
     assert html.count("--bg-l") == 2
@@ -65,7 +69,7 @@ def test_token_html_has_both_color_sets_and_marks_first_and_firing():
 
 
 def test_the_report_shows_both_scales_in_one_page():
-    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(3), np.array([5.0, 0.0, 0.0, 1.0]), 5.0, 1.0)
+    hit_view = TextPresenter(FakeSource())._hit_view(hit_at(3), np.array([5.0, 0.0, 0.0, 1.0]), scale(5.0, 1.0))
     html = render_template("text_hit.html", hit=hit_view)
     assert "when-sink" in html and "when-no-sink" in html
 
@@ -82,8 +86,10 @@ def test_render_writes_artifacts_and_links_them_relative_to_the_report(tmp_path)
 
 
 def test_token_text_is_escaped():
-    tokens = token_views(["<b>"], np.array([1.0]), vmax=1.0, vmax_without_first=1.0)
-    hit_view = HitView(sample_id="s", token_idx=0, tokens=tokens, top_relevance=[], top_relevance_without_first=[])
+    tokens = token_views(["<b>"], np.array([1.0]), scale(1.0, 1.0))
+    hit_view = HitView(
+        sample_id="s", token_idx=0, tokens=tokens, top_relevance=SinkViews(with_sink=[], without_sink=[])
+    )
     html = render_template("text_hit.html", hit=hit_view)
     assert "&lt;b&gt;" in html
     assert "<b>" not in html
