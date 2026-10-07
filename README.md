@@ -83,9 +83,29 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - conclusion: `leaf` is now the library's default `cluster_selection_method`, and hit
     selection stays on raw `q_proj`
 
+## Onboarding a model
+
+- A model joins the pipeline as an adapter in `src/in_tfm/models/`, satisfying `ModelAdapter`
+  - `get_model()` returns the raw module the layer getters index into, for example `hf_model.model`
+  - `patch_for_attn_lrp()` patches the model for AttnLRP, and is called once, before NNsight wraps the model
+    - NNsight stores each module's `forward` when it wraps, so a model wrapped first silently skips the patches
+    - the adapters raise if the order is wrong
+  - `make_source(samples)` and `make_presenter(source, clustered_label)` pick the modality
+- Layer getters are not part of the adapter
+  - they live in `layers.py`, and the script picks one per experiment
+  - the Hadamard weight is `layer_getter(model).weight`, so there is no accessor for it
+- The adapters so far
+  - `gemma3.py`, and `rad_dino.py`
+  - `attn_only_2l/`, a directory since it carries its own model code in `model.py`
+- A decoder language model only needs `DecoderTextAdapter` and a patch
+  - see `gemma3.py`
+- `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads
+  - add the new adapter to its fixture
+
 ## Repo layout
 
 - `src/in_tfm/`: the library
+  - `models/`: one adapter per model, see "Onboarding a model"
 - `scripts/run_neuron_report.py`: vision (DICOM) reports
 - `scripts/run_llm_neuron_report.py`: language model reports
 - `experiments/`: ablation results (git-ignored - see each README for how to regenerate)
