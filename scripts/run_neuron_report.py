@@ -4,9 +4,9 @@ activations once for a batch of DICOMs, then for each neuron find its activation
 elbow detection, cluster its Hadamard products, and write an AttnLRP report.
 
 Activations are captured once and reused across every neuron in the range (thresholding and
-clustering are per-neuron, but the underlying fc2 input/output tensors aren't), and the AttnLRP
-model is loaded once and patched a single time since patch_for_attn_lrp mutates process-wide
-state (see its docstring) - reloading/repatching per neuron would be redundant.
+clustering are per-neuron, but the underlying fc2 input/output tensors aren't), and the model is
+patched for AttnLRP a single time, before NNsight wraps it, since the patch mutates process-wide state (see
+RadDinoAdapter.patch_for_attn_lrp) - repatching per neuron would be redundant.
 
 Clustering picks a GPU backend when one is available - see in_tfm.clustering. On CPU, keep
 --n-dicoms small: hit count grows linearly with it while clustering cost grows with the square
@@ -24,23 +24,18 @@ from pathlib import Path
 
 import torch
 from nnsight import NNsight
-from rad_dino import RadDino
-from transformers import AutoImageProcessor
-from transformers.image_processing_utils import BaseImageProcessor
 
 from in_tfm.activations import get_activations
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.attribution import compute_attnlrp_relevance
-from in_tfm.models.rad_dino import patch_dinov2_for_attn_lrp
-from in_tfm.hadamard import hadamard_products, high_activation_hits
+from in_tfm.models.rad_dino import RadDinoAdapter
+from in_tfm.hadamard import hadamard_products, high_activation_hits, near_square_shape
 from in_tfm.layers import fc2_getter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import ImagePresenter
 from in_tfm.sources import DicomSource
 from in_tfm.threshold import find_activation_threshold
-
-ACT_SHAPE = (48, 64)  # 48*64 == mlp intermediate size (3072); reshape target for hdmd plots
 
 
 @contextmanager
@@ -76,13 +71,6 @@ def neuron_range(args: argparse.Namespace) -> range:
     return range(args.neuron_start, args.neuron_end + 1)
 
 
-def load_model(device: str) -> tuple[NNsight, RadDino, AutoImageProcessor]:
-    processor = AutoImageProcessor.from_pretrained("microsoft/rad-dino")
-    hf_model = RadDino()
-    model = NNsight(hf_model.model).to(device)
-    return model, hf_model, processor
-
-
 def clamp_n_dicoms_to_available(args: argparse.Namespace) -> None:
     available = sum(1 for _ in args.dcm_dir.glob("*.dcm"))
     if args.n_dicoms > available:
@@ -100,15 +88,6 @@ def capture_activations(args: argparse.Namespace, model: NNsight, source: DicomS
         bs=args.batch_size,
         device=args.device,
     )
-
-
-def load_attnlrp_model() -> RadDino:
-    """patch_for_attn_lrp mutates LayerNorm/Dropout at the class level (process-wide, see its
-    docstring), so this only needs to run once and the same patched model is reused for every
-    neuron's report."""
-    lrp_model = RadDino()
-    patch_dinov2_for_attn_lrp(lrp_model.model)
-    return lrp_model
 
 
 def cluster_hadamards(
@@ -151,7 +130,7 @@ def build_hits(
         batch_idx=batch_idx,
         labels=labels,
         hdmds=hdmd,
-        hadamard_shape=ACT_SHAPE,
+        hadamard_shape=near_square_shape(hdmd.shape[1]),
         threshold=threshold,
         elbow_values=elbow_values.numpy(),
         elbow_idx=elbow_idx,
@@ -166,7 +145,7 @@ def process_neuron(
     outputs: torch.Tensor,
     valid_mask: torch.Tensor,
     fc2_weight: torch.Tensor,
-    lrp_model: RadDino,
+    lrp_model: torch.nn.Module,
     source: DicomSource,
     presenter: ImagePresenter,
     args: argparse.Namespace,
@@ -182,7 +161,7 @@ def process_neuron(
     print(f"[neuron {neuron_idx}] {len(batch_idx)} hits above threshold, {n_clusters} clusters")
 
     hits = build_hits(
-        lrp_model.model,
+        lrp_model,
         source,
         presenter,
         sample_ids,
@@ -213,10 +192,12 @@ def main() -> None:
     pipeline_start = time.perf_counter()
 
     with timed("load model"):
-        model, hf_model, processor = load_model(args.device)
+        adapter = RadDinoAdapter.from_pretrained()
 
-    source = DicomSource(args.dcm_dir, processor)
-    presenter = ImagePresenter(processor)
+    adapter.patch_for_attn_lrp()  # before NNsight wraps: it stores each module's forward at wrap time
+    model = NNsight(adapter.get_model()).to(args.device)
+    source = adapter.make_source(args.dcm_dir)
+    presenter = adapter.make_presenter(source, clustered_label="hadamard products")
 
     with timed("capture activations"):
         sample_ids, inputs, outputs, valid_mask = capture_activations(args, model, source)
@@ -226,15 +207,13 @@ def main() -> None:
     # for the hadamard product must match, so free the GPU copy of the model first.
     model.to("cpu")
     empty_cache()
-    fc2_weight = hf_model.model.encoder.layer[args.layer_idx].mlp.fc2.weight
+    fc2_weight = fc2_getter(args.layer_idx)(adapter.get_model()).weight
 
-    with timed("load attnlrp model"):
-        lrp_model = load_attnlrp_model()
 
     for neuron_idx in neuron_range(args):
         process_neuron(
             neuron_idx, sample_ids, inputs, outputs, valid_mask,
-            fc2_weight, lrp_model, source, presenter, args,
+            fc2_weight, adapter.get_model(), source, presenter, args,
         )
 
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
