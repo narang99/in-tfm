@@ -1,11 +1,12 @@
 import pytest
 import torch
 from nnsight import NNsight
-from transformers import Gemma3ForCausalLM, Gemma3TextConfig
+from transformers import Dinov2Config, Dinov2Model, Gemma3ForCausalLM, Gemma3TextConfig
 
-from in_tfm.layers import q_proj_getter
+from in_tfm.layers import fc2_getter, q_proj_getter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, AttnOnlyConfig, AttnOnlyForCausalLM
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.sources import ModelBatch
 
 N_HEADS, HEAD_DIM, HIDDEN, VOCAB, MAX_LENGTH = 2, 4, 8, 20, 6
@@ -99,3 +100,43 @@ def test_nnsight_stores_the_forward_it_wraps():
         assert module(torch.ones(1)).item() == 2.0
     finally:
         del Doubler.forward
+
+
+def tiny_rad_dino_adapter() -> RadDinoAdapter:
+    config = Dinov2Config(
+        hidden_size=HIDDEN,
+        num_hidden_layers=2,
+        num_attention_heads=N_HEADS,
+        mlp_ratio=2,
+        image_size=28,
+        patch_size=14,
+    )
+    return RadDinoAdapter(Dinov2Model(config), processor=object())
+
+
+def test_rad_dino_getter_weight_matches_the_mlp_width():
+    weight = fc2_getter(0)(tiny_rad_dino_adapter().get_model()).weight
+    assert weight.shape == (HIDDEN, 2 * HIDDEN)
+
+
+def test_rad_dino_patch_runs_once(monkeypatch):
+    calls: list[int] = []
+    monkeypatch.setattr("in_tfm.models.rad_dino.patch_dinov2_for_attn_lrp", lambda model: calls.append(1))
+    adapter = tiny_rad_dino_adapter()
+    adapter.patch_for_attn_lrp()
+    adapter.patch_for_attn_lrp()
+    assert calls == [1]
+
+
+def test_rad_dino_source_lists_dicoms_in_sorted_order(tmp_path):
+    for name in ("b.dcm", "a.dcm"):
+        (tmp_path / name).touch()
+    source = tiny_rad_dino_adapter().make_source(tmp_path)
+    assert source.sample_ids() == [str(tmp_path / "a.dcm"), str(tmp_path / "b.dcm")]
+
+
+def test_rad_dino_patching_after_nnsight_wraps_the_model_is_rejected():
+    adapter = tiny_rad_dino_adapter()
+    NNsight(adapter.get_model())
+    with pytest.raises(RuntimeError, match="before wrapping"):
+        adapter.patch_for_attn_lrp()

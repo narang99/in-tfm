@@ -1,13 +1,12 @@
 """Pixel-space attribution for a single MLP neuron: Integrated Gradients, and AttnLRP via lxt.
 
-AttnLRP needs `lxt.efficient` patched onto Dinov2's ops before any forward/backward pass - see
-`patch_for_attn_lrp`. `embs_dinov2.compat` is imported first (below) since `lxt.efficient.core`
-transitively imports a submodule that expects a `pytorch_utils` function newer `transformers`
-versions removed; see that module for why.
+AttnLRP needs `lxt.efficient` patched onto the model's ops before any forward/backward pass.
+Each architecture's patch lives with its adapter in `models`. `compat` is imported first (below)
+since `lxt.efficient.core` transitively imports a submodule that expects a `pytorch_utils`
+function newer `transformers` versions removed; see that module for why.
 """
 
 import types
-from functools import partial
 
 import numpy as np
 import torch
@@ -15,16 +14,7 @@ from captum.attr import NeuronIntegratedGradients
 from jaxtyping import Float
 
 from . import compat  # noqa: F401  (import order matters - see compat.py)
-from lxt.efficient.core import monkey_patch
-from lxt.efficient.patches import (
-    check_already_patched,
-    dropout_forward,
-    layer_norm_forward,
-    non_linear_forward,
-    patch_method,
-    wrap_attention_forward,
-)
-import transformers.models.dinov2.modeling_dinov2 as modeling_dinov2
+from lxt.efficient.patches import check_already_patched, wrap_attention_forward
 from transformers.models.dinov2.modeling_dinov2 import Dinov2Model
 
 from .layers import LayerGetter
@@ -63,37 +53,6 @@ def patch_eager_attention(module: types.ModuleType) -> bool:
         return False
     module.eager_attention_forward = new_forward
     return True
-
-
-def patch_for_attn_lrp(model: Dinov2Model) -> None:
-    """Monkey-patch a RadDino/Dinov2 model in place for AttnLRP.
-
-    lxt.efficient has no built-in support for Dinov2Model, but Dinov2's attention already uses
-    the same ALL_ATTENTION_FUNCTIONS/eager_attention_forward interface as Llama/Qwen/Gemma, so
-    the primitives lxt.efficient.patches ships for those models cover Dinov2 too:
-      - LayerNorm -> identity rule (stop-gradient through mean/std)
-      - the MLP activation -> identity rule (gradient*input reproduces f(x) exactly)
-      - Dropout -> identity, in case .train() is ever used
-      - attention (Q@K^T, attn@V) -> uniform rule, via patch_dinov2_attention
-    nn.Linear/nn.Conv2d and Dinov2's LayerScale (multiply by a learned, input-independent
-    vector) need no patch: plain gradient*input is already a valid LRP rule for anything
-    linear in the input.
-    """
-    # Discovered from the live model rather than hardcoded, so this keeps working if the
-    # checkpoint's config.hidden_act ever resolves to a different ACT2FN class.
-    activation_cls = type(model.encoder.layer[0].mlp.activation)
-
-    patch_map = {
-        torch.nn.LayerNorm: partial(patch_method, layer_norm_forward),
-        torch.nn.Dropout: partial(patch_method, dropout_forward),
-        activation_cls: partial(patch_method, non_linear_forward, keep_original=True),
-        modeling_dinov2: patch_eager_attention,
-    }
-
-    # NOTE: LayerNorm/Dropout are patched at the class level, i.e. process-wide - any other
-    # model sharing this process will also get LRP-flavored LayerNorm/Dropout.
-    model.config._attn_implementation = "eager"
-    monkey_patch(model, patch_map=patch_map, verbose=True)
 
 
 def compute_attnlrp_relevance(

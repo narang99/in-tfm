@@ -31,7 +31,8 @@ from transformers.image_processing_utils import BaseImageProcessor
 from in_tfm.activations import get_activations
 from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
-from in_tfm.attribution import compute_attnlrp_relevance, patch_for_attn_lrp
+from in_tfm.attribution import compute_attnlrp_relevance
+from in_tfm.models.rad_dino import patch_dinov2_for_attn_lrp
 from in_tfm.hadamard import hadamard_products, high_activation_hits
 from in_tfm.layers import fc2_getter
 from in_tfm.neuron_report import NeuronClusterHits
@@ -106,7 +107,7 @@ def load_attnlrp_model() -> RadDino:
     docstring), so this only needs to run once and the same patched model is reused for every
     neuron's report."""
     lrp_model = RadDino()
-    patch_for_attn_lrp(lrp_model.model)
+    patch_dinov2_for_attn_lrp(lrp_model.model)
     return lrp_model
 
 
