@@ -1,0 +1,9 @@
+{% macro details(summary, start_open=false) %}
+<details{% if start_open %} open{% endif %}>
+<summary>{{ summary }}</summary>
+{{ caller() }}
+</details>
+{%- endmacro %}
+{% macro sink_views(pair) -%}
+<span class="when-sink">{{ caller(pair.with_sink) }}</span><span class="when-no-sink">{{ caller(pair.without_sink) }}</span>
+{%- endmacro %}

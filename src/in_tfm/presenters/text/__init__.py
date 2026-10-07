@@ -8,18 +8,17 @@ The attention sink (position 0) counts toward the scale by default, and the repo
 switches to the view that excludes it.
 """
 
-import html
 from collections import Counter
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
-from jaxtyping import Float
 
-from ...html_report import SINK_TOGGLE, details, page
-from ...viz import render_hadamard_tiles, save_image_grid
+from ...html_report import SINK_TOGGLE, page, render_template
+from ...viz import render_hadamard_tiles
+from ..artifacts import ClusterArtifacts
 from ..base import ClusterHit, HadamardShape
-from .colored_tokens import colored_tokens, display_text, symmetric_scale
+from .colored_tokens import display_text, symmetric_scale, token_views
+from .views import FiringChip, HitView, RelevanceChip, SinkViews, TextClusterView
 
 
 HADAMARD_TILE_GAP = 32
@@ -50,28 +49,31 @@ class TextPresenter:
         return SINK_TOGGLE
 
     def render(
-        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
     ) -> str:
+        view = self._cluster_view(hits, artifacts, hadamard_shape)
+        hits_html = "\n".join(render_template("text_hit.html", hit=hit) for hit in view.hits)
+        artifacts.path("hits.html").write_text(page(f"{artifacts.name} hits", hits_html))
+        return render_template("text_cluster.html", view=view, hits_html=hits_html)
+
+    def _cluster_view(
+        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+    ) -> TextClusterView:
         relevances = [self._relevance_up_to_firing(h) for h in hits]
-        vmax = symmetric_scale(relevances)
-        vmax_without_first = symmetric_scale([r[1:] for r in relevances])
-        blocks = "\n".join(
-            self._hit_block(hit, relevance, vmax, vmax_without_first) for hit, relevance in zip(hits, relevances)
+        scale = SinkViews(
+            with_sink=symmetric_scale(relevances),
+            without_sink=symmetric_scale([r[1:] for r in relevances]),
         )
-        (cluster_dir / "hits.html").write_text(page(f"{cluster_dir.name} hits", blocks))
-        return (
-            f'<div class="firing"><span class="label">firing tokens</span>'
-            f"{self._firing_token_summary(hits)}</div>\n"
-            f'<p class="scale">shading is shared across these hits: '
-            + _both_views(_scale_text(vmax), _scale_text(vmax_without_first))
-            + ", hover a token for its value</p>\n"
-            + details(f"{len(hits)} sampled hits in context", blocks, start_open=True)
-            + "\n"
-            + self._hadamard_section(hits, cluster_dir, hadamard_shape)
+        return TextClusterView(
+            firing_tokens=self._firing_token_summary(hits),
+            scale=scale,
+            hits=[self._hit_view(hit, relevance, scale) for hit, relevance in zip(hits, relevances)],
+            clustered_label=self.clustered_label,
+            hadamard_url=self._save_hadamard_tiles(hits, artifacts, hadamard_shape),
         )
 
-    def _hadamard_section(
-        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+    def _save_hadamard_tiles(
+        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
     ) -> str:
         """The vectors that were clustered, one tile per hit in the same order as the hits above.
 
@@ -85,29 +87,21 @@ class TextPresenter:
             [h.hadamard.reshape(hadamard_shape) for h in hits],
             size=(round(tile_height * width / height), tile_height),
         )
-        save_image_grid(
-            tiles,
-            cluster_dir / "hadamard.jpg",
-            cols=4,
-            pad=HADAMARD_TILE_GAP,
-            border=HADAMARD_TILE_GAP,
-        )
-        return details(
-            f"{self.clustered_label} (what was clustered)",
-            f'<img src="{cluster_dir.name}/hadamard.jpg" alt="{self.clustered_label}">',
+        return artifacts.save_grid(
+            tiles, "hadamard.jpg", cols=4, pad=HADAMARD_TILE_GAP, border=HADAMARD_TILE_GAP
         )
 
-    def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> str:
+    def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> list[FiringChip]:
         """What the cluster is actually grouping, in one line - the payoff of clustering at the
         language level rather than the pixel level.
 
         Counted over the sampled hits only, not every member of the cluster.
         """
         counts = Counter(self._firing_token(h) for h in hits)
-        return "".join(
-            f'<span class="chip">{_code(tok)}' + (f'<span class="count">&times;{n}</span>' if n > 1 else "") + "</span>"
+        return [
+            FiringChip(text=_chip_text(tok), count=n)
             for tok, n in counts.most_common(self.top_tokens)
-        )
+        ]
 
     def _tokens(self, hit: ClusterHit) -> list[str]:
         """Decoded from the ids that were actually fed, not from a fresh tokenization.
@@ -129,20 +123,18 @@ class TextPresenter:
         """The whole text from the start, since the firing token only sees what came before it."""
         return self._per_token_relevance(hit)[: hit.token_idx + 1]
 
-    def _hit_block(
-        self, hit: ClusterHit, relevance: np.ndarray, vmax: float, vmax_without_first: float
-    ) -> str:
+    def _hit_view(
+        self, hit: ClusterHit, relevance: np.ndarray, scale: SinkViews[float]
+    ) -> HitView:
         tokens = self._tokens(hit)[: len(relevance)]
-        return (
-            '<div class="hit">\n'
-            f'<div class="hit-tag">sample {html.escape(str(hit.sample_id))} '
-            f"&middot; token {hit.token_idx}</div>\n"
-            + colored_tokens(tokens, relevance, vmax, vmax_without_first, firing_idx=len(tokens) - 1)
-            + '\n<div class="top-rel"><span class="label">top relevance</span>'
-            + _both_views(
-                self._top_relevance(tokens, relevance, first=0), self._top_relevance(tokens, relevance, first=1)
-            )
-            + "</div>\n</div>"
+        return HitView(
+            sample_id=str(hit.sample_id),
+            token_idx=hit.token_idx,
+            tokens=token_views(tokens, relevance, scale, firing_idx=len(tokens) - 1),
+            top_relevance=SinkViews(
+                with_sink=self._top_relevance(tokens, relevance, first=0),
+                without_sink=self._top_relevance(tokens, relevance, first=1),
+            ),
         )
 
     def _per_token_relevance(self, hit: ClusterHit) -> np.ndarray:
@@ -153,29 +145,16 @@ class TextPresenter:
             relevance = relevance[0]
         return relevance.sum(-1)
 
-    def _top_relevance(self, tokens: list[str], relevance: np.ndarray, first: int) -> str:
+    def _top_relevance(
+        self, tokens: list[str], relevance: np.ndarray, first: int
+    ) -> list[RelevanceChip]:
         """Ranked by absolute relevance among positions from `first` on, so `first=1` leaves out
         the attention sink."""
         order = first + np.argsort(-np.abs(relevance[first:]))[: self.top_tokens]
-        return "".join(
-            f'<span class="chip {"pos" if relevance[i] >= 0 else "neg"}">{_code(tokens[i])}'
-            f'<span class="count">{relevance[i]:+.2f}</span></span>'
-            for i in order
-        )
+        return [RelevanceChip(text=_chip_text(tokens[i]), value=float(relevance[i])) for i in order]
 
 
-def _scale_text(vmax: float) -> str:
-    return f"red {-vmax:.2f} to green {vmax:+.2f}"
-
-
-def _both_views(with_sink: str, without_sink: str) -> str:
-    """Both versions are in the page, and the stylesheet shows the one the report's sink toggle
-    has selected."""
-    return f'<span class="when-sink">{with_sink}</span><span class="when-no-sink">{without_sink}</span>'
-
-
-def _code(token: str) -> str:
+def _chip_text(token: str) -> str:
     """Stripped, since a chip has its own padding and a leading SentencePiece space would show
     as a stray gap; a bare-space token keeps a visible middle dot instead of vanishing."""
-    text = display_text(token).strip()
-    return f"<code>{html.escape(text or '\u00b7')}</code>"
+    return display_text(token).strip() or "\u00b7"

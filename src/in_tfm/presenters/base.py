@@ -5,7 +5,6 @@ importing each other through a half-initialized package.
 """
 
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -14,6 +13,7 @@ from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict
 
 from ..sources import SampleId
+from .artifacts import ClusterArtifacts
 
 
 HadamardShape = tuple[int, int]
@@ -42,9 +42,9 @@ class ClusterHit(BaseModel):
 @runtime_checkable
 class ClusterPresenter(Protocol):
     def render(
-        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
     ) -> str:
-        """Writes artifact files into cluster_dir; returns the html fragment linking them."""
+        """Writes artifact files through `artifacts`; returns the html fragment linking them."""
         ...
 
     def page_controls(self) -> str:

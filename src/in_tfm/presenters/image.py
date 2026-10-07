@@ -1,16 +1,23 @@
 """Pixel-space rendering of a cluster's hits."""
 
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
 import torch
+from pydantic import BaseModel
 from transformers.image_processing_utils import BaseImageProcessor
 
 from ..dicom import inv_tfm
-from ..html_report import details
-from ..viz import mk_overlay, render_hadamard_tiles, save_image_grid, to_pil
+from ..html_report import render_template
+from ..viz import mk_overlay, render_hadamard_tiles, to_pil
+from .artifacts import ClusterArtifacts
 from .base import ClusterHit, HadamardShape
+
+
+class ImageClusterView(BaseModel):
+    original_url: str
+    overlay_url: str
+    hadamard_url: str
 
 
 class ImagePresenter:
@@ -24,7 +31,7 @@ class ImagePresenter:
         return ""
 
     def render(
-        self, hits: Sequence[ClusterHit], cluster_dir: Path, hadamard_shape: HadamardShape
+        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
     ) -> str:
         originals = [to_pil(self._denormalized(h), (500, 500)) for h in hits]
         overlays = [
@@ -32,17 +39,12 @@ class ImagePresenter:
             for h in hits
         ]
         tiles = render_hadamard_tiles([h.hadamard.reshape(hadamard_shape) for h in hits])
-
-        save_image_grid(originals, cluster_dir / "original.jpg")
-        save_image_grid(overlays, cluster_dir / "overlay.jpg")
-        save_image_grid(tiles, cluster_dir / "hadamard.jpg")
-
-        name = cluster_dir.name
-        return (
-            f'<img src="{name}/original.jpg" alt="original">\n'
-            f'<img src="{name}/overlay.jpg" alt="overlay">\n'
-            + details("hadamard patterns", f'<img src="{name}/hadamard.jpg" alt="hadamard">')
+        view = ImageClusterView(
+            original_url=artifacts.save_grid(originals, "original.jpg"),
+            overlay_url=artifacts.save_grid(overlays, "overlay.jpg"),
+            hadamard_url=artifacts.save_grid(tiles, "hadamard.jpg"),
         )
+        return render_template("image_cluster.html", view=view)
 
     def _denormalized(self, hit: ClusterHit) -> np.ndarray:
         """The model input with the processor's mean/std undone - what the overlay is blended

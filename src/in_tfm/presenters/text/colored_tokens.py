@@ -1,16 +1,15 @@
-"""A heatmap drawn over running text: one span per token, shaded by that token's value.
+"""The values behind a heatmap drawn over running text: one view per token, shaded by its value.
 
-This is circuitsvis' `ColoredTokens` idea - shaded tokens, hover for the number - but emitted
-as static html instead of rendered by a CDN javascript import. These reports get zipped off a
+This is circuitsvis' `ColoredTokens` idea - shaded tokens, hover for the number - but the page it
+feeds is static html instead of a CDN javascript import. These reports get zipped off a
 Colab box and read offline, and a report that needs the network to show its main content is not
 worth the tooltip polish.
 
 Colors keep the image overlays' red/green convention, so a green token and a green pixel mean
 the same thing across both report types - see `token_cmap_light` for why the neutral midpoint
-differs. The span class names are styled by `html_report.REPORT_CSS`.
+differs. The span class names are styled by `report_templates/report.css`.
 """
 
-import html
 from collections.abc import Sequence
 
 import numpy as np
@@ -18,6 +17,7 @@ from jaxtyping import Float
 from matplotlib.colors import Colormap
 
 from ...colormaps import token_cmap_dark, token_cmap_light
+from .views import SinkViews, TokenColors, TokenView
 
 SENTENCEPIECE_SPACE = "\u2581"
 BYTE_LEVEL_BPE_SPACE = "\u0120"
@@ -44,48 +44,39 @@ def display_text(token: str) -> str:
     return spaced.replace(BYTE_LEVEL_BPE_NEWLINE, "\n").replace(BYTE_LEVEL_BPE_TAB, "\t").replace("\n", "↵")
 
 
-def colored_tokens(
+def token_views(
     tokens: Sequence[str],
     values: Float[np.ndarray, "n"],
-    vmax: float,
-    vmax_without_first: float,
+    vmax: SinkViews[float],
     firing_idx: int | None = None,
-) -> str:
+) -> list[TokenView]:
     """Tokens in reading order, each shaded by its value on a shared +/-`vmax` scale.
 
-    Every span carries colors for two scales, and the stylesheet picks one:
-    - the default `vmax`, which every token counts toward
-    - `vmax_without_first`, for the view that excludes the attention sink (position 0), which is
-      then drawn unshaded
+    Every token carries colors for both sink views.
+    The one without the sink draws position 0 unshaded.
     """
-    spans = [
-        _token_span(tok, float(val), vmax, vmax_without_first, firing=(i == firing_idx), first=(i == 0))
+    return [
+        TokenView(
+            text=display_text(tok),
+            title=f"{display_text(tok)}  {float(val):+.3f}",
+            firing=i == firing_idx,
+            first=i == 0,
+            colors=SinkViews(
+                with_sink=_token_colors(float(val), vmax.with_sink),
+                without_sink=_token_colors(float(val), vmax.without_sink),
+            ),
+        )
         for i, (tok, val) in enumerate(zip(tokens, values))
     ]
-    return f'<div class="tokens">{"".join(spans)}</div>'
 
 
-def _token_span(token: str, value: float, vmax: float, vmax_without_first: float, firing: bool, first: bool) -> str:
-    classes = ["tok"] + (["tok-firing"] if firing else []) + (["tok-first"] if first else [])
-    style = f"{_token_colors(value, vmax)};{_token_colors(value, vmax_without_first, prefix='x-')}"
-    title = f"{display_text(token)}  {value:+.3f}"
-    return (
-        f'<span class="{" ".join(classes)}" style="{style}"'
-        f' title="{html.escape(title, quote=True)}">{html.escape(display_text(token))}</span>'
-    )
-
-
-def _token_colors(value: float, vmax: float, prefix: str = "") -> str:
-    """Light- and dark-mode colors as custom properties, picked by a media query in REPORT_CSS.
-
-    The color has to live on the element (it is per token), but a media query cannot reach into
-    an inline `background`, so the span ships both and the stylesheet chooses.
-    """
+def _token_colors(value: float, vmax: float) -> TokenColors:
+    """Light and dark colors both, since a media query cannot reach into an inline `background`.
+    The template ships both on the element as custom properties and the stylesheet chooses."""
     light = _hex(token_cmap_light, value, vmax)
     dark = _hex(token_cmap_dark, value, vmax)
-    return (
-        f"--{prefix}bg-l:{light};--{prefix}fg-l:{_readable_fg(light)};"
-        f"--{prefix}bg-d:{dark};--{prefix}fg-d:{_readable_fg(dark)}"
+    return TokenColors(
+        bg_light=light, fg_light=_readable_fg(light), bg_dark=dark, fg_dark=_readable_fg(dark)
     )
 
 

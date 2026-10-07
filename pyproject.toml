@@ -12,6 +12,7 @@ dependencies = [
     "datasets>=2.14",
     "hdbscan>=0.8.39",
     "jaxtyping>=0.3.11",
+    "jinja2>=3.0",
     "lxt>=2.1",
     "matplotlib>=3.8",
     "nnsight>=0.7.0",
