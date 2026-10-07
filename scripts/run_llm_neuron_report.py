@@ -26,10 +26,8 @@ from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from in_tfm.attn_only import load_attn_only_2l
 from in_tfm.attribution import (
     compute_attnlrp_relevance,
-    patch_attn_only_for_attn_lrp,
     patch_gemma3_for_attn_lrp,
 )
 from in_tfm.bucketing import bucketed_sample, merged_bucket_edges
@@ -37,6 +35,8 @@ from in_tfm.clustering import cluster_labels
 from in_tfm.device import default_device, empty_cache
 from in_tfm.hadamard import hadamard_from_rows, high_activation_hits, near_square_shape, normalized_rows
 from in_tfm.layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
+from in_tfm.models.attn_only_2l import load_attn_only_2l
+from in_tfm.models.attn_only_2l.adapter import patch_attn_only_for_attn_lrp
 from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.presenters import TextPresenter
