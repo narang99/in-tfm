@@ -1,4 +1,4 @@
-# Run with: python scripts/run_llm_neuron_report.py --config configs/attn_only_2l_q_proj.yaml
+# Run with: python scripts/run_neuron_report.py --config configs/attn_only_2l_q_proj.yaml
 # Any flag overrides the file, e.g. --clustering.min-cluster-size 10
 model: self/attn-only-2l
 target: q_proj

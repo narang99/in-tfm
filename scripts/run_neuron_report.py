@@ -1,10 +1,17 @@
 #!/usr/bin/env python
-"""Neuron reports for a vision model (rad-dino) over a directory of DICOMs.
+"""Neuron reports for any onboarded model: a language model over wikitext, or rad-dino over DICOMs.
 
-Everything after loading the samples is `in_tfm.neuron_run.run_neuron_reports`, shared with
-run_llm_neuron_report.py. Settings are in `in_tfm.run_config.RunConfig`:
+The model name decides the modality, and everything after loading the samples is
+`in_tfm.neuron_run.run_neuron_reports`. Settings are in `in_tfm.run_config.RunConfig`, with
+defaults from `--config <yaml>` (see `configs/`) and flags on top:
 
     python scripts/run_neuron_report.py --config configs/rad_dino_fc2.yaml --image.n-dicoms 8
+    python scripts/run_neuron_report.py --config configs/gemma3_down_proj.yaml --neurons 90
+
+Clusters group positions by *which input dimensions drove the activation*, so a cluster is a
+claim about what kind of input the neuron responds to. The report shows the firing token or
+image region for each cluster so that claim is readable at a glance. See in_tfm.sources for
+why text hands the model embeddings rather than token ids.
 
 Clustering picks a GPU backend when one is available, see in_tfm.clustering. On CPU, keep
 `--image.n-dicoms` small: hit count grows linearly with it while clustering cost grows with the
@@ -16,26 +23,49 @@ for the exploratory version (elbow plot, spot-checking clusters) this distills.
 
 import sys
 import time
+from pathlib import Path
+from typing import Any
 
+from in_tfm.models import ModelAdapter
+from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
+from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
-from in_tfm.run_config import ModelName, load_run_config
+from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources import dicom_paths
+from in_tfm.text_corpus import load_texts
+
+
+def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
+    match config.model:
+        case ModelName.GEMMA3_270M:
+            return Gemma3Adapter.from_pretrained(config.model.value, config.text.max_length)
+        case ModelName.ATTN_ONLY_2L:
+            return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
+        case ModelName.RAD_DINO:
+            return RadDinoAdapter.from_pretrained()
+
+
+def load_samples(config: RunConfig) -> list[str] | list[Path]:
+    if config.modality == "text":
+        texts = load_texts(config.text, config.seed)
+        print(f"loaded {len(texts)} {config.text.unit}s")
+        return texts
+    paths = dicom_paths(config.image.dcm_dir, config.image.n_dicoms)
+    print(f"found {len(paths)} dicoms in {config.image.dcm_dir} (requested up to {config.image.n_dicoms})")
+    return paths
 
 
 def main() -> None:
     pipeline_start = time.perf_counter()
     config = load_run_config(sys.argv[1:])
-    if config.model is not ModelName.RAD_DINO:
-        sys.exit(f"{config.model.value} reads text, use run_llm_neuron_report.py")
 
-    paths = dicom_paths(config.image.dcm_dir, config.image.n_dicoms)
-    print(f"found {len(paths)} dicoms in {config.image.dcm_dir} (requested up to {config.image.n_dicoms})")
-
+    with timed("load samples"):
+        samples = load_samples(config)
     with timed("load model"):
-        adapter = RadDinoAdapter.from_pretrained()
+        adapter = load_adapter(config)
 
-    run_neuron_reports(config, adapter, paths)
+    run_neuron_reports(config, adapter, samples)
     print(f"[total] {time.perf_counter() - pipeline_start:.2f}s")
 
 

@@ -128,7 +128,7 @@ class RunConfig(BaseSettings):
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
-    out_dir: Path = Path("reports_llm")
+    out_dir: Path = Path("reports")
     device: str = Field(default_factory=default_device)
     text: TextDataConfig = TextDataConfig()
     image: ImageDataConfig = ImageDataConfig()

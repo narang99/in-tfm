@@ -194,7 +194,7 @@ class TextSource:
         is what lets both passes speak the same coordinates.
 
         The cost is attention over `max_length` columns even for a short text. Cheap when the
-        corpus is filtered to long samples (see run_llm_neuron_report.load_texts), wasteful
+        corpus is filtered to long samples (see text_corpus.load_texts), wasteful
         when it is not - `max_length` is the knob.
         """
         return self.tokenizer(

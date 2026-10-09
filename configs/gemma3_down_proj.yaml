@@ -1,0 +1,7 @@
+# Run with: python scripts/run_neuron_report.py --config configs/gemma3_down_proj.yaml
+# The defaults written out, as a starting point to copy.
+model: google/gemma-3-270m
+target: down_proj
+layer_idx: 10
+neuron_start: 90
+neuron_end: 90

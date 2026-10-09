@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Elbow vs bucketed hit selection, on the same scan, with the same budget.
 
-- Takes the flags of `run_llm_neuron_report.py` (`--hits.method` is ignored, both are run).
+- Takes the flags of `run_neuron_report.py` (`--hits.method` is ignored, both are run).
 - Skips attribution and rendering: only selection, gather and clustering matter here.
 - Writes `ablation.json` and `ablation.md` to `--out-dir`.
 """
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
-import run_llm_neuron_report as llm
+import run_neuron_report as report
 from in_tfm.bucketing import merged_bucket_ids
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
@@ -23,6 +23,7 @@ from in_tfm.hit_selection import HitSelection, select_hits
 from in_tfm.neuron_capture import ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run
 from in_tfm.run_config import HitSelectionConfig, load_run_config
+from in_tfm.text_corpus import load_texts
 
 MODES: dict[str, dict] = {
     "elbow": {"method": "elbow"},
@@ -227,8 +228,8 @@ def markdown_table(results: list[ModeResult] | list[BucketRow] | list[CoverageRo
 def main() -> None:
     config = load_run_config(sys.argv[1:])
     neuron_idxs = config.neuron_idxs
-    texts = llm.load_texts(config.text, config.seed)
-    adapter = llm.load_adapter(config)
+    texts = load_texts(config.text, config.seed)
+    adapter = report.load_adapter(config)
     run = prepare_run(config, adapter, texts)
     tokenizer = adapter.tokenizer
     capture = run.capture
