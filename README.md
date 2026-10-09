@@ -108,6 +108,10 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - `models/`: one adapter per model, see "Onboarding a model"
 - `scripts/run_neuron_report.py`: vision (DICOM) reports
 - `scripts/run_llm_neuron_report.py`: language model reports
+  - settings live in `src/in_tfm/run_config.py`
+  - `--config configs/<file>.yaml` sets defaults, and flags override them
+  - nested sections take dotted flags, e.g. `--clustering.min-cluster-size 20`
+  - repeat a list flag per value, e.g. `--neurons 5 --neurons 7`
 - `experiments/`: ablation results (git-ignored - see each README for how to regenerate)
 - `PLAN.md`, `COLAB_PLAN.md`: the vision-to-language port plan and the Colab setup notes
 - `TODO.md`: open questions and known rough edges
