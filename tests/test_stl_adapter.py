@@ -84,3 +84,9 @@ def test_hub_images_are_rgb_pairs():
     image, label = HubImages([{"image": gray, "label": 4}])[0]
     assert image.mode == "RGB"
     assert label == 4
+
+
+def test_positions_are_counted_on_the_models_own_device():
+    """The pipeline moves the model to the accelerator before it builds the source."""
+    model = StlInception().to("meta")
+    assert tokens_in_layer(model, conv_getter(LAYER)(model)) == 24 * 24
