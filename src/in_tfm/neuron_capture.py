@@ -32,6 +32,7 @@ from .activations import cat_captures
 from .device import default_device, empty_cache
 from .layers import LayerGetter
 from .sources import SampleId, SampleSource
+from .token_layout import IdentityLayout, TokenLayout
 
 
 class ScanResult(BaseModel):
@@ -91,7 +92,9 @@ class NeuronCapture:
         neuron_idxs: Sequence[int],
         batch_size: int = 8,
         device: str | None = None,
+        layout: TokenLayout | None = None,
     ) -> None:
+        self.layout = layout or IdentityLayout()
         self.device = device or default_device()
         self.model = model.to(self.device)
         self.source = source
@@ -182,7 +185,7 @@ class NeuronCapture:
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
-        return inputs.detach(), outputs.detach(), batch.valid_mask
+        return self.layout.inputs(inputs.detach()), self.layout.outputs(outputs.detach()), batch.valid_mask
 
     def _release(self) -> None:
         empty_cache()
