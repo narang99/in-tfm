@@ -70,3 +70,11 @@ def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(ad
     relevance = compute_deeplift_relevance(model, batch, conv_getter(LAYER), neuron, token)
     assert relevance.sum() == pytest.approx((seen[0] - seen[1]).item(), rel=1e-3, abs=1e-4)
 
+
+def test_hub_images_are_rgb_pairs():
+    from in_tfm.models.stl_inception.source import HubImages
+
+    gray = Image.fromarray(np.zeros((96, 96), dtype=np.uint8))
+    image, label = HubImages([{"image": gray, "label": 4}])[0]
+    assert image.mode == "RGB"
+    assert label == 4

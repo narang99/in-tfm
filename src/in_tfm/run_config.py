@@ -86,7 +86,7 @@ class ImageDataConfig(Section):
 
 
 class StlDataConfig(Section):
-    root: Path = Path("data/stl10")
+    dataset: str = Field("tanganke/stl10", description="hf dataset with `image` and `label` columns, 96x96")
     split: Literal["train", "test"] = "test"
     n_images: int = Field(1000, description="the first n images of the split in dataset order")
     checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_stl.py, random weights if unset")

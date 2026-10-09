@@ -1,12 +1,19 @@
 import torch
-from torchvision.datasets import STL10
+from datasets import load_dataset
 
 from ...attribution import compute_deeplift_relevance
 from ...layers import conv_getter
 from ...presenters import ImagePresenter
 from ..base import reject_nnsight_wrapped
 from .model import StlInception
-from .source import ImageDataset, StlNormalization, StlSource
+from .source import HubImages, ImageDataset, StlNormalization, StlSource
+
+
+def load_model(checkpoint: str | None) -> StlInception:
+    model = StlInception()
+    if checkpoint is not None:
+        model.load_state_dict(torch.load(checkpoint, map_location="cpu")["model"])
+    return model.eval()
 
 IMAGE_SIZE = 96
 
@@ -36,12 +43,10 @@ class StlInceptionAdapter:
 
     @classmethod
     def from_pretrained(
-        cls, layer_name: str, root: str, split: str, checkpoint: str | None = None
+        cls, layer_name: str, dataset: str, split: str, checkpoint: str | None = None
     ) -> "StlInceptionAdapter":
-        model = StlInception()
-        if checkpoint is not None:
-            model.load_state_dict(torch.load(checkpoint, map_location="cpu")["model"])
-        return cls(model, layer_name, STL10(root=root, split=split, download=True), split)
+        model = load_model(checkpoint)
+        return cls(model, layer_name, HubImages(load_dataset(dataset, split=split)), split)
 
     def get_model(self) -> StlInception:
         return self.model
