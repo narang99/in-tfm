@@ -18,11 +18,25 @@ eval_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize
 
 
 class ImageDataset(Protocol):
-    """What torchvision's `STL10` offers, so tests can hand in a few synthetic images."""
+    """What `HubImages` offers, so tests can hand in a few synthetic images."""
 
     def __len__(self) -> int: ...
 
     def __getitem__(self, index: int) -> tuple[Image.Image, int]: ...
+
+
+class HubImages:
+    """A Hugging Face image classification split, as `(image, label)` pairs."""
+
+    def __init__(self, split) -> None:
+        self.split = split
+
+    def __len__(self) -> int:
+        return len(self.split)
+
+    def __getitem__(self, index: int) -> tuple[Image.Image, int]:
+        row = self.split[index]
+        return row["image"].convert("RGB"), row["label"]
 
 
 class StlNormalization:
