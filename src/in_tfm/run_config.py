@@ -29,14 +29,16 @@ class ModelName(StrEnum):
     GEMMA3_270M = "google/gemma-3-270m"
     ATTN_ONLY_2L = "self/attn-only-2l"
     RAD_DINO = "microsoft/rad-dino"
+    STL_INCEPTION = "self/stl-inception"
 
 
-Modality = Literal["text", "image"]
+Modality = Literal["text", "image", "stl"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.RAD_DINO: "image",
+    ModelName.STL_INCEPTION: "stl",
 }
 
 
@@ -45,12 +47,14 @@ class Target(StrEnum):
     Q_PROJ = "q_proj"
     K_PROJ = "k_proj"
     FC2 = "fc2"
+    CONV = "conv"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.GEMMA3_270M: {Target.DOWN_PROJ, Target.Q_PROJ, Target.K_PROJ},
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
+    ModelName.STL_INCEPTION: {Target.CONV},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -79,6 +83,13 @@ class TextDataConfig(Section):
 class ImageDataConfig(Section):
     dcm_dir: Path = Path("dicoms")
     n_dicoms: int = Field(1000, description="the first n in sorted file order, all of them if there are fewer")
+
+
+class StlDataConfig(Section):
+    root: Path = Path("data/stl10")
+    split: Literal["train", "test"] = "test"
+    n_images: int = Field(1000, description="the first n images of the split in dataset order")
+    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_stl.py, random weights if unset")
 
 
 class HitSelectionConfig(Section):
@@ -120,6 +131,9 @@ class RunConfig(BaseSettings):
     model: ModelName = Field(ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l")
     target: Target = Field(Target.DOWN_PROJ, description="down_proj: MLP neurons. q_proj / k_proj: neuron index = (kv_)head * head_dim + dim")
     layer_idx: int = 10
+    layer_name: str | None = Field(
+        None, description="conv only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
+    )
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
     neuron_end: int = Field(90, description="inclusive")
@@ -132,6 +146,7 @@ class RunConfig(BaseSettings):
     device: str = Field(default_factory=default_device)
     text: TextDataConfig = TextDataConfig()
     image: ImageDataConfig = ImageDataConfig()
+    stl: StlDataConfig = StlDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -157,11 +172,17 @@ class RunConfig(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def conv_target_names_its_layer(self) -> "RunConfig":
+        if self.target is Target.CONV and self.layer_name is None:
+            raise ValueError("the conv target needs layer_name, a dotted submodule path")
+        return self
+
+    @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        other = "image" if self.modality == "text" else "text"
-        if other in self.model_fields_set:
-            raise ValueError(f"{self.model.value} reads {self.modality} data, but the {other} section was set")
+        others = {"text", "image", "stl"} - {self.modality}
+        if wrong := others & self.model_fields_set:
+            raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self
 
     @property

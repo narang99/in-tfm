@@ -30,6 +30,7 @@ from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.rad_dino import RadDinoAdapter
+from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources import dicom_paths
@@ -44,9 +45,15 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
         case ModelName.RAD_DINO:
             return RadDinoAdapter.from_pretrained()
+        case ModelName.STL_INCEPTION:
+            return StlInceptionAdapter.from_pretrained(
+                config.layer_name, str(config.stl.root), config.stl.split, config.stl.checkpoint
+            )
 
 
-def load_samples(config: RunConfig) -> list[str] | list[Path]:
+def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int]:
+    if config.modality == "stl":
+        return list(range(config.stl.n_images))
     if config.modality == "text":
         texts = load_texts(config.text, config.seed)
         print(f"loaded {len(texts)} {config.text.unit}s")

@@ -13,18 +13,18 @@ from jaxtyping import Float
 from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 
-from .attribution import compute_attnlrp_relevance
 from .clustering import cluster_labels
 from .device import empty_cache
 from .hadamard import hadamard_from_rows, near_square_shape, normalized_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
-from .neuron_report import NeuronClusterHits
+from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
 from .run_config import Polarity, RunConfig, Target
 from .sources import SampleSource
+from .token_layout import ConvLayout, IdentityLayout, TokenLayout
 
 
 @contextmanager
@@ -41,7 +41,13 @@ def layer_getter_for(config: RunConfig) -> LayerGetter:
         Target.K_PROJ: k_proj_getter,
         Target.FC2: fc2_getter,
     }
+    if config.target is Target.CONV:
+        return conv_getter(config.layer_name)
     return getters[config.target](config.layer_idx)
+
+
+def layout_for(layer: torch.nn.Module) -> TokenLayout:
+    return ConvLayout(layer) if isinstance(layer, torch.nn.Conv2d) else IdentityLayout()
 
 
 def polarities_for(config: RunConfig) -> list[Polarity]:
@@ -62,6 +68,8 @@ class PreparedRun(BaseModel):
     source: SampleSource
     presenter: ClusterPresenter
     capture: NeuronCapture
+    layout: TokenLayout
+    attr_fn: AttrFn
 
 
 def prepare_run[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], samples: SamplesT) -> PreparedRun:
@@ -71,8 +79,14 @@ def prepare_run[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], sa
     source = adapter.make_source(samples)
     clustered_label = "normalised inputs" if config.clustering.on == "input" else "hadamard products"
     presenter = adapter.make_presenter(source, clustered_label)
-    capture = NeuronCapture(model, source, layer_getter_for(config), config.neuron_idxs, config.batch_size, config.device)
-    return PreparedRun(module=module, model=model, source=source, presenter=presenter, capture=capture)
+    layout = layout_for(layer_getter_for(config)(module))
+    capture = NeuronCapture(
+        model, source, layer_getter_for(config), config.neuron_idxs, config.batch_size, config.device, layout
+    )
+    return PreparedRun(
+        module=module, model=model, source=source, presenter=presenter, capture=capture, layout=layout,
+        attr_fn=adapter.attr_fn,
+    )
 
 
 def report_neuron(
@@ -114,7 +128,7 @@ def report_neuron(
         report_path = hits.write_report(
             config.out_dir,
             name=report_name(neuron_idx, polarity),
-            attr_fn=compute_attnlrp_relevance,
+            attr_fn=run.attr_fn,
             max_n=config.report.max_hits_per_cluster,
             min_uniq_images=config.report.min_uniq_samples_per_cluster,
         )
@@ -139,7 +153,7 @@ def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[Sample
 
     run.model.to("cpu")
     empty_cache()
-    weight = layer_getter_for(config)(run.module).weight
+    weight = run.layout.weight(layer_getter_for(config)(run.module).weight)
 
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(

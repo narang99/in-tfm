@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import torch
 from transformers import PreTrainedTokenizerBase
 
+from ..attribution import compute_attnlrp_relevance
 from ..presenters import TextPresenter
 from ..sources import TextSource
 from .base import reject_nnsight_wrapped
@@ -13,6 +14,8 @@ from .base import reject_nnsight_wrapped
 
 class DecoderTextAdapter(ABC):
     """Wraps an HF-shaped causal LM, whose decoder stack is `hf_model.model`."""
+
+    attr_fn = staticmethod(compute_attnlrp_relevance)
 
     def __init__(
         self,

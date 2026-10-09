@@ -9,13 +9,14 @@
 - The conversion runs on saved tensors after capture, so the model's own forward is untouched.
 """
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 
 
+@runtime_checkable
 class TokenLayout(Protocol):
     def inputs(self, layer_input: torch.Tensor) -> Float[torch.Tensor, "batch seq hidden"]: ...
 
