@@ -47,7 +47,7 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
             return RadDinoAdapter.from_pretrained()
         case ModelName.STL_INCEPTION:
             return StlInceptionAdapter.from_pretrained(
-                config.layer_name, str(config.stl.root), config.stl.split, config.stl.checkpoint
+                config.layer_name, config.stl.dataset, config.stl.split, config.stl.checkpoint
             )
 
 

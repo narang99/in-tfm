@@ -75,3 +75,12 @@ def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(ad
 def test_conv_target_needs_a_layer_name():
     with pytest.raises(ValueError, match="layer_name"):
         load_run_config(["--model", "self/stl-inception", "--target", "conv"])
+
+
+def test_hub_images_are_rgb_pairs():
+    from in_tfm.models.stl_inception.source import HubImages
+
+    gray = Image.fromarray(np.zeros((96, 96), dtype=np.uint8))
+    image, label = HubImages([{"image": gray, "label": 4}])[0]
+    assert image.mode == "RGB"
+    assert label == 4
