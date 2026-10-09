@@ -137,9 +137,10 @@ print(len(list(out.glob("*.dcm"))), "dicoms")
 ```python
 !cd /content/in-tfm && git pull -q
 !MPLBACKEND=Agg python /content/in-tfm/scripts/run_neuron_report.py \
-    --dcm-dir /content/dicoms --out-dir /content/reports \
-    --n-dicoms 8 --batch-size 4 --neuron-start 90 --neuron-end 90 \
-    --max-hits-per-cluster 4 --min-cluster-size 10
+    --config /content/in-tfm/configs/rad_dino_fc2.yaml \
+    --image.dcm-dir /content/dicoms --out-dir /content/reports \
+    --image.n-dicoms 8 --batch-size 4 --neuron-start 90 --neuron-end 90 \
+    --report.max-hits-per-cluster 4 --clustering.min-cluster-size 10
 ```
 
 Each `!python` is a fresh subprocess, which keeps `patch_for_attn_lrp`'s process-wide

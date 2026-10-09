@@ -106,8 +106,17 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
 
 - `src/in_tfm/`: the library
   - `models/`: one adapter per model, see "Onboarding a model"
-- `scripts/run_neuron_report.py`: vision (DICOM) reports
-- `scripts/run_llm_neuron_report.py`: language model reports
+  - `neuron_run.py`: the scan, select, gather, cluster and report sequence every script runs
+  - `hit_selection.py`: elbow or bucketed choice of the positions to cluster
+  - `text_corpus.py`: wikitext as paragraphs or articles
+- `scripts/run_neuron_report.py`: neuron reports for any onboarded model
+  - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs
+  - settings live in `src/in_tfm/run_config.py`
+  - `--config configs/<file>.yaml` sets defaults, and flags override them
+  - nested sections take dotted flags, e.g. `--clustering.min-cluster-size 20`
+  - repeat a list flag per value, e.g. `--neurons 5 --neurons 7`
+  - rad-dino needs its file, `--config configs/rad_dino_fc2.yaml`, since the defaults are Gemma's
+- `scripts/ablate_hit_selection.py`: elbow against bucketed hit selection, for language models
 - `experiments/`: ablation results (git-ignored - see each README for how to regenerate)
 - `PLAN.md`, `COLAB_PLAN.md`: the vision-to-language port plan and the Colab setup notes
 - `TODO.md`: open questions and known rough edges

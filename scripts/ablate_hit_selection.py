@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 """Elbow vs bucketed hit selection, on the same scan, with the same budget.
 
-- Takes the flags of `run_llm_neuron_report.py` (`--hit-selection` is ignored, both are run).
+- Takes the flags of `run_neuron_report.py` (`--hits.method` is ignored, both are run).
 - Skips attribution and rendering: only selection, gather and clustering matter here.
 - Writes `ablation.json` and `ablation.md` to `--out-dir`.
 """
 
-import argparse
-import copy
+import sys
 import time
 
 import numpy as np
@@ -16,17 +15,20 @@ from pydantic import BaseModel, ConfigDict
 from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
-import run_llm_neuron_report as llm
+import run_neuron_report as report
 from in_tfm.bucketing import merged_bucket_ids
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
-from in_tfm.neuron_capture import NeuronCapture, merge_positions
-from in_tfm.sources import TextSource
+from in_tfm.hit_selection import HitSelection, select_hits
+from in_tfm.neuron_capture import ScanResult, merge_positions
+from in_tfm.neuron_run import layer_getter_for, prepare_run
+from in_tfm.run_config import HitSelectionConfig, load_run_config
+from in_tfm.text_corpus import load_texts
 
 MODES: dict[str, dict] = {
-    "elbow": {"hit_selection": "elbow"},
-    "bucketed": {"hit_selection": "bucketed"},
-    "bucketed_floor10": {"hit_selection": "bucketed", "bucket_floor_fraction": 0.1},
+    "elbow": {"method": "elbow"},
+    "bucketed": {"method": "bucketed"},
+    "bucketed_floor10": {"method": "bucketed", "bucket_floor_fraction": 0.1},
 }
 
 
@@ -48,12 +50,12 @@ class ModeResult(BaseModel):
     largest_cluster_share: float
 
 
-def kept_activations(scan: llm.ScanResult, neuron_idx: int, selection: llm.HitSelection) -> np.ndarray:
+def kept_activations(scan: ScanResult, neuron_idx: int, selection: HitSelection) -> np.ndarray:
     column = scan.neuron_column(neuron_idx)[..., 0].numpy()
     return column[selection.batch_idx, selection.token_idx]
 
 
-def kept_token_ids(token_ids: torch.Tensor, selection: llm.HitSelection) -> np.ndarray:
+def kept_token_ids(token_ids: torch.Tensor, selection: HitSelection) -> np.ndarray:
     return token_ids[selection.batch_idx, selection.token_idx].numpy()
 
 
@@ -66,7 +68,7 @@ def top_token_and_share(ids: np.ndarray, tokenizer: PreTrainedTokenizerBase) -> 
 def summarise(
     neuron_idx: int,
     mode: str,
-    selection: llm.HitSelection,
+    selection: HitSelection,
     activations: np.ndarray,
     token_ids: np.ndarray,
     labels: np.ndarray,
@@ -112,17 +114,17 @@ class BucketRow(BaseModel):
 def bucket_breakdown(
     neuron_idx: int,
     mode: str,
-    selection: llm.HitSelection,
+    selection: HitSelection,
     corpus_values: np.ndarray,
     activations: np.ndarray,
     labels: np.ndarray,
-    args: argparse.Namespace,
+    hits: HitSelectionConfig,
 ) -> tuple[list[BucketRow], str]:
     """`clusters_homed` counts clusters whose most common bucket is this one, so each cluster
     is counted once. `clusters_touching` counts every cluster with at least one hit here."""
     assert selection.bucket_ids is not None
     corpus = corpus_values[corpus_values > selection.threshold]
-    corpus_ids = merged_bucket_ids(corpus, args.n_buckets, selection.threshold, args.min_bucket_size)
+    corpus_ids = merged_bucket_ids(corpus, hits.n_buckets, selection.threshold, hits.min_bucket_size)
     kept_bucket = selection.bucket_ids
     n_groups = corpus_ids.max() + 1
     home = {c: np.bincount(kept_bucket[labels == c], minlength=n_groups).argmax() for c in set(labels) - {-1}}
@@ -224,26 +226,25 @@ def markdown_table(results: list[ModeResult] | list[BucketRow] | list[CoverageRo
 
 
 def main() -> None:
-    args = llm.parse_args()
-    neuron_idxs = args.neurons or list(range(args.neuron_start, args.neuron_end + 1))
-    texts = llm.load_texts(args)
-    model, hf_model, tokenizer = llm.load_model(args)
-    source = TextSource(texts, tokenizer, hf_model.model.embed_tokens, args.max_length)
-    capture = NeuronCapture(model, source, llm.layer_getter_for(args), neuron_idxs, args.batch_size, args.device)
+    config = load_run_config(sys.argv[1:])
+    neuron_idxs = config.neuron_idxs
+    texts = load_texts(config.text, config.seed)
+    adapter = report.load_adapter(config)
+    run = prepare_run(config, adapter, texts)
+    tokenizer = adapter.tokenizer
+    capture = run.capture
     scan = capture.scan()
-    token_ids = source.to_model_batch(list(source.sample_ids())).display_ids.cpu()
+    token_ids = run.source.to_model_batch(list(run.source.sample_ids())).display_ids.cpu()
 
     targets = [(neuron, mode) for neuron in neuron_idxs for mode in MODES]
     selections = {}
     for neuron, mode in targets:
-        mode_args = copy.copy(args)
-        for key, value in MODES[mode].items():
-            setattr(mode_args, key, value)
-        selections[(neuron, mode)] = llm.select_hits(scan, neuron, "positive", mode_args)
+        mode_hits = config.hits.model_copy(update=MODES[mode])
+        selections[(neuron, mode)] = select_hits(scan, neuron, "positive", mode_hits, config.seed)
 
-    merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], args.max_length)
+    merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], scan.valid_mask.shape[1])
     gathered = capture.gather(merged.batch_idx, merged.token_idx)
-    weight = llm.target_weight(hf_model, args)
+    weight = layer_getter_for(config)(run.module).weight
 
     results: list[ModeResult] = []
     bucket_rows: list[BucketRow] = []
@@ -253,7 +254,9 @@ def main() -> None:
         selection = selections[(neuron, mode)]
         hdmd = hadamard_from_rows(gathered.inputs[index_map], weight, neuron)
         start = time.perf_counter()
-        labels = cluster_labels(hdmd, args.min_cluster_size, args.cluster_selection_method, args.min_samples)
+        labels = cluster_labels(
+            hdmd, config.clustering.min_cluster_size, config.clustering.selection_method, config.clustering.min_samples
+        )
         seconds = time.perf_counter() - start
         elbow_value = selections[(neuron, "elbow")].threshold
         clusterings[(neuron, mode)] = Clustering(
@@ -262,7 +265,7 @@ def main() -> None:
         if mode != "elbow":
             rows, note = bucket_breakdown(
                 neuron, mode, selection, scan.neuron_column(neuron)[..., 0].numpy()[scan.valid_mask.numpy()],
-                kept_activations(scan, neuron, selection), labels, args,
+                kept_activations(scan, neuron, selection), labels, config.hits,
             )
             bucket_rows += rows
             max_notes.append(f"neuron {neuron} {mode}: {note}")
@@ -279,18 +282,18 @@ def main() -> None:
         for mode in MODES
         if mode != "elbow"
     ]
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    (args.out_dir / "ablation.json").write_text(
+    config.out_dir.mkdir(parents=True, exist_ok=True)
+    (config.out_dir / "ablation.json").write_text(
         "[" + ",".join(r.model_dump_json() for r in results) + "]"
     )
     table = markdown_table(results)
-    (args.out_dir / "ablation.md").write_text(table + "\n")
+    (config.out_dir / "ablation.md").write_text(table + "\n")
     print(table)
     bucket_table = markdown_table(bucket_rows) + "\n\n" + "\n".join(f"- {n}" for n in max_notes)
-    (args.out_dir / "buckets.md").write_text(bucket_table + "\n")
+    (config.out_dir / "buckets.md").write_text(bucket_table + "\n")
     print(bucket_table)
     coverage_table = markdown_table(coverage_rows)
-    (args.out_dir / "coverage.md").write_text(coverage_table + "\n")
+    (config.out_dir / "coverage.md").write_text(coverage_table + "\n")
     print(coverage_table)
 
 

@@ -7,7 +7,7 @@ from in_tfm.layers import fc2_getter, q_proj_getter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, AttnOnlyConfig, AttnOnlyForCausalLM
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.rad_dino import RadDinoAdapter
-from in_tfm.sources import ModelBatch
+from in_tfm.sources import ModelBatch, dicom_paths
 
 N_HEADS, HEAD_DIM, HIDDEN, VOCAB, MAX_LENGTH = 2, 4, 8, 20, 6
 
@@ -128,11 +128,17 @@ def test_rad_dino_patch_runs_once(monkeypatch):
     assert calls == [1]
 
 
-def test_rad_dino_source_lists_dicoms_in_sorted_order(tmp_path):
-    for name in ("b.dcm", "a.dcm"):
+def test_dicom_paths_are_sorted_and_limited(tmp_path):
+    for name in ("c.dcm", "b.dcm", "a.dcm", "ignored.txt"):
         (tmp_path / name).touch()
-    source = tiny_rad_dino_adapter().make_source(tmp_path)
-    assert source.sample_ids() == [str(tmp_path / "a.dcm"), str(tmp_path / "b.dcm")]
+    assert dicom_paths(tmp_path) == [tmp_path / "a.dcm", tmp_path / "b.dcm", tmp_path / "c.dcm"]
+    assert dicom_paths(tmp_path, limit=2) == [tmp_path / "a.dcm", tmp_path / "b.dcm"]
+
+
+def test_rad_dino_source_keeps_the_given_order(tmp_path):
+    paths = [tmp_path / "b.dcm", tmp_path / "a.dcm"]
+    source = tiny_rad_dino_adapter().make_source(paths)
+    assert source.sample_ids() == [str(p) for p in paths]
 
 
 def test_rad_dino_patching_after_nnsight_wraps_the_model_is_rejected():

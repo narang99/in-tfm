@@ -94,15 +94,21 @@ class SampleSource(Protocol):
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch: ...
 
 
+def dicom_paths(dcm_dir: Path, limit: int | None = None) -> list[Path]:
+    """Sorted, since `Path.glob` order depends on the filesystem: the same flags picked
+    different images on two machines."""
+    return sorted(dcm_dir.glob("*.dcm"))[:limit]
+
+
 class DicomSource:
     """DICOM files on disk, through a transformers image processor."""
 
-    def __init__(self, dcm_dir: Path, processor: BaseImageProcessor) -> None:
-        self.dcm_dir = dcm_dir
+    def __init__(self, paths: Sequence[Path], processor: BaseImageProcessor) -> None:
+        self.paths = list(paths)
         self.processor = processor
 
     def sample_ids(self) -> Sequence[SampleId]:
-        return [str(p) for p in sorted(self.dcm_dir.glob("*.dcm"))]
+        return [str(p) for p in self.paths]
 
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
         batch = get_batch(self.processor, [Path(i) for i in ids])
@@ -188,7 +194,7 @@ class TextSource:
         is what lets both passes speak the same coordinates.
 
         The cost is attention over `max_length` columns even for a short text. Cheap when the
-        corpus is filtered to long samples (see run_llm_neuron_report.load_texts), wasteful
+        corpus is filtered to long samples (see text_corpus.load_texts), wasteful
         when it is not - `max_length` is the knob.
         """
         return self.tokenizer(
