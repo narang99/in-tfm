@@ -73,7 +73,7 @@ class RadDinoAdapter:
         patch_dinov2_for_attn_lrp(self.model)
         self._patched = True
 
-    def make_source(self, samples: Path) -> DicomSource:
+    def make_source(self, samples: list[Path]) -> DicomSource:
         return DicomSource(samples, self.processor)
 
     def make_presenter(self, source: DicomSource, clustered_label: str) -> ImagePresenter:

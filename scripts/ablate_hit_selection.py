@@ -227,7 +227,7 @@ def markdown_table(results: list[ModeResult] | list[BucketRow] | list[CoverageRo
 def main() -> None:
     config = load_run_config(sys.argv[1:])
     neuron_idxs = config.neuron_idxs
-    texts = llm.load_texts(config.data, config.seed)
+    texts = llm.load_texts(config.text, config.seed)
     adapter = llm.load_adapter(config)
     run = prepare_run(config, adapter, texts)
     tokenizer = adapter.tokenizer

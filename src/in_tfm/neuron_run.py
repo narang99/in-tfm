@@ -18,7 +18,7 @@ from .clustering import cluster_labels
 from .device import empty_cache
 from .hadamard import hadamard_from_rows, near_square_shape, normalized_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, down_proj_getter, k_proj_getter, q_proj_getter
+from .layers import LayerGetter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import NeuronClusterHits
@@ -35,7 +35,12 @@ def timed(label: str):
 
 
 def layer_getter_for(config: RunConfig) -> LayerGetter:
-    getters = {Target.DOWN_PROJ: down_proj_getter, Target.Q_PROJ: q_proj_getter, Target.K_PROJ: k_proj_getter}
+    getters = {
+        Target.DOWN_PROJ: down_proj_getter,
+        Target.Q_PROJ: q_proj_getter,
+        Target.K_PROJ: k_proj_getter,
+        Target.FC2: fc2_getter,
+    }
     return getters[config.target](config.layer_idx)
 
 

@@ -46,24 +46,24 @@ def articles(rows: list[str]) -> list[str]:
     return ["".join(parts).strip() for parts in joined]
 
 
-def load_texts(data: TextDataConfig, seed: int) -> list[str]:
+def load_texts(text_config: TextDataConfig, seed: int) -> list[str]:
     """Shuffled before truncating to `n_samples`: the corpus is in file order, so taking the
     first N would be N paragraphs of the same few articles."""
     from datasets import load_dataset
 
-    rows = list(load_dataset(data.dataset, data.dataset_config, split=data.split)["text"])
-    if data.unit == "paragraph":
+    rows = list(load_dataset(text_config.dataset, text_config.dataset_config, split=text_config.split)["text"])
+    if text_config.unit == "paragraph":
         texts = paragraphs(rows)
     else:
-        texts = [a for a in articles(rows) if len(a) >= data.min_article_chars]
+        texts = [a for a in articles(rows) if len(a) >= text_config.min_article_chars]
     random.Random(seed).shuffle(texts)
-    return texts[: data.n_samples]
+    return texts[: text_config.n_samples]
 
 
 def load_adapter(config: RunConfig) -> DecoderTextAdapter:
     if config.model is ModelName.ATTN_ONLY_2L:
-        return AttnOnly2LAdapter.from_pretrained(config.data.max_length)
-    return Gemma3Adapter.from_pretrained(config.model.value, config.data.max_length)
+        return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
+    return Gemma3Adapter.from_pretrained(config.model.value, config.text.max_length)
 
 
 def main() -> None:
@@ -71,8 +71,8 @@ def main() -> None:
     config = load_run_config(sys.argv[1:])
 
     with timed("load texts"):
-        texts = load_texts(config.data, config.seed)
-    print(f"loaded {len(texts)} {config.data.unit}s")
+        texts = load_texts(config.text, config.seed)
+    print(f"loaded {len(texts)} {config.text.unit}s")
 
     with timed("load model"):
         adapter = load_adapter(config)

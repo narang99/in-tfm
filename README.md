@@ -109,6 +109,7 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - `neuron_run.py`: the scan, select, gather, cluster and report sequence every script runs
   - `hit_selection.py`: elbow or bucketed choice of the positions to cluster
 - `scripts/run_neuron_report.py`: vision (DICOM) reports
+  - needs `--config configs/rad_dino_fc2.yaml`, since the model defaults to Gemma
 - `scripts/run_llm_neuron_report.py`: language model reports
   - settings live in `src/in_tfm/run_config.py`
   - `--config configs/<file>.yaml` sets defaults, and flags override them

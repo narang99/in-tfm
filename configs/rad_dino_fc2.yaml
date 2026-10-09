@@ -1,0 +1,8 @@
+# Run with: python scripts/run_neuron_report.py --config configs/rad_dino_fc2.yaml
+# The defaults of the old vision script: layer 11, neurons 90 to 100.
+model: microsoft/rad-dino
+target: fc2
+layer_idx: 11
+neuron_start: 90
+neuron_end: 100
+out_dir: reports

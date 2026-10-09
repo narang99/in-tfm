@@ -28,19 +28,31 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     ATTN_ONLY_2L = "self/attn-only-2l"
+    RAD_DINO = "microsoft/rad-dino"
+
+
+Modality = Literal["text", "image"]
+
+MODALITY: dict[ModelName, Modality] = {
+    ModelName.GEMMA3_270M: "text",
+    ModelName.ATTN_ONLY_2L: "text",
+    ModelName.RAD_DINO: "image",
+}
 
 
 class Target(StrEnum):
     DOWN_PROJ = "down_proj"
     Q_PROJ = "q_proj"
     K_PROJ = "k_proj"
+    FC2 = "fc2"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.GEMMA3_270M: {Target.DOWN_PROJ, Target.Q_PROJ, Target.K_PROJ},
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
+    ModelName.RAD_DINO: {Target.FC2},
 }
-"""The attention-only model has no MLP, so it has no `down_proj`."""
+"""The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
 Polarity = Literal["positive", "negative"]
 
@@ -62,6 +74,11 @@ class TextDataConfig(Section):
         description="article joins a wikitext article's paragraphs, so a long max_length is mostly real tokens",
     )
     min_article_chars: int = 0
+
+
+class ImageDataConfig(Section):
+    dcm_dir: Path = Path("dicoms")
+    n_dicoms: int = Field(1000, description="the first n in sorted file order, all of them if there are fewer")
 
 
 class HitSelectionConfig(Section):
@@ -113,7 +130,8 @@ class RunConfig(BaseSettings):
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
     out_dir: Path = Path("reports_llm")
     device: str = Field(default_factory=default_device)
-    data: TextDataConfig = TextDataConfig()
+    text: TextDataConfig = TextDataConfig()
+    image: ImageDataConfig = ImageDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -137,6 +155,18 @@ class RunConfig(BaseSettings):
             options = sorted(t.value for t in SUPPORTED_TARGETS[self.model])
             raise ValueError(f"{self.model.value} has no {self.target.value}, choose one of {options}")
         return self
+
+    @model_validator(mode="after")
+    def only_the_models_data_section_is_set(self) -> "RunConfig":
+        """`text.*` flags with an image model are a mistake, not something to ignore."""
+        other = "image" if self.modality == "text" else "text"
+        if other in self.model_fields_set:
+            raise ValueError(f"{self.model.value} reads {self.modality} data, but the {other} section was set")
+        return self
+
+    @property
+    def modality(self) -> Modality:
+        return MODALITY[self.model]
 
     @property
     def neuron_idxs(self) -> list[int]:

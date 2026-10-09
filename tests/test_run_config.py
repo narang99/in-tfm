@@ -65,3 +65,17 @@ def test_environment_variables_do_not_reach_the_config(monkeypatch):
     monkeypatch.setenv("TARGET", Target.K_PROJ.value)
     config = load_run_config([])
     assert (config.layer_idx, config.target) == (10, Target.DOWN_PROJ)
+
+
+def test_rad_dino_takes_fc2_and_not_the_language_model_targets():
+    config = load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2"])
+    assert config.modality == "image"
+    with pytest.raises(ValidationError, match="has no down_proj"):
+        load_run_config(["--model", "microsoft/rad-dino"])
+
+
+def test_a_data_section_for_the_other_modality_is_rejected():
+    with pytest.raises(ValidationError, match="reads image data, but the text section was set"):
+        load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2", "--text.n-samples", "5"])
+    with pytest.raises(ValidationError, match="reads text data, but the image section was set"):
+        load_run_config(["--image.n-dicoms", "5"])
