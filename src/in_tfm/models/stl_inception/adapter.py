@@ -19,12 +19,15 @@ IMAGE_SIZE = 96
 
 
 def tokens_in_layer(model: torch.nn.Module, layer: torch.nn.Module) -> int:
-    """Output positions per image, found by running one blank image through the model."""
+    """Output positions per image, found by running one blank image through the model.
+
+    The image goes to wherever the model is, since the pipeline moves the shared module before it asks for a source.
+    """
     counts: list[int] = []
     handle = layer.register_forward_hook(lambda module, inputs, output: counts.append(output.shape[-2] * output.shape[-1]))
     try:
         with torch.no_grad():
-            model.eval()(torch.zeros(1, 3, IMAGE_SIZE, IMAGE_SIZE))
+            model.eval()(torch.zeros(1, 3, IMAGE_SIZE, IMAGE_SIZE, device=next(model.parameters()).device))
     finally:
         handle.remove()
     return counts[0]

@@ -1,5 +1,5 @@
 # Run with: uv run python scripts/run_neuron_report.py --config configs/stl_inception_conv.yaml
-# A 3x3 conv in block_b, on the first 500 STL-10 test images.
+# A 3x3 conv in block_b, on the first 500 STL-10 test images, with the checkpoint from scripts/train_stl.py.
 model: self/stl-inception
 target: conv
 layer_name: block_b.branch_3x3.1.0
@@ -9,3 +9,4 @@ batch_size: 16
 out_dir: reports_stl
 stl:
   n_images: 500
+  checkpoint: checkpoints/stl_inception/final.pt
