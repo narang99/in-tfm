@@ -5,9 +5,8 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 from pydantic import BaseModel
-from transformers.image_processing_utils import BaseImageProcessor
 
-from ..dicom import inv_tfm
+from ..dicom import ImageNormalization, inv_tfm
 from ..html_report import render_template
 from ..viz import mk_overlay, render_hadamard_tiles, to_pil
 from .artifacts import ClusterArtifacts
@@ -23,7 +22,7 @@ class ImageClusterView(BaseModel):
 class ImagePresenter:
     """Pixel-space overlays, as in the original DICOM reports."""
 
-    def __init__(self, processor: BaseImageProcessor, alpha: float = 0.7) -> None:
+    def __init__(self, processor: ImageNormalization, alpha: float = 0.7) -> None:
         self.processor = processor
         self.alpha = alpha
 
