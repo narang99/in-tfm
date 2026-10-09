@@ -16,6 +16,7 @@ import random
 import re
 import time
 from contextlib import contextmanager
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -50,13 +51,12 @@ def timed(label: str):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="google/gemma-3-270m")
     parser.add_argument(
-        "--arch",
-        choices=["gemma3", "attn_only_2l"],
-        default="gemma3",
-        help="attn_only_2l: the 2-layer attention-only shortformer model, which ignores --model "
-        "and has no MLP, so only the q_proj / k_proj targets exist",
+        "--model",
+        type=ModelName,
+        choices=list(ModelName),
+        default=ModelName.GEMMA3_270M,
+        help="self/attn-only-2l has no MLP, so only the q_proj / k_proj targets exist",
     )
     parser.add_argument("--dataset", default="Salesforce/wikitext", help="hf dataset name")
     parser.add_argument("--dataset-config", default="wikitext-2-raw-v1")
@@ -169,10 +169,17 @@ def layer_getter_for(args: argparse.Namespace) -> LayerGetter:
     return getters[args.target](args.layer_idx)
 
 
+class ModelName(StrEnum):
+    """HF models keep their HF id. Models we host ourselves are named `self/...`."""
+
+    GEMMA3_270M = "google/gemma-3-270m"
+    ATTN_ONLY_2L = "self/attn-only-2l"
+
+
 def load_adapter(args: argparse.Namespace) -> ModelAdapter[list[str]]:
-    if args.arch == "attn_only_2l":
+    if args.model is ModelName.ATTN_ONLY_2L:
         return AttnOnly2LAdapter.from_pretrained(args.max_length)
-    return Gemma3Adapter.from_pretrained(args.model, args.max_length)
+    return Gemma3Adapter.from_pretrained(args.model.value, args.max_length)
 
 
 Polarity = Literal["positive", "negative"]
