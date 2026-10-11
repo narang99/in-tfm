@@ -123,3 +123,21 @@ Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), 
 - No judgement of which method's overlays are more meaningful, only that they correlate at about 0.93.
 - Clusters came from cuml, and CPU HDBSCAN may cluster differently.
 - A page comparing the two sets of reports side by side is not built.
+
+## Local rerun on the Mac (MPS)
+
+- Same commands as step 4, with the checkpoint from the laptop's own training run (68.3% test accuracy), written to `reports_stl_deeplift` and `reports_stl_ig`.
+  - Both exited 0 with a `[total]` line, at 223 s for DeepLift and 261 s for IG.
+  - Clustering used CPU HDBSCAN, as cuml is not installed, so kept clusters were 2, 25, 18 and 15 for neurons 0 to 3.
+  - Those differ from the Colab counts (4, 27, 23, 16) because of the backend and the different checkpoint.
+- The same checks held: 60 of 60 originals and Hadamard tiles were byte-identical, and 0 of 60 overlays.
+- Comparing the raw relevance in each cluster's `hits.pt` over 600 hit pairs, with matching samples and positions:
+  - Pearson was 0.943 on average (median 0.947, 10th percentile 0.902, minimum 0.772).
+  - Top-100 pixel overlap was 0.857 on average.
+  - The sign of the summed relevance agreed in 99.8% of pairs, and the sums differed by 0.6% at the median.
+  - Per neuron, Pearson was 0.866 (neuron 0, only 20 pairs), 0.961, 0.931 and 0.937.
+- Four subagents looked at the largest three clusters of each neuron, and all judged DeepLift and IG to agree closely.
+  - They could not tell the methods apart at the displayed size, so this supports the numbers and adds no separate evidence.
+  - Several clusters had relevance at the top edge, in the black letterbox bar, or on plain sky and grass, and never on the aircraft.
+  - That may be a border or padding effect in the neuron, or clustering by position.
+  - It is the same in both methods and was not tested.
