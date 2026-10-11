@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.activation_range_plot import grid_dims_for_labels
+from in_tfm.activation_range_plot import get_noise_range, grid_dims_for_labels, shorth
 from in_tfm.activation_range_figure import panels_needed, round_robin_panels, sorted_by_mean_descending
 from in_tfm.activation_ranges import (
     PLOT_NAME,
@@ -85,3 +85,17 @@ def test_the_plot_is_written_and_the_report_section_is_collapsed(tmp_path):
     assert PLOT_NAME in section
     assert "<details>" in section
     assert "elbow" not in section, "the elbow class caps an image at 420px, far too small for this figure"
+
+
+def loop_shorth(data, coverage):
+    """The original hiccup-ide loop, which the vectorised version has to agree with."""
+    ordered, window = np.sort(data), int(np.ceil(coverage * len(data)))
+    best = min(range(len(ordered) - window + 1), key=lambda i: ordered[i + window - 1] - ordered[i])
+    return ordered[best], ordered[best + window - 1]
+
+
+@pytest.mark.parametrize("n", [1, 2, 10, 101, 1000])
+def test_shorth_matches_the_loop_it_replaced(n):
+    data = np.random.default_rng(n).standard_cauchy(n)
+    assert shorth(data, 0.9) == loop_shorth(data, 0.9)
+    assert get_noise_range(data) == loop_shorth(data, 0.9)

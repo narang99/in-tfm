@@ -1,10 +1,10 @@
-"""The per-cluster activation range figure, built from the functions copied from hiccup-ide.
+"""The per-cluster activation range figure, built from the helpers cut down from hiccup-ide.
 
 - Clusters are sorted by mean activation, highest first, and dealt round-robin to the panels.
   - So every panel holds high and low clusters, and not only the top ones in the first panel.
-  - The copied `show_label_points_grid` gives each panel a contiguous run of labels, so it is not used.
+  - hiccup-ide's grid function gave each panel a contiguous run of labels, so it was dropped.
 - The neuron's noise sample is drawn in every panel, next to its shorth range.
-- Panels are laid out and styled by the copied helpers.
+- Panels are laid out and styled by the helpers in `activation_range_plot.py`.
 """
 
 import math
@@ -17,15 +17,15 @@ import numpy as np
 
 from .activation_range_plot import (
     KELLY_COLORS,
-    _draw_hlines,
-    _draw_label_panel,
-    _jittered_x,
-    _NOISE_COLOR,
-    _NOISE_RANGE_COLOR,
-    _style_dark_panels_and_legends,
-    _subsample_and_color,
+    NOISE_COLOR,
+    NOISE_RANGE_COLOR,
+    draw_hlines,
+    draw_label_panel,
     get_noise_range,
     grid_dims_for_labels,
+    jittered_x,
+    style_dark_panels_and_legends,
+    subsample_and_color,
 )
 
 CLUSTERS_PER_PANEL = 8
@@ -48,18 +48,18 @@ def round_robin_panels(labels: Sequence[int], n_panels: int) -> list[list[int]]:
 def noise_range_hlines(noise: np.ndarray) -> list[tuple]:
     noise_min, noise_max = get_noise_range(noise)
     return [
-        (noise_min, _NOISE_RANGE_COLOR, "--", 1.0, None),
-        (noise_max, _NOISE_RANGE_COLOR, "--", 1.0, "noise range"),
+        (noise_min, NOISE_RANGE_COLOR, "--", 1.0, None),
+        (noise_max, NOISE_RANGE_COLOR, "--", 1.0, "noise range"),
     ]
 
 
 def draw_noise_series(ax, noise_points: np.ndarray, rng: np.random.Generator) -> None:
-    ax.scatter(_jittered_x(len(noise_points), rng), noise_points, color=_NOISE_COLOR, alpha=0.25, s=10, label="noise")
+    ax.scatter(jittered_x(len(noise_points), rng), noise_points, color=NOISE_COLOR, alpha=0.25, s=10, label="noise")
 
 
 def show_activation_range_grid(label_by_points: dict[int, list[float]], noise: np.ndarray, rng: np.random.Generator):
     ranked = sorted_by_mean_descending(label_by_points)
-    subsampled, color_map = _subsample_and_color(ranked, KELLY_COLORS[1:], MAX_POINTS_PER_SERIES, rng)
+    subsampled, color_map = subsample_and_color(ranked, KELLY_COLORS[1:], MAX_POINTS_PER_SERIES, rng)
     noise_points = rng.choice(noise, size=min(len(noise), MAX_POINTS_PER_SERIES), replace=False)
     hlines = noise_range_hlines(noise)
 
@@ -71,9 +71,9 @@ def show_activation_range_grid(label_by_points: dict[int, list[float]], noise: n
         if i >= len(shares) or not shares[i]:
             ax.axis("off")
             continue
-        _draw_label_panel(ax, shares[i], subsampled, color_map, rng)
+        draw_label_panel(ax, shares[i], subsampled, color_map, rng)
         draw_noise_series(ax, noise_points, rng)
-        _draw_hlines(ax, hlines)
+        draw_hlines(ax, hlines)
         ax.legend()
     fig.tight_layout()
     return fig, axes
@@ -85,7 +85,7 @@ def save_activation_range_plot(
     """Headless, so the backend is fixed here and not left to the machine's default."""
     matplotlib.use("Agg")
     fig, axes = show_activation_range_grid(label_by_points, noise, rng)
-    _style_dark_panels_and_legends(fig, axes)
+    style_dark_panels_and_legends(fig, axes)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="jpeg", facecolor=fig.get_facecolor(), pil_kwargs={"quality": 90})
