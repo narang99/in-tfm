@@ -21,6 +21,7 @@ from in_tfm.neuron_run import run_neuron_reports
 from in_tfm.neuron_tracking import LOG_NAME, TrackingLog, largest_steps, state_path
 from in_tfm.run_config import RunConfig, load_run_config
 from in_tfm.tracking_reports import (
+    DISTANCE_PLOT_NAME,
     match_clusters,
     load_cluster_means,
     save_distance_plot,
@@ -77,7 +78,7 @@ def main() -> None:
     for r in chosen:
         pairs[f"step {r.step}, before to after"] = match_clusters(means[r.step - 1], means[r.step])
 
-    save_distance_plot(log, chosen, reports_dir / "distances.png")
+    save_distance_plot(log, chosen, reports_dir / DISTANCE_PLOT_NAME)
     print("index:", write_index(reports_dir, log, chosen, states, pairs))
 
 
