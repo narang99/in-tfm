@@ -1,7 +1,7 @@
 import torch
 
 from in_tfm.neuron_tracking import StepRecord, TrackingLog
-from in_tfm.tracking_reports import match_clusters, save_distance_plot, states_to_report
+from in_tfm.tracking_reports import ClusterMatch, StateReport, match_clusters, save_distance_plot, states_to_report, write_index
 
 
 def record(step: int) -> StepRecord:
@@ -35,3 +35,14 @@ def test_the_distance_plot_is_written(tmp_path):
     log = TrackingLog(layer_name="x", neuron=0, steps=[record(s) for s in range(1, 20)])
     save_distance_plot(log, [record(5)], tmp_path / "plot.png")
     assert (tmp_path / "plot.png").stat().st_size > 0
+
+
+def test_the_index_lists_steps_states_and_matches_and_escapes_what_it_is_given(tmp_path):
+    log = TrackingLog(layer_name="block_c.<x>", neuron=0, steps=[record(s) for s in range(1, 5)])
+    states = [StateReport(state=0, labels=["initial"]), StateReport(state=3, labels=["after step 3"])]
+    pairs = {"initial to final": [ClusterMatch(cluster_a=1, cluster_b=2, similarity=0.5)], "empty": []}
+    html = write_index(tmp_path, log, [record(3)], states, pairs).read_text()
+    assert 'href="state_0003/neuron_0/index.html"' in html
+    assert "block_c.&lt;x&gt;" in html
+    assert "0.500" in html
+    assert "no clusters on one side" in html
