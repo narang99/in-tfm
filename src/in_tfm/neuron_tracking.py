@@ -14,7 +14,8 @@ from jaxtyping import Float
 from pydantic import BaseModel
 from torch import nn
 
-from .layers import conv_getter
+from .layers import LayerGetter
+from .neuron_run import layout_for
 
 NeuronWeights = Float[torch.Tensor, "fan_in"]
 
@@ -39,9 +40,10 @@ def state_path(states_dir: Path, step: int) -> Path:
     return states_dir / f"state_{step:04d}.pt"
 
 
-def neuron_weights(model: nn.Module, layer_name: str, neuron: int) -> NeuronWeights:
-    weight = conv_getter(layer_name)(model).weight
-    return weight[neuron].detach().cpu().double().flatten()
+def neuron_weights(model: nn.Module, layer_getter: LayerGetter, neuron: int) -> NeuronWeights:
+    """The same weight row the report's Hadamard product uses, found the way the pipeline finds it."""
+    layer = layer_getter(model)
+    return layout_for(layer).weight(layer.weight)[neuron].detach().cpu().double()
 
 
 def cosine_distance(before: NeuronWeights, after: NeuronWeights) -> float:
@@ -55,8 +57,12 @@ def euclidean_distance(before: NeuronWeights, after: NeuronWeights) -> float:
 class NeuronTracker:
     """Plugs into `train` as its `StepObserver`."""
 
-    def __init__(self, layer_name: str, neuron: int, states_dir: Path, steps_per_epoch: int) -> None:
+    def __init__(
+        self, layer_getter: LayerGetter, layer_name: str, neuron: int, states_dir: Path, steps_per_epoch: int
+    ) -> None:
+        self.layer_getter = layer_getter
         self.layer_name = layer_name
+        """Only a label for the log, the getter is what finds the layer."""
         self.neuron = neuron
         self.states_dir = states_dir
         self.steps_per_epoch = steps_per_epoch
@@ -65,12 +71,12 @@ class NeuronTracker:
 
     def start(self, model: nn.Module) -> None:
         self.states_dir.mkdir(parents=True, exist_ok=True)
-        self.previous = neuron_weights(model, self.layer_name, self.neuron)
+        self.previous = neuron_weights(model, self.layer_getter, self.neuron)
         self._save_state(model, step=0)
 
     def after_step(self, model: nn.Module, lr: float) -> None:
         step = len(self.records) + 1
-        current = neuron_weights(model, self.layer_name, self.neuron)
+        current = neuron_weights(model, self.layer_getter, self.neuron)
         self.records.append(
             StepRecord(
                 step=step,
@@ -91,18 +97,16 @@ class NeuronTracker:
         torch.save({"model": state, "step": step}, state_path(self.states_dir, step))
 
 
-def largest_steps(records: list[StepRecord], count: int, min_gap: int, skip_first_step: bool = True) -> list[StepRecord]:
+def largest_steps(records: list[StepRecord], count: int, min_gap: int = 1) -> list[StepRecord]:
     """The `count` steps that moved the neuron most by cosine distance, no two closer than `min_gap` steps apart.
 
-    - Under Adam the moves are strongly autocorrelated, so without a gap the top steps are neighbours.
-      - Neighbours show the same change twice, which is not `count` distinct events.
-    - Step 1 leaves the random initialisation and is the biggest move by construction.
-      - The initial network gets its own report, so step 1 is skipped by default.
+    - The default gap of 1 allows neighbours, so it is the raw top `count`.
+    - Under Adam the moves are strongly autocorrelated, so the raw top steps can be neighbours.
+      - A larger gap spreads them out, at the cost of picking smaller moves.
     - Returned in training order.
     """
-    candidates = [r for r in records if not (skip_first_step and r.step == 1)]
     chosen: list[StepRecord] = []
-    for record in sorted(candidates, key=lambda r: r.cosine_distance, reverse=True):
+    for record in sorted(records, key=lambda r: r.cosine_distance, reverse=True):
         if len(chosen) == count:
             break
         if all(abs(record.step - c.step) >= min_gap for c in chosen):

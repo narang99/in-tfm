@@ -1,6 +1,8 @@
 import torch
 
-from in_tfm.neuron_tracking import NeuronTracker, StepRecord, cosine_distance, largest_steps, state_path
+from in_tfm.layers import conv_getter
+from in_tfm.models.stl_inception import StlInception
+from in_tfm.neuron_tracking import NeuronTracker, StepRecord, cosine_distance, largest_steps, neuron_weights, state_path
 from in_tfm.stl_training import TrainConfig, train
 from test_stl_training import Tiny
 
@@ -17,21 +19,28 @@ def test_cosine_distance_is_zero_for_the_same_direction_and_one_for_orthogonal()
     assert cosine_distance(a, torch.tensor([0.0, 2.0], dtype=torch.float64)) == 1.0
 
 
-def test_largest_steps_skip_neighbours_and_the_move_off_initialisation():
+def test_largest_steps_are_the_raw_top_ones_by_default_so_neighbours_and_step_1_count():
+    records = [record(i + 1, d) for i, d in enumerate([9.0, 5.0, 4.9, 1.0])]
+    assert [r.step for r in largest_steps(records, count=3)] == [1, 2, 3]
+
+
+def test_a_gap_skips_neighbours_of_a_larger_step():
     distances = [9.0, 5.0, 4.9, 1.0, 4.0, 0.1, 3.0]
     records = [record(i + 1, d) for i, d in enumerate(distances)]
-    picked = largest_steps(records, count=3, min_gap=2)
-    assert [r.step for r in picked] == [2, 5, 7]
+    assert [r.step for r in largest_steps(records, count=3, min_gap=2)] == [1, 3, 5]
 
 
-def test_largest_steps_can_include_the_first_step_when_asked():
-    records = [record(1, 9.0), record(2, 1.0)]
-    assert [r.step for r in largest_steps(records, 1, 1, skip_first_step=False)] == [1]
+def test_the_neuron_weights_are_the_row_the_hadamard_product_uses():
+    model = StlInception()
+    layer = conv_getter(LAYER)(model)
+    row = neuron_weights(model, conv_getter(LAYER), 3)
+    assert row.shape == (layer.weight.shape[1],)
+    assert torch.equal(row.float(), layer.weight[3].flatten().detach())
 
 
 def test_the_tracker_saves_the_initial_state_and_one_state_per_step(tmp_path):
     config = TrainConfig(_cli_parse_args=[], out_dir=tmp_path / "out", epochs=1, batch_size=4, device="cpu")
-    tracker = NeuronTracker(LAYER, 0, tmp_path / "states", steps_per_epoch=2)
+    tracker = NeuronTracker(conv_getter(LAYER), LAYER, 0, tmp_path / "states", steps_per_epoch=2)
     train(config, Tiny(8), Tiny(4), observer=tracker)
     assert len(tracker.records) == 2
     assert all(state_path(tmp_path / "states", step).exists() for step in range(3))
