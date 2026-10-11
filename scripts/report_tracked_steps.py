@@ -38,6 +38,7 @@ class ReportStepsConfig(BaseSettings):
     report_config: Path = Path("configs/stl_neuron_tracking.yaml")
     count: int = 5
     min_gap: int = 1
+    always_steps: list[int] = Field([], description="steps reported even when they are not among the largest")
     out_dir: Path | None = Field(None, description="replaces the report config's out_dir")
 
 
@@ -60,6 +61,8 @@ def main() -> None:
     run = load_run_config(["--config", str(config.report_config)])
     log = TrackingLog.model_validate_json((config.tracking_dir / LOG_NAME).read_text())
     chosen = largest_steps(log.steps, config.count, config.min_gap)
+    chosen += [r for r in log.steps if r.step in config.always_steps and r not in chosen]
+    chosen.sort(key=lambda r: r.step)
     states = states_to_report(chosen, n_states=len(log.steps) + 1)
     print("large steps:", [(r.step, f"{r.cosine_distance:.3e}") for r in chosen])
     print("states:", [(s.state, s.labels) for s in states])
