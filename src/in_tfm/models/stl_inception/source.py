@@ -67,3 +67,16 @@ class StlSource:
             grad_leaf_key=IMAGE_KEY,
             valid_mask=torch.ones(len(ids), self.n_tokens, dtype=torch.bool),
         )
+
+
+def spread_indices(total: int, count: int) -> list[int]:
+    """`count` evenly spaced indices into a split of `total` images.
+
+    - Index `k` is `(k * total) // count`, so the gap between neighbours is `total / count`.
+      - The multiply comes first so the arithmetic stays in integers, with no float rounding.
+      - The indices are distinct as long as `count <= total`, since the gap is then at least 1.
+    - The hub's STL-10 splits are sorted by class, so the first `count` images are all one class.
+      - Evenly spaced picks take every class in proportion.
+      - For the 8000 test images, `count=500` gives `0, 16, 32, ...`, which is 50 images of each of the 10 classes.
+    """
+    return [(index * total) // count for index in range(count)]
