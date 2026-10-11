@@ -124,6 +124,30 @@ Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), 
 - Clusters came from cuml, and CPU HDBSCAN may cluster differently.
 - A page comparing the two sets of reports side by side is not built.
 
+## Conclusion
+
+- DeepLift is a fair replacement for Integrated Gradients (IG) on this model.
+  - On a trained network the two maps correlate at about 0.93 (Colab, 64 images) and 0.94 (Mac, 600 hit pairs).
+  - Their top-100 pixels overlap by about 0.84 to 0.86.
+  - The sign of the total relevance agrees in 99.8% of pairs.
+- The speed gain is large per explanation and small per report.
+  - DeepLift took 0.11 s for 64 images, against 2.3 s for IG at 128 steps (21x) and 9.5 s at 512 steps (87x).
+  - Whole reports took about the same time, as scanning and clustering dominate.
+  - So the gain matters when many more hits are explained, and not at 10 hits per cluster.
+- The remaining disagreement is between the methods, and is not noise in IG.
+  - Correlation is flat from 32 steps on, while IG's completeness gap keeps shrinking.
+  - The cause was not investigated.
+  - Likely suspects are that IG integrates along a straight path from the baseline and DeepLift uses local multipliers, and that ReLU and max pool treat ties differently.
+- The reports show the same story under both methods.
+  - The same hits and clusters were used, and reviewers could not tell the overlays apart at the displayed size.
+  - That is not independent evidence, as both overlays come from the same hits.
+- Both methods put relevance on the top edge, the black bar and plain sky, and not on the aircraft.
+  - That is a property of the neuron or of the clustering, and not of the attribution.
+  - It should be checked before any claim is made about what these neurons detect.
+- Not concluded: which method is more faithful.
+  - Agreement shows they are close, and does not show either is right.
+  - A deletion or insertion test against the network's own output would be needed for that.
+
 ## Local rerun on the Mac (MPS)
 
 - Same commands as step 4, with the checkpoint from the laptop's own training run (68.3% test accuracy), written to `reports_stl_deeplift` and `reports_stl_ig`.
