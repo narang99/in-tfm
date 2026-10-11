@@ -9,6 +9,7 @@
 """
 
 from pathlib import Path
+from typing import Protocol
 
 import torch
 from datasets import load_dataset
@@ -44,6 +45,14 @@ class TrainConfig(BaseSettings):
     weight_decay: float = 5e-4
     seed: int = 0
     device: str = default_device()
+
+
+class StepObserver(Protocol):
+    """Sees the model once before training and once after every optimizer step."""
+
+    def start(self, model: nn.Module) -> None: ...
+
+    def after_step(self, model: nn.Module, lr: float) -> None: ...
 
 
 class Snapshot(BaseModel):
@@ -83,6 +92,7 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: str,
+    observer: StepObserver | None = None,
 ) -> float:
     model.train()
     total = 0.0
@@ -91,12 +101,19 @@ def train_one_epoch(
         loss = nn.functional.cross_entropy(model(images.to(device)), labels.to(device))
         loss.backward()
         optimizer.step()
+        if observer is not None:
+            observer.after_step(model, scheduler.get_last_lr()[0])
         scheduler.step()
         total += loss.item()
     return total / len(loader)
 
 
-def train(config: TrainConfig, train_images: ImageDataset, test_images: ImageDataset) -> Path:
+def train(
+    config: TrainConfig,
+    train_images: ImageDataset,
+    test_images: ImageDataset,
+    observer: StepObserver | None = None,
+) -> Path:
     torch.manual_seed(config.seed)
     train_loader = DataLoader(
         Transformed(train_images, train_transform), config.batch_size, shuffle=True, drop_last=True
@@ -107,8 +124,10 @@ def train(config: TrainConfig, train_images: ImageDataset, test_images: ImageDat
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=config.lr, total_steps=config.epochs * len(train_loader)
     )
+    if observer is not None:
+        observer.start(model)
     for epoch in range(config.epochs):
-        loss = train_one_epoch(model, train_loader, optimizer, scheduler, config.device)
+        loss = train_one_epoch(model, train_loader, optimizer, scheduler, config.device, observer)
         print(f"epoch {epoch}: loss={loss:.4f} test_acc={accuracy(model, test_loader, config.device):.4f}")
     return save_snapshot(config, model, test_loader, steps=config.epochs * len(train_loader))
 
