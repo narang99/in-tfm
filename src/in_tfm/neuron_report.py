@@ -45,6 +45,7 @@ AttrFn = Callable[..., np.ndarray]
 
 
 HITS_CACHE_NAME = "hits.pt"
+SAMPLE_SEED = 0
 
 
 class ClusterMeta(BaseModel):
@@ -165,6 +166,16 @@ def cluster_unique_image_counts(
     return {cid: len(np.unique(batch_idx[labels == cid])) for cid in cluster_counts(labels)}
 
 
+
+def sampled_hit_indices(labels: Int[np.ndarray, "n_hits"], cluster_id: int, max_n: int) -> Int[np.ndarray, "k"]:
+    """A random but repeatable pick, so two runs over the same hits show the same ones.
+
+    - Reports of the same hits under different attribution methods are only comparable if they show the same hits.
+    """
+    members = np.argwhere(labels == cluster_id).reshape(-1)
+    return np.random.default_rng([SAMPLE_SEED, cluster_id]).permutation(members)[:max_n]
+
+
 class NeuronClusterHits(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -188,8 +199,7 @@ class NeuronClusterHits(BaseModel):
     def sample_cluster(
         self, cluster_id: int, max_n: int = 5, attr_fn: AttrFn = compute_attnlrp_relevance
     ) -> list[ClusterHit]:
-        idxs = np.argwhere(self.labels == cluster_id).reshape(-1)
-        idxs = np.random.permutation(idxs)[:max_n]
+        idxs = sampled_hit_indices(self.labels, cluster_id, max_n)
         model = self.model.to(self.device)
         results: list[ClusterHit] = []
         for i in tqdm(idxs):

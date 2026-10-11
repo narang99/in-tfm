@@ -1,8 +1,12 @@
+from functools import partial
+from typing import Literal
+
 import torch
 from datasets import load_dataset
 
-from ...attribution import compute_deeplift_relevance
+from ...attribution import compute_deeplift_relevance, compute_integrated_gradients_relevance
 from ...layers import conv_getter
+from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
 from ..base import reject_nnsight_wrapped
 from .model import StlInception
@@ -33,23 +37,47 @@ def tokens_in_layer(model: torch.nn.Module, layer: torch.nn.Module) -> int:
     return counts[0]
 
 
+Attribution = Literal["deeplift", "integrated-gradients"]
+
+
+def attribution_fn(attribution: Attribution, ig_steps: int) -> AttrFn:
+    if attribution == "integrated-gradients":
+        return partial(compute_integrated_gradients_relevance, n_steps=ig_steps)
+    return compute_deeplift_relevance
+
+
 class StlInceptionAdapter:
     """The layer is fixed at construction, since the source must know how many positions it has."""
 
-    attr_fn = staticmethod(compute_deeplift_relevance)
+    attr_fn: AttrFn
 
-    def __init__(self, model: StlInception, layer_name: str, dataset: ImageDataset, split: str) -> None:
+    def __init__(
+        self,
+        model: StlInception,
+        layer_name: str,
+        dataset: ImageDataset,
+        split: str,
+        attribution: Attribution = "deeplift",
+        ig_steps: int = 128,
+    ) -> None:
         self.model = model
         self.layer_name = layer_name
         self.dataset = dataset
         self.split = split
+        self.attr_fn = attribution_fn(attribution, ig_steps)
 
     @classmethod
     def from_pretrained(
-        cls, layer_name: str, dataset: str, split: str, checkpoint: str | None = None
+        cls,
+        layer_name: str,
+        dataset: str,
+        split: str,
+        checkpoint: str | None = None,
+        attribution: Attribution = "deeplift",
+        ig_steps: int = 128,
     ) -> "StlInceptionAdapter":
         model = load_model(checkpoint)
-        return cls(model, layer_name, HubImages(load_dataset(dataset, split=split)), split)
+        return cls(model, layer_name, HubImages(load_dataset(dataset, split=split)), split, attribution, ig_steps)
 
     def get_model(self) -> StlInception:
         return self.model
