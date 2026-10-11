@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Cluster reports for the large steps of a tracked run, and for the network before training and after it.
 
-    uv run python scripts/report_tracked_steps.py --count 5 --min-gap 3
+    uv run python scripts/report_tracked_steps.py --count 5
 
 Needs the output of scripts/track_neuron_training.py.
 Each state is a normal neuron report, so `state_NNNN/neuron_K/index.html` reads like any other.
@@ -36,7 +36,7 @@ class ReportStepsConfig(BaseSettings):
     tracking_dir: Path = Path("checkpoints/stl_tracking")
     report_config: Path = Path("configs/stl_neuron_tracking.yaml")
     count: int = 5
-    min_gap: int = 3
+    min_gap: int = 1
     out_dir: Path | None = Field(None, description="replaces the report config's out_dir")
 
 

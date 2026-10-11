@@ -10,6 +10,7 @@ Pick the steps and write their reports with scripts/report_tracked_steps.py.
 
 from pathlib import Path
 
+from in_tfm.neuron_run import layer_getter_for
 from in_tfm.neuron_tracking import LOG_NAME, NeuronTracker
 from in_tfm.run_config import load_run_config
 from in_tfm.stl_training import TrainConfig, load_hub_splits, train
@@ -26,7 +27,11 @@ def main() -> None:
     run = load_run_config(["--config", str(config.report_config)])
     train_images, test_images = load_hub_splits(config.dataset)
     tracker = NeuronTracker(
-        run.layer_name, run.neuron_idxs[0], config.out_dir / "states", len(train_images) // config.batch_size
+        layer_getter_for(run),
+        run.layer_name,
+        run.neuron_idxs[0],
+        config.out_dir / "states",
+        len(train_images) // config.batch_size,
     )
     train(config, train_images, test_images, observer=tracker)
     (config.out_dir / LOG_NAME).write_text(tracker.log().model_dump_json(indent=1))
