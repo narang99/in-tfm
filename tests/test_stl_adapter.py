@@ -84,3 +84,16 @@ def test_positions_are_counted_on_the_models_own_device():
     """The pipeline moves the model to the accelerator before it builds the source."""
     model = StlInception().to("meta")
     assert tokens_in_layer(model, conv_getter(LAYER)(model)) == 24 * 24
+
+
+def test_deeplift_explains_hits_unless_told_otherwise(adapter):
+    assert adapter.attr_fn is compute_deeplift_relevance
+
+
+def test_integrated_gradients_can_be_chosen_with_its_step_count():
+    adapter = StlInceptionAdapter(StlInception(), LAYER, FakeStl(2), "test", "integrated-gradients", ig_steps=7)
+    source = adapter.make_source([0])
+    batch = source.to_model_batch(list(source.sample_ids()))
+    relevance = adapter.attr_fn(adapter.get_model(), batch, conv_getter(LAYER), 0, 100)
+    assert relevance.shape == (1, 3, 96, 96)
+    assert adapter.attr_fn.keywords == {"n_steps": 7}

@@ -91,3 +91,10 @@ def test_the_stl_model_rejects_the_other_modalities_sections():
         load_run_config(
             ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0", "--text.n-samples", "5"]
         )
+
+
+def test_attribution_defaults_to_deeplift_and_takes_integrated_gradients():
+    flags = ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0"]
+    assert load_run_config(flags).stl.attribution == "deeplift"
+    config = load_run_config([*flags, "--stl.attribution", "integrated-gradients", "--stl.ig-steps", "64"])
+    assert (config.stl.attribution, config.stl.ig_steps) == ("integrated-gradients", 64)

@@ -90,6 +90,10 @@ class StlDataConfig(Section):
     split: Literal["train", "test"] = "test"
     n_images: int = Field(1000, description="the first n images of the split in dataset order")
     checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_stl.py, random weights if unset")
+    attribution: Literal["deeplift", "integrated-gradients"] = Field(
+        "deeplift", description="how a hit is explained in pixels, integrated-gradients is the slow reference"
+    )
+    ig_steps: int = Field(128, description="integrated-gradients only: interpolation steps per explained hit")
 
 
 class HitSelectionConfig(Section):
