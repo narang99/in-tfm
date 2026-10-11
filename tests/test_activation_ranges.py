@@ -84,3 +84,4 @@ def test_the_plot_is_written_and_the_report_section_is_collapsed(tmp_path):
     assert (tmp_path / PLOT_NAME).stat().st_size > 0
     assert PLOT_NAME in section
     assert "<details>" in section
+    assert "elbow" not in section, "the elbow class caps an image at 420px, far too small for this figure"

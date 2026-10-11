@@ -137,7 +137,7 @@ def _activation_ranges_plot(report_dir: Path) -> str:
     """Absent from reports written before the plot existed, and for a neuron with no clusters."""
     if not (report_dir / PLOT_NAME).exists():
         return ""
-    return details("activation ranges per cluster", f'<img class="elbow" src="{PLOT_NAME}" alt="activation range per cluster">')
+    return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
 
 
 def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str) -> str:
