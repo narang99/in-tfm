@@ -12,7 +12,7 @@ from transformers.image_processing_utils import BaseImageProcessor
 import transformers.models.dinov2.modeling_dinov2 as modeling_dinov2
 from transformers.models.dinov2.modeling_dinov2 import Dinov2Model
 
-from ..attribution import patch_eager_attention
+from ..attribution import compute_attnlrp_relevance, patch_eager_attention
 from ..presenters import ImagePresenter
 from ..sources import DicomSource
 from .base import reject_nnsight_wrapped
@@ -53,6 +53,8 @@ def patch_dinov2_for_attn_lrp(model: Dinov2Model) -> None:
 
 class RadDinoAdapter:
     """A single instance serves capture and attribution, so the weights are loaded once."""
+
+    attr_fn = staticmethod(compute_attnlrp_relevance)
 
     def __init__(self, model: Dinov2Model, processor: BaseImageProcessor) -> None:
         self.model = model

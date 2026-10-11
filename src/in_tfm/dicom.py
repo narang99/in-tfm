@@ -3,6 +3,7 @@ display (as opposed to model input).
 """
 
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import pydicom
@@ -11,6 +12,13 @@ from jaxtyping import Float, UInt8
 from PIL import Image
 from transformers.image_processing_base import BatchFeature
 from transformers.image_processing_utils import BaseImageProcessor
+
+
+class ImageNormalization(Protocol):
+    """Per-channel mean and std a model input was normalised with. Image processors have both."""
+
+    image_mean: list[float]
+    image_std: list[float]
 
 
 def dicom_to_uint8(ds: pydicom.Dataset, use_windowing: bool = True) -> UInt8[np.ndarray, "h w"]:
@@ -59,7 +67,7 @@ def get_batch(processor: BaseImageProcessor, dcm_paths: list[Path]) -> BatchFeat
 
 
 def inv_tfm(
-    processor: BaseImageProcessor, tensor: Float[torch.Tensor, "*batch c h w"]
+    processor: ImageNormalization, tensor: Float[torch.Tensor, "*batch c h w"]
 ) -> UInt8[np.ndarray, "h w c"]:
     """Undo the image processor's mean/std normalization, for display (not model input)."""
     mean = np.array(processor.image_mean)  # e.g. [0.485, 0.456, 0.406]

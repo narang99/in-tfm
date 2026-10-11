@@ -17,3 +17,5 @@ wheels/
 /colab_reports
 
 /experiments
+/data
+/checkpoints

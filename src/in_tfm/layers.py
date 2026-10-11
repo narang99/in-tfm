@@ -68,3 +68,19 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
         return model.layers[layer_idx].self_attn.k_proj
 
     return getter
+
+
+def conv_getter(layer_name: str) -> LayerGetter:
+    """A conv picked by its dotted path, for example `block_b.branch_3x3.1.0`.
+
+    - The paths are submodule names, which `named_modules()` lists.
+    - Indexing works on both the raw model and its NNsight envoy, like the other getters.
+    """
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        layer = model
+        for part in layer_name.split("."):
+            layer = layer[int(part)] if part.isdigit() else getattr(layer, part)
+        return layer
+
+    return getter
