@@ -10,6 +10,7 @@ from typing import Protocol
 
 import torch
 
+from ..neuron_report import AttrFn
 from ..presenters import ClusterPresenter
 from ..sources import SampleSource
 
@@ -24,6 +25,9 @@ def reject_nnsight_wrapped(module: torch.nn.Module) -> None:
 
 class ModelAdapter[SamplesT](Protocol):
     """`SamplesT` is what `make_source` consumes: a list of texts, a directory of DICOMs."""
+
+    attr_fn: AttrFn
+    """Explains one neuron at one position in pixel or embedding space, see `attribution`."""
 
     def get_model(self) -> torch.nn.Module:
         """The raw module the layer getters index into, for example `hf_model.model`.

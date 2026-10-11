@@ -79,3 +79,15 @@ def test_a_data_section_for_the_other_modality_is_rejected():
         load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2", "--text.n-samples", "5"])
     with pytest.raises(ValidationError, match="reads text data, but the image section was set"):
         load_run_config(["--image.n-dicoms", "5"])
+
+
+def test_conv_target_needs_a_layer_name():
+    with pytest.raises(ValidationError, match="layer_name"):
+        load_run_config(["--model", "self/stl-inception", "--target", "conv"])
+
+
+def test_the_stl_model_rejects_the_other_modalities_sections():
+    with pytest.raises(ValidationError, match="reads stl data, but the text section was set"):
+        load_run_config(
+            ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0", "--text.n-samples", "5"]
+        )
