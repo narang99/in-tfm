@@ -2,14 +2,16 @@
 
 - Only the final model is saved, since the reports want one frozen checkpoint.
   - It is a dict with `model` (the state dict) and the step, epoch and test accuracy it was taken at.
-- Training augments with a padded random crop and a horizontal flip.
-  - The crop pads with zeros, which in normalised space is a mean-coloured border.
-  - So borders are in the training distribution, and a border is not a cue for any class.
+- Training augments with a random crop and a horizontal flip.
+  - `padded_crop` pads with zeros, which in normalised space is a mean-coloured border.
+    - Borders are then in the training distribution, and many cluster hits land on them.
+  - `resized_crop` takes a region inside the image and resizes it back, so no border is ever added.
+    - The resize changes the aspect ratio, which is accepted here.
 - Evaluation and every report use `source.eval_transform`, so a snapshot sees what the reports feed it.
 """
 
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import torch
 from datasets import load_dataset
@@ -24,14 +26,18 @@ from .device import default_device
 from .models.stl_inception import StlInception
 from .models.stl_inception.source import STL_MEAN, STL_STD, HubImages, ImageDataset, eval_transform
 
-train_transform = transforms.Compose(
-    [
-        transforms.RandomCrop(96, padding=12),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(STL_MEAN, STL_STD),
-    ]
-)
+Augmentation = Literal["padded_crop", "resized_crop"]
+
+
+def train_transform(augmentation: Augmentation) -> transforms.Compose:
+    crop = (
+        transforms.RandomCrop(96, padding=12)
+        if augmentation == "padded_crop"
+        else transforms.RandomResizedCrop(96, scale=(0.5, 1.0), ratio=(3 / 4, 4 / 3))
+    )
+    return transforms.Compose(
+        [crop, transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize(STL_MEAN, STL_STD)]
+    )
 
 
 class TrainConfig(BaseSettings):
@@ -44,6 +50,7 @@ class TrainConfig(BaseSettings):
     lr: float = 1e-3
     weight_decay: float = 5e-4
     seed: int = 0
+    augmentation: Augmentation = "padded_crop"
     device: str = default_device()
 
 
@@ -116,7 +123,7 @@ def train(
 ) -> Path:
     torch.manual_seed(config.seed)
     train_loader = DataLoader(
-        Transformed(train_images, train_transform), config.batch_size, shuffle=True, drop_last=True
+        Transformed(train_images, train_transform(config.augmentation)), config.batch_size, shuffle=True, drop_last=True
     )
     test_loader = DataLoader(Transformed(test_images, eval_transform), config.batch_size)
     model = StlInception().to(config.device)
