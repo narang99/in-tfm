@@ -70,6 +70,19 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
     return getter
 
 
+def v_proj_getter(layer_idx: int) -> LayerGetter:
+    """The value projection, whose output is (batch, seq, n_heads * head_dim) with a flat neuron index `h * head_dim + d`.
+
+    - It is the first half of a head's OV circuit, and linear in the residual stream, so input * weight[neuron] is exact.
+    - A value coordinate does not depend on other positions, so a hit is fully explained by the token it fired on.
+    """
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        return model.layers[layer_idx].self_attn.v_proj
+
+    return getter
+
+
 def conv_getter(layer_name: str) -> LayerGetter:
     """A conv picked by its dotted path, for example `block_b.branch_3x3.1.0`.
 

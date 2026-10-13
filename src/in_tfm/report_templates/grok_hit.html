@@ -1,0 +1,4 @@
+<div class="hit">
+<div class="hit-tag">sample {{ hit.sample_id }} &middot; position {{ hit.token_idx }} &middot; {{ "%.0f"|format(hit.share_on_firing_token * 100) }}% of relevance on the firing token</div>
+<div class="firing">{% for tok in hit.tokens %}<span class="chip {{ "pos" if tok.relevance >= 0 else "neg" }}"{% if tok.firing %} style="outline:2px solid currentColor"{% endif %}><code>{{ tok.text }}</code><span class="count">{{ "%+.2f"|format(tok.relevance) }}</span></span>{% endfor %}</div>
+</div>

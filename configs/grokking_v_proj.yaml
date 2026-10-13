@@ -1,0 +1,18 @@
+# Run with: python scripts/run_neuron_report.py --config configs/grokking_v_proj.yaml --grok.checkpoint <state.pt> --neurons 3
+# A value neuron of the one-layer modular addition transformer, flat index = head * 32 + dim.
+model: self/grokking-modadd
+target: v_proj
+layer_idx: 0
+neuron_start: 0
+neuron_end: 0
+out_dir: reports_grokking
+batch_size: 113
+hits:
+  method: bucketed
+  max_hits: 10000
+  n_buckets: 5
+  min_bucket_size: 5
+clustering:
+  min_cluster_size: 3
+report:
+  max_hits_per_cluster: 30

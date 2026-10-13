@@ -29,6 +29,8 @@ from typing import Any
 from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.grokking import GrokkingAdapter
+from in_tfm.models.grokking.data import pairs_for
 from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
@@ -45,6 +47,8 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
         case ModelName.RAD_DINO:
             return RadDinoAdapter.from_pretrained()
+        case ModelName.GROKKING_MODADD:
+            return GrokkingAdapter.from_pretrained(None if config.grok.checkpoint is None else str(config.grok.checkpoint))
         case ModelName.STL_INCEPTION:
             return StlInceptionAdapter.from_pretrained(
                 config.layer_name,
@@ -56,7 +60,9 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
             )
 
 
-def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int]:
+def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int] | list[tuple[int, int]]:
+    if config.modality == "grok":
+        return pairs_for(config.grok.pairs, config.grok.train_fraction, config.grok.data_seed)
     if config.modality == "stl":
         return list(range(config.stl.n_images))
     if config.modality == "text":

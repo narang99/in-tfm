@@ -30,15 +30,17 @@ class ModelName(StrEnum):
     ATTN_ONLY_2L = "self/attn-only-2l"
     RAD_DINO = "microsoft/rad-dino"
     STL_INCEPTION = "self/stl-inception"
+    GROKKING_MODADD = "self/grokking-modadd"
 
 
-Modality = Literal["text", "image", "stl"]
+Modality = Literal["text", "image", "stl", "grok"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.RAD_DINO: "image",
     ModelName.STL_INCEPTION: "stl",
+    ModelName.GROKKING_MODADD: "grok",
 }
 
 
@@ -48,6 +50,7 @@ class Target(StrEnum):
     K_PROJ = "k_proj"
     FC2 = "fc2"
     CONV = "conv"
+    V_PROJ = "v_proj"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
@@ -55,6 +58,7 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
+    ModelName.GROKKING_MODADD: {Target.V_PROJ},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -94,6 +98,15 @@ class StlDataConfig(Section):
         "deeplift", description="how a hit is explained in pixels, integrated-gradients is the slow reference"
     )
     ig_steps: int = Field(128, description="integrated-gradients only: interpolation steps per explained hit")
+
+
+class GrokDataConfig(Section):
+    checkpoint: Path | None = Field(None, description="a state from scripts/train_grokking.py, random weights if unset")
+    pairs: Literal["all", "train", "test", "distinct"] = Field(
+        "distinct", description="which sums are the samples: the P x P pairs split as in training, or the diagonal, see models.grokking.data"
+    )
+    train_fraction: float = 0.3
+    data_seed: int = 598
 
 
 class HitSelectionConfig(Section):
@@ -151,6 +164,7 @@ class RunConfig(BaseSettings):
     text: TextDataConfig = TextDataConfig()
     image: ImageDataConfig = ImageDataConfig()
     stl: StlDataConfig = StlDataConfig()
+    grok: GrokDataConfig = GrokDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -184,7 +198,7 @@ class RunConfig(BaseSettings):
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "image", "stl"} - {self.modality}
+        others = {"text", "image", "stl", "grok"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self

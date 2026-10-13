@@ -1,0 +1,8 @@
+{% from "components.html" import details %}
+<div class="firing"><span class="label">fired on position</span>{% for chip in view.firing_positions %}<span class="chip"><code>{{ chip.text }}</code><span class="count">&times;{{ chip.count }}</span></span>{% endfor %}</div>
+<div class="firing"><span class="label">fired on token</span>{% for chip in view.firing_tokens %}<span class="chip"><code>{{ chip.text }}</code>{% if chip.count > 1 %}<span class="count">&times;{{ chip.count }}</span>{% endif %}</span>{% endfor %}</div>
+{% call details(view.hits|length ~ " sampled hits", true) %}
+{{ hits_html|safe }}
+{%- endcall %}
+
+{% call details(view.clustered_label ~ " (what was clustered)") %}<img src="{{ view.hadamard_url }}" alt="{{ view.clustered_label }}">{% endcall %}
