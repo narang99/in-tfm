@@ -48,3 +48,36 @@ def attention_to_operands(model: GrokTransformer) -> Float[np.ndarray, "head pos
     k = captured["k"].reshape(len(tokens), -1, n_heads, d_head)
     scores = torch.einsum("phd,pshd->phs", q, k) * layer.scaling
     return torch.softmax(scores, dim=-1).mean(dim=0).numpy()
+
+
+def mlp_post_activations(model: GrokTransformer) -> Float[np.ndarray, "pair neuron"]:
+    tokens, _ = all_pairs()
+    captured: list[torch.Tensor] = []
+    handle = model.layers[0].mlp.act.register_forward_hook(lambda _m, _i, out: captured.append(out[:, -1].detach()))
+    with torch.no_grad():
+        model.logits_for_tokens(tokens)
+    handle.remove()
+    return captured[0].numpy()
+
+
+def neuron_logit_weights(model: GrokTransformer) -> Float[np.ndarray, "neuron answer"]:
+    """Each MLP neuron's direct path to the logits, `unembed . down_proj[:, n]`, exact since nothing follows the MLP but the unembedding."""
+    down = model.layers[0].mlp.down_proj.weight.detach()
+    return (model.unembed.weight.detach() @ down).T.numpy()
+
+
+def group_logits(post: Float[np.ndarray, "pair neuron"], logit_weights: Float[np.ndarray, "neuron answer"], members: np.ndarray) -> Float[np.ndarray, "pair answer"]:
+    return post[:, members] @ logit_weights[members]
+
+
+def share_at_sum_frequency(logits: Float[np.ndarray, "pair answer"], freq: int, modulus: int) -> float:
+    """Variance share of a logit table explained by cos and sin of `w (a + b - c)`, the paper's form for one frequency."""
+    a = np.repeat(np.arange(modulus), modulus)[:, None]
+    b = np.tile(np.arange(modulus), modulus)[:, None]
+    c = np.arange(modulus)[None, :]
+    angle = 2 * np.pi * freq * (a + b - c) / modulus
+    centered = logits - logits.mean()
+    design = np.stack([np.cos(angle).ravel(), np.sin(angle).ravel()], axis=1)
+    coef, *_ = np.linalg.lstsq(design, centered.ravel(), rcond=None)
+    fitted = design @ coef
+    return float((fitted**2).sum() / (centered**2).sum())

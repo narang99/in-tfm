@@ -161,9 +161,31 @@ Network: the one-layer transformer of Nanda et al. (P = 113, 4 heads, d_mlp 512)
 - Traced circuit:
   - Heads 0 and 2 (f9) feed the f9 neuron group, and heads 1 and 3 (f38) feed the f38 group.
   - The f34 and f53 groups read all four heads equally, so no head owns those frequencies.
-  - The groups write to the logits, and E4 shows the f9 and f38 groups are the load-bearing ones.
+  - The groups write to the logits on their own frequencies (E6b), and E4 shows the f9 and f38 groups are the load-bearing ones.
 - This matches the paper's picture of neurons working on key frequencies, with heads reading the operands.
   - The specialisation of heads to frequencies (0/2 to f9, 1/3 to f38) is something I only saw in these edges, I did not check it against the paper.
+
+### E6b: the last edge, MLP groups to the logits
+
+- Each MLP neuron's direct path to the logits is `unembed . down_proj[:, n]`, exact because only the unembedding follows the MLP (`logit_edges_final.json`, `scripts/grokking_logit_edges.py`).
+- Margin = correct logit minus the mean logit, averaged over all 12769 pairs.
+
+| group | size | output direction: strongest freq (share) | group logits explained by cos/sin of w(a + b - c) | margin |
+|---|---|---|---|---|
+| f9 | 136 | 9 (0.97) | 0.65 | 25.95 |
+| f38 | 128 | 38 (0.97) | 0.57 | 11.40 |
+| f34 | 105 | 34 (0.98) | 0.90 | 9.67 |
+| f53 | 102 | 53 (0.97) | 0.84 | 5.96 |
+| f9 small | 19 | 9 (0.80) | 0.02 | 0.54 |
+| f38 small | 18 | 38 (0.81) | 0.01 | 0.38 |
+
+- The full logit margin is 55.95.
+  - The MLP neurons give 53.99 of it, and the groups sum to 53.90 (the 4 noise neurons give the rest).
+  - Embedding and attention straight to the unembedding give 1.96, and the MLP bias gives 0.
+- Conclusions:
+  - Every group writes to the logits on its own frequency, so the frequency is kept from the heads (E6) through the neurons to the output.
+  - The four large groups write mostly the paper's `cos(w_k (a + b - c))` term, the wave that peaks at the right answer.
+  - The two small groups write almost none of it, matching their zero ablation effect in E4.
 
 ### E7: neuron reports for every neuron
 
@@ -185,7 +207,7 @@ Network: the one-layer transformer of Nanda et al. (P = 113, 4 heads, d_mlp 512)
 
 ## Not yet done
 
-- The edges from the groups to the logits are only measured by ablation (E4), not by a path decomposition.
+- The head-to-group edges (E6) are variance shares, not ablations.
 - Edges are computed at the final state only, not tracked through training.
 - The neuron description uses the Fourier spectrum, so it is not a clustering with no prior at all.
   - A prior-free version would describe a neuron by its raw activation map over the pairs, and was not tried.

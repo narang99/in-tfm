@@ -1,0 +1,53 @@
+{
+ "all_mlp_margin": 53.989200592041016,
+ "groups": [
+  {
+   "freq": 53,
+   "size": 102,
+   "output_direction_freq": 53,
+   "output_direction_share": 0.9727808302435499,
+   "share_cos_w_a_plus_b_minus_c": 0.8377824683637856,
+   "correct_logit_margin": 5.9634785652160645
+  },
+  {
+   "freq": 34,
+   "size": 105,
+   "output_direction_freq": 34,
+   "output_direction_share": 0.9770973266743731,
+   "share_cos_w_a_plus_b_minus_c": 0.8981246890696911,
+   "correct_logit_margin": 9.674445152282715
+  },
+  {
+   "freq": 38,
+   "size": 128,
+   "output_direction_freq": 38,
+   "output_direction_share": 0.9680378339840598,
+   "share_cos_w_a_plus_b_minus_c": 0.5720902523999514,
+   "correct_logit_margin": 11.399157524108887
+  },
+  {
+   "freq": 38,
+   "size": 18,
+   "output_direction_freq": 38,
+   "output_direction_share": 0.8071004036661921,
+   "share_cos_w_a_plus_b_minus_c": 0.010796899199242722,
+   "correct_logit_margin": 0.37683212757110596
+  },
+  {
+   "freq": 9,
+   "size": 19,
+   "output_direction_freq": 9,
+   "output_direction_share": 0.8016049822118346,
+   "share_cos_w_a_plus_b_minus_c": 0.015342394973914607,
+   "correct_logit_margin": 0.5426933765411377
+  },
+  {
+   "freq": 9,
+   "size": 136,
+   "output_direction_freq": 9,
+   "output_direction_share": 0.9719969384543771,
+   "share_cos_w_a_plus_b_minus_c": 0.6528712635052358,
+   "correct_logit_margin": 25.95176887512207
+  }
+ ]
+}
