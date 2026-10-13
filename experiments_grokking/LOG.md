@@ -44,7 +44,7 @@ Network: the one-layer transformer of Nanda et al. (P = 113, 4 heads, d_mlp 512)
 
 - `run_neuron_report.py` on neurons 0 to 127 of `v_proj`, output in `exp1_final_all_vproj/`.
 - Stopped after neuron 8, because you redirected the goal from reports to circuit discovery.
-- Nothing was concluded from it.
+- Nothing was concluded from it, and E7 later ran reports for every neuron.
 
 ### E1: clusters of the hits of MLP neurons
 
@@ -138,10 +138,55 @@ Network: the one-layer transformer of Nanda et al. (P = 113, 4 heads, d_mlp 512)
   - The groups become causal at 5600, as test accuracy climbs, and not before.
   - After 10000 the groups are stable, and two small groups split off (20000, 40000).
 
+### E6: the edges, which heads feed which MLP group
+
+- For every MLP neuron, each head's contribution to its pre-activation at `=` (`o_proj` and `up_proj` are linear), and the share of the neuron's variance it explains (`edges_final.json`, `scripts/grokking_circuit_edges.py`).
+- Mean share per head, by neuron group:
+
+| group | size | head 0 | head 1 | head 2 | head 3 |
+|---|---|---|---|---|---|
+| f9 | 136 | 0.50 | 0.00 | 0.50 | 0.00 |
+| f9 small | 19 | 0.31 | 0.03 | 0.63 | 0.03 |
+| f38 | 128 | 0.00 | 0.48 | 0.00 | 0.51 |
+| f38 small | 18 | 0.06 | 0.39 | 0.08 | 0.48 |
+| f34 | 105 | 0.25 | 0.24 | 0.25 | 0.26 |
+| f53 | 102 | 0.26 | 0.23 | 0.26 | 0.25 |
+
+- Heads and frequencies, from the coordinates of each head:
+  - All 32 `k_proj` coordinates of heads 0 and 2 have strongest frequency 9, and all 32 of heads 1 and 3 have 38.
+  - `v_proj`: heads 0 and 2 have 24 of 32 coordinates at 9, heads 1 and 3 have 23 and 26 of 32 at 38, the rest at 34 and 53.
+- Averaged over all pairs, every head attends 0.5 to `a`, 0.5 to `b` and 0 to `=` from the `=` position.
+  - The 0.5 split is forced by the symmetry between `a` and `b`, so it says nothing about how attention varies per pair.
+  - Only the 0 on `=` is informative.
+- Traced circuit:
+  - Heads 0 and 2 (f9) feed the f9 neuron group, and heads 1 and 3 (f38) feed the f38 group.
+  - The f34 and f53 groups read all four heads equally, so no head owns those frequencies.
+  - The groups write to the logits, and E4 shows the f9 and f38 groups are the load-bearing ones.
+- This matches the paper's picture of neurons working on key frequencies, with heads reading the operands.
+  - The specialisation of heads to frequencies (0/2 to f9, 1/3 to f38) is something I only saw in these edges, I did not check it against the paper.
+
+### E7: neuron reports for every neuron
+
+- `experiments_grokking/run_all_reports.sh` runs `scripts/run_neuron_report.py` on every neuron of the final state, output in `experiments_grokking/reports/<target>/neuron_<i>/index.html` (619 MB, not committed).
+  - `v_proj`, `k_proj`, `q_proj`: 128 each, `distinct` samples, the default `leaf` and min size 3.
+  - `up_proj`: 512, all pairs, 2000 hits, min cluster size 20 to keep the reports readable and fast.
+  - At most 3 hits are shown per cluster.
+- All 896 reports were written (`index.html` counted), and every run printed its total time.
+
+| target | neurons | clusters, median (range) | hits, median | run time |
+|---|---|---|---|---|
+| `v_proj` | 128 | 13 (6 to 19) | 218 | 605 s |
+| `k_proj` | 128 | 11 (8 to 15) | 229 | 591 s |
+| `q_proj` | 128 | 14 (14 to 23) | 90 | 913 s |
+| `up_proj` | 512 | 6 (0 to 13) | 2000 | 1545 s |
+
+- These are the per-neuron views behind E1 and E2.
+  - The circuit trace (E3 to E6) does not depend on them.
+
 ## Not yet done
 
-- The edges between groups (which head feeds which MLP group) are not computed.
-  - The groups say which neurons share a frequency, not how they connect.
+- The edges from the groups to the logits are only measured by ablation (E4), not by a path decomposition.
+- Edges are computed at the final state only, not tracked through training.
 - The neuron description uses the Fourier spectrum, so it is not a clustering with no prior at all.
   - A prior-free version would describe a neuron by its raw activation map over the pairs, and was not tried.
 - `up_proj` hit clustering was run for 32 neurons only, then stopped, since E1 already showed noise.
