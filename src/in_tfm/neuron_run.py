@@ -19,7 +19,7 @@ from .clustering import cluster_labels
 from .device import empty_cache
 from .hadamard import hadamard_from_rows, near_square_shape, normalized_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter, v_proj_getter
+from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter, up_proj_getter, v_proj_getter
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
@@ -42,6 +42,7 @@ def layer_getter_for(config: RunConfig) -> LayerGetter:
         Target.Q_PROJ: q_proj_getter,
         Target.K_PROJ: k_proj_getter,
         Target.V_PROJ: v_proj_getter,
+        Target.UP_PROJ: up_proj_getter,
         Target.FC2: fc2_getter,
     }
     if config.target is Target.CONV:

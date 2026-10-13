@@ -51,6 +51,7 @@ class Target(StrEnum):
     FC2 = "fc2"
     CONV = "conv"
     V_PROJ = "v_proj"
+    UP_PROJ = "up_proj"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
@@ -58,7 +59,7 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
-    ModelName.GROKKING_MODADD: {Target.V_PROJ},
+    ModelName.GROKKING_MODADD: {Target.V_PROJ, Target.UP_PROJ, Target.Q_PROJ, Target.K_PROJ},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 

@@ -70,6 +70,15 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
     return getter
 
 
+def up_proj_getter(layer_idx: int) -> LayerGetter:
+    """The MLP's pre-activation neurons, linear in the residual stream, so input * weight[neuron] is exact (up to the bias)."""
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        return model.layers[layer_idx].mlp.up_proj
+
+    return getter
+
+
 def v_proj_getter(layer_idx: int) -> LayerGetter:
     """The value projection, whose output is (batch, seq, n_heads * head_dim) with a flat neuron index `h * head_dim + d`.
 
