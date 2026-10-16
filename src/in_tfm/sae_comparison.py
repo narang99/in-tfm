@@ -103,6 +103,23 @@ class NeuronComparison(BaseModel):
     latents: list[LatentRow]
 
 
+class HitTable(BaseModel):
+    """Every hit of one neuron, for reading the concepts behind both clusterings."""
+
+    neuron: int
+    activation: list[float]
+    ours: list[int]
+    sae: list[int]
+    top_latents: list[list[int]]
+    top_contributions: list[list[float]]
+    error_share: list[float]
+    context: list[str]
+
+
+class HitTables(BaseModel):
+    neurons: list[HitTable]
+
+
 def check_sae(sae: SAE, resid: Float[torch.Tensor, "n d_model"]) -> SaeCheck:
     with torch.no_grad():
         latents = sae.encode(resid)

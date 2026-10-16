@@ -26,6 +26,9 @@ from in_tfm.neuron_capture import NeuronCapture, ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run, timed
 from in_tfm.run_config import RunConfig, config_path_from
 from in_tfm.sae_comparison import (
+    HitTable,
+    HitTables,
+    LatentSplit,
     NeuronComparison,
     SaeCheck,
     check_sae,
@@ -59,11 +62,41 @@ def load_config(argv: list[str]) -> SaeComparisonConfig:
     return SaeComparisonConfig(_cli_parse_args=argv, **(values or {}))
 
 
-def token_strings(source: TextSource, tokenizer, batch_idx: np.ndarray, token_idx: np.ndarray) -> list[str]:
+def token_contexts(
+    source: TextSource, tokenizer, batch_idx: np.ndarray, token_idx: np.ndarray, before: int = 12, after: int = 3
+) -> tuple[list[str], list[str]]:
+    """The hit token, and its text window with the token marked as [[token]]."""
     ids = source.sample_ids()
-    samples = np.unique(batch_idx)
-    rows = {int(s): source.to_model_batch([ids[s]]).display_ids[0] for s in samples}
-    return tokenizer.convert_ids_to_tokens([int(rows[int(b)][t]) for b, t in zip(batch_idx, token_idx)])
+    rows = {int(s): source.to_model_batch([ids[s]]).display_ids[0].tolist() for s in np.unique(batch_idx)}
+    def decode(span: list[int]) -> str:
+        return tokenizer.decode(span, skip_special_tokens=True)
+
+    tokens, contexts = [], []
+    for b, t in zip(batch_idx, token_idx):
+        row = rows[int(b)]
+        tokens.append(tokenizer.convert_ids_to_tokens(row[t]))
+        contexts.append(f"{decode(row[max(0, t - before) : t])}[[{decode([row[t]])}]]{decode(row[t + 1 : t + 1 + after])}")
+    return tokens, contexts
+
+
+def hit_table(
+    neuron: int,
+    labels: np.ndarray,
+    sae_labels: np.ndarray,
+    split: LatentSplit,
+    contexts: list[str],
+    n_latents: int = 5,
+) -> HitTable:
+    return HitTable(
+        neuron=neuron,
+        activation=split.activation.tolist(),
+        ours=labels.tolist(),
+        sae=sae_labels.tolist(),
+        top_latents=split.top_latents[:, :n_latents].tolist(),
+        top_contributions=np.round(split.top_contributions[:, :n_latents], 4).tolist(),
+        error_share=np.round(split.error_term / split.activation, 4).tolist(),
+        context=contexts,
+    )
 
 
 def random_positions(scan: ScanResult, n: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
@@ -101,7 +134,7 @@ def main() -> None:
     with timed("gather residuals"):
         resid = resid_capture.gather(merged.batch_idx, merged.token_idx).inputs.to(config.device)
         random_resid = resid_capture.gather(*random_positions(scan, config.n_random_tokens, config.seed)).inputs
-    tokens = token_strings(run.source, adapter.tokenizer, merged.batch_idx, merged.token_idx)
+    tokens, contexts = token_contexts(run.source, adapter.tokenizer, merged.batch_idx, merged.token_idx)
 
     sae = SAE.from_pretrained(config.sae_release, config.sae_id, device=config.device)
     sae_check = check_sae(sae, random_resid.to(config.device))
@@ -109,7 +142,7 @@ def main() -> None:
 
     layer = run.module.layers[config.layer_idx]
     weight = layer_getter_for(config)(run.module).weight
-    comparisons = []
+    comparisons, tables = [], []
     for column, (neuron, index_map) in enumerate(zip(config.neuron_idxs, merged.index_maps)):
         rows = gathered.inputs[index_map]
         labels = cluster_with_config(hadamard_from_rows(rows, weight, neuron), config)
@@ -119,6 +152,7 @@ def main() -> None:
         comparison = compare_neuron(neuron, labels, split, captured, sae_labels, [tokens[i] for i in index_map])
         print(comparison.model_dump_json(indent=1, exclude={"clusters", "latents"}))
         comparisons.append(comparison)
+        tables.append(hit_table(neuron, labels, sae_labels, split, [contexts[i] for i in index_map]))
 
     result = SaeComparisonResult(
         sae_release=config.sae_release, sae_id=config.sae_id, layer_idx=config.layer_idx,
@@ -126,6 +160,7 @@ def main() -> None:
     )
     config.result_json.parent.mkdir(parents=True, exist_ok=True)
     config.result_json.write_text(result.model_dump_json(indent=1))
+    config.result_json.with_suffix(".hits.json").write_text(HitTables(neurons=tables).model_dump_json())
     print(f"[done] -> {config.result_json}")
 
 
