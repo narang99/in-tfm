@@ -11,3 +11,8 @@ text:
   max_length: 2048
 sae_release: gemma-scope-2-270m-pt-res-all
 sae_id: layer_10_width_16k_l0_small
+hits:
+  method: bucketed
+  max_hits: 10000
+  n_buckets: 10
+  min_bucket_size: 100
