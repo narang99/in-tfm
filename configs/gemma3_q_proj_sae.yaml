@@ -1,0 +1,13 @@
+# Run with: python scripts/compare_sae_features.py --config configs/gemma3_q_proj_sae.yaml
+# The corpus and neurons of the layer 11 ablations (experiments/hdbscan-leaf).
+model: google/gemma-3-270m
+target: q_proj
+layer_idx: 11
+neurons: [90, 300]
+batch_size: 4
+text:
+  unit: article
+  n_samples: 100
+  max_length: 2048
+sae_release: gemma-scope-2-270m-pt-res-all
+sae_id: layer_10_width_16k_l0_small

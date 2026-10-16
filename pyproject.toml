@@ -57,6 +57,9 @@ in-tfm = "in_tfm:main"
 viz = [
     "circuitsvis>=1.43.3",
 ]
+sae = [
+    "sae-lens>=6.54",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]

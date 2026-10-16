@@ -70,6 +70,16 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
     return getter
 
 
+def input_layernorm_getter(layer_idx: int) -> LayerGetter:
+    """Its input is the raw residual stream entering the layer, which is what a `resid_post`
+    SAE of the layer before reads. Its output is what q_proj and k_proj read."""
+
+    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        return model.layers[layer_idx].input_layernorm
+
+    return getter
+
+
 def conv_getter(layer_name: str) -> LayerGetter:
     """A conv picked by its dotted path, for example `block_b.branch_3x3.1.0`.
 
