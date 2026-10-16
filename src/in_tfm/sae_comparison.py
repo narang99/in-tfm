@@ -71,6 +71,12 @@ class LatentRow(BaseModel):
     """Rank of its read strength among all latents, 0 being the strongest."""
 
 
+class RandIndex(BaseModel):
+    adjusted_rand: float
+    n_hits: int
+    """Hits neither labeling calls noise, the only ones the index is over."""
+
+
 class NeuronComparison(BaseModel):
     neuron: int
     n_hits: int
@@ -87,7 +93,7 @@ class NeuronComparison(BaseModel):
     n_sae_clusters: int
     """HDBSCAN on the hits' latent contributions, the SAE-basis twin of our clustering."""
     sae_noise_fraction: float
-    adjusted_rand: dict[str, float]
+    agreement: dict[str, RandIndex]
     """Between labelings of the same hits, each pair over the hits neither calls noise."""
     homogeneity: float
     """1 when each latent's hits sit in one cluster: latents are no coarser than clusters."""
@@ -164,10 +170,11 @@ def latent_contribution_vectors(split: LatentSplit) -> Float[np.ndarray, "n_hits
     return normalize(vectors, "l2")
 
 
-def rand_over_clustered(a: Int[np.ndarray, "n"], b: Int[np.ndarray, "n"]) -> float:
+def rand_over_clustered(a: Int[np.ndarray, "n"], b: Int[np.ndarray, "n"]) -> RandIndex:
     """Latent ids and token ids are never noise, so only our labels and the SAE clusters drop hits."""
     kept = (a != NOISE) & (b != NOISE)
-    return float(adjusted_rand_score(a[kept], b[kept])) if kept.any() else float("nan")
+    value = float(adjusted_rand_score(a[kept], b[kept])) if kept.any() else float("nan")
+    return RandIndex(adjusted_rand=value, n_hits=int(kept.sum()))
 
 
 def common_tokens(tokens: list[str], n: int = 4) -> list[str]:
@@ -204,7 +211,7 @@ def compare_neuron(
         distinct_top_latents=len(set(top_latent)),
         n_sae_clusters=len(set(sae_labels) - {NOISE}),
         sae_noise_fraction=float((sae_labels == NOISE).mean()),
-        adjusted_rand={
+        agreement={
             "ours_vs_sae_clusters": rand_over_clustered(labels, sae_labels),
             "ours_vs_top_latent": rand_over_clustered(labels, top_latent),
             "ours_vs_token": rand_over_clustered(labels, token_labels),
