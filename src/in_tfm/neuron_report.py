@@ -25,6 +25,7 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict, Field
 from tqdm import tqdm
 
+from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
 from .html_report import (
@@ -97,7 +98,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections, presenter.page_controls()))
+    report_path.write_text(_index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir)))
     return report_path
 
 
@@ -132,7 +133,14 @@ def _activation_plot(meta: ReportMeta) -> str:
     return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
 
 
-def _index_page(meta: ReportMeta, sections: list[str], page_controls: str) -> str:
+def _activation_ranges_plot(report_dir: Path) -> str:
+    """Absent from reports written before the plot existed, and for a neuron with no clusters."""
+    if not (report_dir / PLOT_NAME).exists():
+        return ""
+    return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
+
+
+def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str) -> str:
     title = f"Neuron {meta.neuron_idx}"
     body = neuron_index(
         title=title,
@@ -140,7 +148,7 @@ def _index_page(meta: ReportMeta, sections: list[str], page_controls: str) -> st
         n_hits=meta.n_hits,
         n_clusters=len(sections),
         page_controls=page_controls,
-        activation_plot=_activation_plot(meta),
+        activation_plot=_activation_plot(meta) + activation_ranges_plot,
         cluster_nav=_cluster_nav(meta),
         sections=sections,
     )
@@ -194,6 +202,9 @@ class NeuronClusterHits(BaseModel):
     elbow_values: Float[np.ndarray, "n_pos"]
     elbow_idx: int
     bucket_edges: Float[np.ndarray, "n_edges"] | None = None
+    hit_activations: Float[np.ndarray, "n_hits"] | None = None
+    noise_activations: Float[np.ndarray, "n"] | None = None
+    """With the hits' activations, the report gets a collapsed activation range plot."""
     device: str = Field(default_factory=default_device)
 
     def sample_cluster(
@@ -257,6 +268,15 @@ class NeuronClusterHits(BaseModel):
             sample_ids=list(self.sample_ids),
         )
 
+    def _write_activation_ranges(self, report_dir: Path, cluster_ids: list[int]) -> None:
+        if self.hit_activations is None or self.noise_activations is None:
+            return
+        ranges = ActivationRanges(
+            clusters=cluster_activations(self.labels, self.hit_activations, cluster_ids),
+            noise=self.noise_activations.tolist(),
+        )
+        write_activation_ranges(report_dir, ranges)
+
     def write_report(
         self,
         out_dir: str | Path,
@@ -290,6 +310,7 @@ class NeuronClusterHits(BaseModel):
         meta = self._meta(cluster_ids, min_uniq_images)
         (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
 
+        self._write_activation_ranges(report_dir, cluster_ids)
         for cid in cluster_ids:
             self._cache_cluster(cid, report_dir, attr_fn, max_n)
         return render_report(report_dir, self.presenter)

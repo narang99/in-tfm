@@ -2,13 +2,16 @@
 
 - Only the final model is saved, since the reports want one frozen checkpoint.
   - It is a dict with `model` (the state dict) and the step, epoch and test accuracy it was taken at.
-- Training augments with a padded random crop and a horizontal flip.
-  - The crop pads with zeros, which in normalised space is a mean-coloured border.
-  - So borders are in the training distribution, and a border is not a cue for any class.
+- Training augments with a random crop and a horizontal flip.
+  - `padded_crop` pads with zeros, which in normalised space is a mean-coloured border.
+    - Borders are then in the training distribution, and many cluster hits land on them.
+  - `resized_crop` takes a region inside the image and resizes it back, so no border is ever added.
+    - The resize changes the aspect ratio, which is accepted here.
 - Evaluation and every report use `source.eval_transform`, so a snapshot sees what the reports feed it.
 """
 
 from pathlib import Path
+from typing import Literal, Protocol
 
 import torch
 from datasets import load_dataset
@@ -23,14 +26,18 @@ from .device import default_device
 from .models.stl_inception import StlInception
 from .models.stl_inception.source import STL_MEAN, STL_STD, HubImages, ImageDataset, eval_transform
 
-train_transform = transforms.Compose(
-    [
-        transforms.RandomCrop(96, padding=12),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(STL_MEAN, STL_STD),
-    ]
-)
+Augmentation = Literal["padded_crop", "resized_crop"]
+
+
+def train_transform(augmentation: Augmentation) -> transforms.Compose:
+    crop = (
+        transforms.RandomCrop(96, padding=12)
+        if augmentation == "padded_crop"
+        else transforms.RandomResizedCrop(96, scale=(0.5, 1.0), ratio=(3 / 4, 4 / 3))
+    )
+    return transforms.Compose(
+        [crop, transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize(STL_MEAN, STL_STD)]
+    )
 
 
 class TrainConfig(BaseSettings):
@@ -43,7 +50,16 @@ class TrainConfig(BaseSettings):
     lr: float = 1e-3
     weight_decay: float = 5e-4
     seed: int = 0
+    augmentation: Augmentation = "padded_crop"
     device: str = default_device()
+
+
+class StepObserver(Protocol):
+    """Sees the model once before training and once after every optimizer step."""
+
+    def start(self, model: nn.Module) -> None: ...
+
+    def after_step(self, model: nn.Module, lr: float) -> None: ...
 
 
 class Snapshot(BaseModel):
@@ -83,6 +99,7 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: str,
+    observer: StepObserver | None = None,
 ) -> float:
     model.train()
     total = 0.0
@@ -91,15 +108,22 @@ def train_one_epoch(
         loss = nn.functional.cross_entropy(model(images.to(device)), labels.to(device))
         loss.backward()
         optimizer.step()
+        if observer is not None:
+            observer.after_step(model, scheduler.get_last_lr()[0])
         scheduler.step()
         total += loss.item()
     return total / len(loader)
 
 
-def train(config: TrainConfig, train_images: ImageDataset, test_images: ImageDataset) -> Path:
+def train(
+    config: TrainConfig,
+    train_images: ImageDataset,
+    test_images: ImageDataset,
+    observer: StepObserver | None = None,
+) -> Path:
     torch.manual_seed(config.seed)
     train_loader = DataLoader(
-        Transformed(train_images, train_transform), config.batch_size, shuffle=True, drop_last=True
+        Transformed(train_images, train_transform(config.augmentation)), config.batch_size, shuffle=True, drop_last=True
     )
     test_loader = DataLoader(Transformed(test_images, eval_transform), config.batch_size)
     model = StlInception().to(config.device)
@@ -107,8 +131,10 @@ def train(config: TrainConfig, train_images: ImageDataset, test_images: ImageDat
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=config.lr, total_steps=config.epochs * len(train_loader)
     )
+    if observer is not None:
+        observer.start(model)
     for epoch in range(config.epochs):
-        loss = train_one_epoch(model, train_loader, optimizer, scheduler, config.device)
+        loss = train_one_epoch(model, train_loader, optimizer, scheduler, config.device, observer)
         print(f"epoch {epoch}: loss={loss:.4f} test_acc={accuracy(model, test_loader, config.device):.4f}")
     return save_snapshot(config, model, test_loader, steps=config.epochs * len(train_loader))
 

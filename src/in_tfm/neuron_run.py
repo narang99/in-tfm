@@ -8,11 +8,13 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 import time
 from contextlib import contextmanager
 
+import numpy as np
 import torch
 from jaxtyping import Float
 from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 
+from .activation_ranges import sample_noise
 from .clustering import cluster_labels
 from .device import empty_cache
 from .hadamard import hadamard_from_rows, near_square_shape, normalized_rows
@@ -96,6 +98,7 @@ def report_neuron(
     rows: Float[torch.Tensor, "n_hits hidden"],
     sample_ids: list[str],
     weight: torch.Tensor,
+    noise: Float[np.ndarray, "n"],
     run: PreparedRun,
     config: RunConfig,
 ) -> None:
@@ -122,6 +125,8 @@ def report_neuron(
         elbow_values=selection.elbow_values.numpy(),
         elbow_idx=selection.elbow_idx,
         bucket_edges=selection.bucket_edges,
+        hit_activations=selection.activations,
+        noise_activations=noise,
         device=config.device,
     )
     with timed(f"{tag}: write report"):
@@ -158,5 +163,5 @@ def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[Sample
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(
             neuron_idx, polarity, selections[(neuron_idx, polarity)], gathered.inputs[index_map],
-            scan.sample_ids, weight, run, config,
+            scan.sample_ids, weight, sample_noise(scan, neuron_idx, config.seed), run, config,
         )

@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
 from .bucketing import bucketed_sample, merged_bucket_edges
+from .activation_ranges import hit_activations
 from .hadamard import high_activation_hits
 from .neuron_capture import ScanResult
 from .run_config import HitSelectionConfig, Polarity
@@ -32,6 +33,8 @@ class HitSelection(PickedHits):
     threshold: float
     elbow_values: Float[torch.Tensor, "n_pos"]
     elbow_idx: int
+    activations: Float[np.ndarray, "n_hits"]
+    """Signed activation of each hit, whichever tail the hits were picked from."""
 
 
 def elbow_hits(column: Float[torch.Tensor, "batch seq 1"], magnitude: float, scan: ScanResult, hits: HitSelectionConfig, seed: int) -> PickedHits:
@@ -82,4 +85,10 @@ def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, hits: Hit
         picked = elbow_hits(column, magnitude, scan, hits, seed)
     threshold = -magnitude if polarity == "negative" else magnitude
     print(f"[neuron {neuron_idx} {polarity}] threshold={threshold:.4f}, {picked.n_above_threshold} hits beyond it, {len(picked.batch_idx)} kept")
-    return HitSelection(threshold=threshold, elbow_values=elbow_values, elbow_idx=elbow_idx, **dict(picked))
+    return HitSelection(
+        threshold=threshold,
+        elbow_values=elbow_values,
+        elbow_idx=elbow_idx,
+        activations=hit_activations(scan, neuron_idx, picked.batch_idx, picked.token_idx),
+        **dict(picked),
+    )

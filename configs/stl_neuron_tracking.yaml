@@ -1,0 +1,16 @@
+# Report settings for the neuron-over-training experiment, see scripts/track_neuron_training.py.
+# Layer and neuron here are also what the training run follows, so there is one place to change them.
+model: self/stl-inception
+target: conv
+layer_name: block_c.branch_1x1.0
+neuron_start: 0
+neuron_end: 0
+batch_size: 16
+out_dir: reports_stl_tracking
+stl:
+  n_images: 500
+hits:
+  method: bucketed
+  max_hits: 10000
+  n_buckets: 10
+  min_bucket_size: 100

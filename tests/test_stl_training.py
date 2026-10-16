@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 
 from in_tfm.models.stl_inception.adapter import load_model
-from in_tfm.stl_training import TrainConfig, train
+from in_tfm.stl_training import TrainConfig, train, train_transform
 
 
 class Tiny:
@@ -27,3 +27,16 @@ def test_training_writes_a_checkpoint_the_adapter_loads(tmp_path):
     saved = torch.load(path)
     assert saved["epoch"] == 1
     assert 0 <= saved["test_acc"] <= 1
+
+
+def border_free(augmentation: str) -> bool:
+    white = Image.new("RGB", (96, 96), (255, 255, 255))
+    transform = train_transform(augmentation)
+    outputs = [transform(white) for _ in range(30)]
+    assert all(out.shape == (3, 96, 96) for out in outputs)
+    return all(torch.allclose(out, out[:, :1, :1].expand_as(out)) for out in outputs)
+
+
+def test_padded_crop_adds_a_border_and_resized_crop_does_not():
+    assert not border_free("padded_crop")
+    assert border_free("resized_crop")

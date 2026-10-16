@@ -1,0 +1,32 @@
+<style>
+table { border-collapse:collapse; margin:8px 0 24px; }
+th, td { border-bottom:1px solid #d9dee2; padding:4px 12px; text-align:left; }
+</style>
+<h1>{{ layer_name }} neuron {{ neuron }} over training</h1>
+<img src="{{ distance_plot }}" alt="cosine distance per step">
+<h2>Large steps</h2>
+<table>
+<tr><th>step</th><th>epoch</th><th>lr</th><th>cosine</th><th>euclidean</th></tr>
+{% for step in steps %}
+<tr><td>{{ step.step }}</td><td>{{ step.epoch }}</td><td>{{ "%.2e"|format(step.lr) }}</td><td>{{ "%.3e"|format(step.cosine_distance) }}</td><td>{{ "%.3e"|format(step.euclidean_distance) }}</td></tr>
+{% endfor %}
+</table>
+<h2>Reported states</h2>
+<table>
+<tr><th>state</th><th>why</th><th>report</th></tr>
+{% for state in states %}
+<tr><td>{{ state.state }}</td><td>{{ state.labels|join(", ") }}</td><td><a href="{{ state.href }}">report</a></td></tr>
+{% endfor %}
+</table>
+<h2>Cluster matches</h2>
+<p>Each cluster of the first report with its most similar cluster of the second, by cosine of the mean Hadamard product.</p>
+<table>
+<tr><th>pair</th><th>first</th><th>second</th><th>cosine</th></tr>
+{% for pair_name, matches in pairs.items() %}
+{% for match in matches %}
+<tr><td>{{ pair_name }}</td><td>{{ match.cluster_a }}</td><td>{{ match.cluster_b }}</td><td>{{ "%.3f"|format(match.similarity) }}</td></tr>
+{% else %}
+<tr><td>{{ pair_name }}</td><td colspan="3">no clusters on one side</td></tr>
+{% endfor %}
+{% endfor %}
+</table>

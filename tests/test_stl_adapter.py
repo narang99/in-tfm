@@ -97,3 +97,12 @@ def test_integrated_gradients_can_be_chosen_with_its_step_count():
     relevance = adapter.attr_fn(adapter.get_model(), batch, conv_getter(LAYER), 0, 100)
     assert relevance.shape == (1, 3, 96, 96)
     assert adapter.attr_fn.keywords == {"n_steps": 7}
+
+
+def test_spread_indices_cover_a_class_sorted_split_evenly():
+    from in_tfm.models.stl_inception.source import spread_indices
+
+    indices = spread_indices(8000, 500)
+    assert len(indices) == len(set(indices)) == 500
+    assert [i // 800 for i in indices].count(0) == 50
+    assert [i // 800 for i in indices].count(9) == 50
