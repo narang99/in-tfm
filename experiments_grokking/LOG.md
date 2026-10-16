@@ -3,6 +3,10 @@
 Branch `exp/grokking-neuron-clusters`.
 Network: the one-layer transformer of Nanda et al. (P = 113, 4 heads, d_mlp 512), final state `checkpoints/grokking/states/state_40000.pt`.
 
+- The reports, logs and npz files linked below are in `outputs.tar.gz` on the `data/grokking-reports` branch, stored in git LFS.
+  - Get it with `git checkout data/grokking-reports -- experiments_grokking/outputs.tar.gz`.
+  - Unpack it in place with `tar -xzf outputs.tar.gz` from this directory.
+
 ## Question
 
 - Can the pipeline find circuits (subgraphs) of this network automatically, without reading what each weight does?

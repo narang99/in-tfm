@@ -82,6 +82,12 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
     `mean.pt` vectors) shows 12 of the top 20 pairs agree almost exactly
   - conclusion: `leaf` is now the library's default `cluster_selection_method`, and hit
     selection stays on raw `q_proj`
+- **`experiments_grokking`**: can the pipeline find the known circuit of Nanda et al.'s
+  modular addition network? The findings are in `experiments_grokking/LOG.md`.
+  - The reports for that experiment are not on this branch.
+  - They are one LFS tarball, `experiments_grokking/outputs.tar.gz`, on the
+    `data/grokking-reports` branch.
+  - That keeps this branch's clones and pushes free of a 309 MB download.
 
 ## Onboarding a model
 

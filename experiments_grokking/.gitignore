@@ -1,0 +1,6 @@
+# the raw outputs ship as outputs.tar.gz in LFS, since 39k files make git slow
+*.log
+*.npz
+exp1_final_all_vproj/
+reports/
+outputs.tar.gz
