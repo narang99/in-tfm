@@ -13,8 +13,8 @@ Branch `exp/gemma-sae-features`.
   - These are the neurons of the earlier layer 11 ablations (`experiments/hdbscan-leaf`).
 - Corpus: 100 wikitext-2 articles, 2048 tokens each, seed 0.
   - That is about 200k tokens, far fewer than the SAE was trained on.
-- Hits: elbow selection, positive tail, as in a neuron report.
-  - Neuron 90 has 12,925 hits, neuron 300 has 5,977.
+- Hits: bucketed sampling, as in a neuron report: 10 activation buckets, 10,000 hits per neuron.
+  - The first run used elbow selection (12,925 and 5,977 hits). Its numbers are kept below for reference.
 - Our clusters: HDBSCAN (`leaf`, `min_cluster_size` 10) on the L2-normalised Hadamard products.
 - SAE: `gemma-scope-2-270m-pt-res-all`, `layer_10_width_16k_l0_small`, through sae-lens.
   - It reads `blocks.10.hook_resid_post`, the residual entering layer 11.
@@ -49,6 +49,39 @@ python scripts/inspect_sae_concepts.py out/l10_16k_small.hits.json --neuron 90
 
 ## Numbers
 
+Bucketed hits, the main run:
+
+| | neuron 90 | neuron 300 |
+|---|---|---|
+| hits | 10,000 | 10,000 |
+| our clusters / noise | 51 / 76% | 43 / 85% |
+| SAE-basis clusters / noise | 73 / 72% | 90 / 73% |
+| median share of activation from latents | 0.40 | 0.43 |
+| from the decoder bias | 0.47 | 0.25 |
+| from the SAE error | 0.13 | 0.32 |
+| median top latent's share of the latent sum | 0.27 | 0.27 |
+| median latents to reach 80% | 6 | 6 |
+| distinct top latents | 1,064 | 1,320 |
+
+| pair (bucketed) | neuron 90 | hits | neuron 300 | hits |
+|---|---|---|---|---|
+| ours vs SAE clusters | 0.89 | 1,273 | 0.89 | 920 |
+| ours vs top latent | 0.47 | 2,369 | 0.68 | 1,499 |
+| ours vs token | 0.60 | 2,369 | 0.59 | 1,499 |
+| SAE clusters vs token | 0.53 | 2,830 | 0.51 | 2,673 |
+
+- The bias share rises for neuron 90 because bucketed hits include weak activations.
+  - There the constant bias term is a larger fraction of a small activation.
+- At clusters of 20 hits or more:
+  - neuron 90 has 24 concepts found by both, 26 found only in the SAE basis, and 14 only by us,
+  - neuron 300 has 14 found by both, 38 only in the SAE basis, and 13 only by us.
+- The concepts read the same as in the elbow run below.
+  - New SAE-only ones: `even though` / `While` / `As for` (latent 311), `an` (latent 777), and `the [decline/form/case] of` (latent 1128).
+- Report page with every concept and its example contexts: https://claude.ai/artifact/Qfcwa5jFTyk4wLEUWKivvf
+  - Built from `bucketed/cards_bucketed.json`, written by `inspect_sae_concepts.py --cards-json`.
+
+Elbow hits, the first run:
+
 | | neuron 90 | neuron 300 |
 |---|---|---|
 | hits | 12,925 | 5,977 |
@@ -61,7 +94,7 @@ python scripts/inspect_sae_concepts.py out/l10_16k_small.hits.json --neuron 90
 | median latents to reach 80% | 7 | 7 |
 | distinct top latents | 740 | 853 |
 
-Adjusted Rand, each pair over the hits neither side calls noise:
+Adjusted Rand for the elbow run, each pair over the hits neither side calls noise:
 
 | pair | neuron 90 | hits | neuron 300 | hits |
 |---|---|---|---|---|
@@ -74,7 +107,7 @@ Adjusted Rand, each pair over the hits neither side calls noise:
   - Those are the dense cores both sides agree on.
   - The index says nothing about the rest, so the concepts below were read by hand.
 
-## Concepts, read from example contexts
+## Concepts, read from example contexts (elbow run)
 
 ### Where both sides find the same concept
 
@@ -171,4 +204,5 @@ Adjusted Rand, each pair over the hits neither side calls noise:
 - A larger corpus, as above.
 - A wider SAE (262k) and a larger L0, to see whether the SAE-only concepts survive.
 - More neurons, and `k_proj`.
-- The result JSONs live on the Colab VM, not in git; the commands above regenerate them in about 5 minutes on a T4.
+- The bucketed run's summary and cards are in `bucketed/`; its 5 MB hits file is not committed.
+  - The commands above regenerate everything in about 5 minutes on a T4.

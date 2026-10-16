@@ -1,0 +1,1089 @@
+{
+ "sae_release": "gemma-scope-2-270m-pt-res-all",
+ "sae_id": "layer_10_width_16k_l0_small",
+ "layer_idx": 11,
+ "target": "q_proj",
+ "sae_check": {
+  "mean_l0": 22.782751083374023,
+  "fraction_of_variance_unexplained": 0.04064859449863434
+ },
+ "neurons": [
+  {
+   "neuron": 90,
+   "n_hits": 10000,
+   "n_clusters": 51,
+   "noise_fraction": 0.7631,
+   "max_activation_mismatch": 8.940696716308594e-7,
+   "median_latent_share": 0.3945954144001007,
+   "median_bias_share": 0.471441388130188,
+   "median_error_share": 0.12476558983325958,
+   "median_top_latent_share": 0.2686885595321655,
+   "median_latents_for_80_percent": 6.0,
+   "distinct_top_latents": 1064,
+   "n_sae_clusters": 73,
+   "sae_noise_fraction": 0.717,
+   "agreement": {
+    "ours_vs_sae_clusters": {
+     "adjusted_rand": 0.8899221661749529,
+     "n_hits": 1273
+    },
+    "ours_vs_top_latent": {
+     "adjusted_rand": 0.47338710267967915,
+     "n_hits": 2369
+    },
+    "ours_vs_token": {
+     "adjusted_rand": 0.60183960273152,
+     "n_hits": 2369
+    },
+    "sae_clusters_vs_token": {
+     "adjusted_rand": 0.5258902860159892,
+     "n_hits": 2830
+    },
+    "top_latent_vs_token": {
+     "adjusted_rand": 0.31543975426453286,
+     "n_hits": 10000
+    }
+   },
+   "homogeneity": 0.8678079876690099,
+   "completeness": 0.7213012208023885,
+   "clusters": [
+    {
+     "cluster": 38,
+     "n_hits": 333,
+     "top_tokens": [
+      "▁."
+     ],
+     "dominant_latent": 575,
+     "dominant_share": 0.3333333333333333,
+     "precision": 0.8604651162790697,
+     "median_error_share": 0.15707503259181976
+    },
+    {
+     "cluster": 22,
+     "n_hits": 130,
+     "top_tokens": [
+      "▁="
+     ],
+     "dominant_latent": 91,
+     "dominant_share": 0.9692307692307692,
+     "precision": 0.4790874524714829,
+     "median_error_share": -0.08681251853704453
+    },
+    {
+     "cluster": 19,
+     "n_hits": 124,
+     "top_tokens": [
+      "▁'",
+      "▁’"
+     ],
+     "dominant_latent": 367,
+     "dominant_share": 0.9596774193548387,
+     "precision": 1.0,
+     "median_error_share": 0.5228950381278992
+    },
+    {
+     "cluster": 42,
+     "n_hits": 111,
+     "top_tokens": [
+      "▁Mark",
+      "▁Andrea",
+      "▁William",
+      "▁Robert"
+     ],
+     "dominant_latent": 441,
+     "dominant_share": 0.954954954954955,
+     "precision": 0.5698924731182796,
+     "median_error_share": 0.033887095749378204
+    },
+    {
+     "cluster": 24,
+     "n_hits": 93,
+     "top_tokens": [
+      "▁"
+     ],
+     "dominant_latent": 64,
+     "dominant_share": 0.5376344086021505,
+     "precision": 0.2994011976047904,
+     "median_error_share": 0.24255327880382538
+    },
+    {
+     "cluster": 23,
+     "n_hits": 87,
+     "top_tokens": [
+      "▁="
+     ],
+     "dominant_latent": 91,
+     "dominant_share": 0.8275862068965517,
+     "precision": 0.2737642585551331,
+     "median_error_share": -0.3002077043056488
+    },
+    {
+     "cluster": 14,
+     "n_hits": 85,
+     "top_tokens": [
+      "9",
+      "1",
+      "8",
+      "3"
+     ],
+     "dominant_latent": 80,
+     "dominant_share": 0.24705882352941178,
+     "precision": 0.6176470588235294,
+     "median_error_share": 0.2784893810749054
+    },
+    {
+     "cluster": 15,
+     "n_hits": 84,
+     "top_tokens": [
+      "▁The",
+      "▁the"
+     ],
+     "dominant_latent": 814,
+     "dominant_share": 0.4523809523809524,
+     "precision": 0.8085106382978723,
+     "median_error_share": 0.1804180145263672
+    },
+    {
+     "cluster": 7,
+     "n_hits": 80,
+     "top_tokens": [
+      "▁="
+     ],
+     "dominant_latent": 2451,
+     "dominant_share": 0.275,
+     "precision": 0.3188405797101449,
+     "median_error_share": -0.18147292733192444
+    },
+    {
+     "cluster": 10,
+     "n_hits": 66,
+     "top_tokens": [
+      "@"
+     ],
+     "dominant_latent": 174,
+     "dominant_share": 0.3787878787878788,
+     "precision": 0.8064516129032258,
+     "median_error_share": 0.34483081102371216
+    },
+    {
+     "cluster": 40,
+     "n_hits": 58,
+     "top_tokens": [
+      "▁Production",
+      "▁History",
+      "▁Background",
+      "▁Development"
+     ],
+     "dominant_latent": 651,
+     "dominant_share": 1.0,
+     "precision": 0.3473053892215569,
+     "median_error_share": -0.014204718172550201
+    },
+    {
+     "cluster": 8,
+     "n_hits": 55,
+     "top_tokens": [
+      "-"
+     ],
+     "dominant_latent": 189,
+     "dominant_share": 0.5636363636363636,
+     "precision": 0.5636363636363636,
+     "median_error_share": -0.46418502926826477
+    },
+    {
+     "cluster": 11,
+     "n_hits": 54,
+     "top_tokens": [
+      "▁,"
+     ],
+     "dominant_latent": 1832,
+     "dominant_share": 0.18518518518518517,
+     "precision": 0.43478260869565216,
+     "median_error_share": 0.43976742029190063
+    },
+    {
+     "cluster": 25,
+     "n_hits": 54,
+     "top_tokens": [
+      "▁"
+     ],
+     "dominant_latent": 445,
+     "dominant_share": 0.5925925925925926,
+     "precision": 0.6808510638297872,
+     "median_error_share": -0.06394132226705551
+    },
+    {
+     "cluster": 34,
+     "n_hits": 52,
+     "top_tokens": [
+      "▁America",
+      "▁Australia",
+      "▁Haiti",
+      "▁Mexico"
+     ],
+     "dominant_latent": 368,
+     "dominant_share": 0.7307692307692307,
+     "precision": 0.3838383838383838,
+     "median_error_share": 0.250897616147995
+    },
+    {
+     "cluster": 50,
+     "n_hits": 52,
+     "top_tokens": [
+      "av",
+      "ul",
+      "aut",
+      "ch"
+     ],
+     "dominant_latent": 317,
+     "dominant_share": 0.38461538461538464,
+     "precision": 0.25,
+     "median_error_share": -0.07588593661785126
+    },
+    {
+     "cluster": 47,
+     "n_hits": 51,
+     "top_tokens": [
+      "▁Atlantic",
+      "▁God",
+      "▁Royal",
+      "▁Cater"
+     ],
+     "dominant_latent": 446,
+     "dominant_share": 0.7843137254901961,
+     "precision": 0.47058823529411764,
+     "median_error_share": 0.06383924931287766
+    },
+    {
+     "cluster": 33,
+     "n_hits": 47,
+     "top_tokens": [
+      "▁"
+     ],
+     "dominant_latent": 1444,
+     "dominant_share": 1.0,
+     "precision": 0.31543624161073824,
+     "median_error_share": -0.02023153193295002
+    },
+    {
+     "cluster": 28,
+     "n_hits": 38,
+     "top_tokens": [
+      "\n"
+     ],
+     "dominant_latent": 653,
+     "dominant_share": 0.5526315789473685,
+     "precision": 1.0,
+     "median_error_share": 0.3483657240867615
+    },
+    {
+     "cluster": 4,
+     "n_hits": 37,
+     "top_tokens": [
+      "▁,"
+     ],
+     "dominant_latent": 1707,
+     "dominant_share": 0.7027027027027027,
+     "precision": 0.8387096774193549,
+     "median_error_share": 0.14166881144046783
+    }
+   ],
+   "latents": [
+    {
+     "latent": 525,
+     "n_hits_topped": 417,
+     "clusters_spanned": 1,
+     "noise_share": 0.9136690647482014,
+     "top_tokens": [
+      "\n"
+     ],
+     "read_rank": 693
+    },
+    {
+     "latent": 91,
+     "n_hits_topped": 263,
+     "clusters_spanned": 3,
+     "noise_share": 0.16730038022813687,
+     "top_tokens": [
+      "▁=",
+      "\n"
+     ],
+     "read_rank": 290
+    },
+    {
+     "latent": 2001,
+     "n_hits_topped": 238,
+     "clusters_spanned": 4,
+     "noise_share": 0.7647058823529411,
+     "top_tokens": [
+      "▁tropical",
+      "▁the",
+      "▁Storm",
+      "▁storm"
+     ],
+     "read_rank": 1889
+    },
+    {
+     "latent": 18,
+     "n_hits_topped": 223,
+     "clusters_spanned": 2,
+     "noise_share": 0.8878923766816144,
+     "top_tokens": [
+      "▁South",
+      "▁North",
+      ".",
+      "▁New"
+     ],
+     "read_rank": 2438
+    },
+    {
+     "latent": 441,
+     "n_hits_topped": 186,
+     "clusters_spanned": 1,
+     "noise_share": 0.41397849462365593,
+     "top_tokens": [
+      ".",
+      "▁\"",
+      "ma",
+      "▁Mark"
+     ],
+     "read_rank": 4356
+    },
+    {
+     "latent": 661,
+     "n_hits_topped": 178,
+     "clusters_spanned": 2,
+     "noise_share": 0.797752808988764,
+     "top_tokens": [
+      "k",
+      "if",
+      "cler",
+      "od"
+     ],
+     "read_rank": 1171
+    },
+    {
+     "latent": 64,
+     "n_hits_topped": 167,
+     "clusters_spanned": 2,
+     "noise_share": 0.6287425149700598,
+     "top_tokens": [
+      "▁"
+     ],
+     "read_rank": 6052
+    },
+    {
+     "latent": 651,
+     "n_hits_topped": 167,
+     "clusters_spanned": 2,
+     "noise_share": 0.6227544910179641,
+     "top_tokens": [
+      "▁Production",
+      "▁Hurricane",
+      "▁History",
+      "▁Background"
+     ],
+     "read_rank": 232
+    },
+    {
+     "latent": 69,
+     "n_hits_topped": 166,
+     "clusters_spanned": 0,
+     "noise_share": 0.9819277108433735,
+     "top_tokens": [
+      "▁\"",
+      "▁intensity",
+      "▁events",
+      "▁one"
+     ],
+     "read_rank": 760
+    },
+    {
+     "latent": 474,
+     "n_hits_topped": 158,
+     "clusters_spanned": 2,
+     "noise_share": 0.740506329113924,
+     "top_tokens": [
+      "▁\"",
+      "▁'"
+     ],
+     "read_rank": 3657
+    },
+    {
+     "latent": 1444,
+     "n_hits_topped": 149,
+     "clusters_spanned": 2,
+     "noise_share": 0.5100671140939598,
+     "top_tokens": [
+      "▁"
+     ],
+     "read_rank": 1077
+    },
+    {
+     "latent": 824,
+     "n_hits_topped": 144,
+     "clusters_spanned": 0,
+     "noise_share": 0.9861111111111112,
+     "top_tokens": [
+      "amb",
+      "▁Lact",
+      "▁acycl",
+      "▁Hawai"
+     ],
+     "read_rank": 1602
+    },
+    {
+     "latent": 702,
+     "n_hits_topped": 138,
+     "clusters_spanned": 0,
+     "noise_share": 0.927536231884058,
+     "top_tokens": [
+      "▁the",
+      "1",
+      "0",
+      "2"
+     ],
+     "read_rank": 1544
+    },
+    {
+     "latent": 739,
+     "n_hits_topped": 137,
+     "clusters_spanned": 1,
+     "noise_share": 0.9197080291970803,
+     "top_tokens": [
+      "▁K",
+      "▁N",
+      "▁H",
+      "h"
+     ],
+     "read_rank": 371
+    },
+    {
+     "latent": 589,
+     "n_hits_topped": 132,
+     "clusters_spanned": 0,
+     "noise_share": 1.0,
+     "top_tokens": [
+      "▁of",
+      "▁for",
+      "▁from"
+     ],
+     "read_rank": 1706
+    },
+    {
+     "latent": 575,
+     "n_hits_topped": 129,
+     "clusters_spanned": 1,
+     "noise_share": 0.13953488372093023,
+     "top_tokens": [
+      "▁.",
+      "▁;"
+     ],
+     "read_rank": 169
+    },
+    {
+     "latent": 840,
+     "n_hits_topped": 129,
+     "clusters_spanned": 1,
+     "noise_share": 0.8372093023255814,
+     "top_tokens": [
+      "▁of",
+      "1",
+      "9",
+      "▁the"
+     ],
+     "read_rank": 961
+    },
+    {
+     "latent": 1039,
+     "n_hits_topped": 124,
+     "clusters_spanned": 5,
+     "noise_share": 0.18548387096774194,
+     "top_tokens": [
+      "▁=",
+      "▁",
+      "\n",
+      "▁#"
+     ],
+     "read_rank": 520
+    },
+    {
+     "latent": 1092,
+     "n_hits_topped": 124,
+     "clusters_spanned": 0,
+     "noise_share": 0.9435483870967742,
+     "top_tokens": [
+      "▁of",
+      "▁=",
+      "▁and",
+      "▁Storm"
+     ],
+     "read_rank": 48
+    },
+    {
+     "latent": 367,
+     "n_hits_topped": 119,
+     "clusters_spanned": 1,
+     "noise_share": 0.0,
+     "top_tokens": [
+      "▁'",
+      "▁’"
+     ],
+     "read_rank": 2749
+    }
+   ]
+  },
+  {
+   "neuron": 300,
+   "n_hits": 10000,
+   "n_clusters": 43,
+   "noise_fraction": 0.8501,
+   "max_activation_mismatch": 1.3113021850585938e-6,
+   "median_latent_share": 0.43148350715637207,
+   "median_bias_share": 0.247425839304924,
+   "median_error_share": 0.32267504930496216,
+   "median_top_latent_share": 0.26877152919769287,
+   "median_latents_for_80_percent": 6.0,
+   "distinct_top_latents": 1320,
+   "n_sae_clusters": 90,
+   "sae_noise_fraction": 0.7327,
+   "agreement": {
+    "ours_vs_sae_clusters": {
+     "adjusted_rand": 0.8936638261688431,
+     "n_hits": 920
+    },
+    "ours_vs_top_latent": {
+     "adjusted_rand": 0.682736451124408,
+     "n_hits": 1499
+    },
+    "ours_vs_token": {
+     "adjusted_rand": 0.5923292983630266,
+     "n_hits": 1499
+    },
+    "sae_clusters_vs_token": {
+     "adjusted_rand": 0.5108277867957624,
+     "n_hits": 2673
+    },
+    "top_latent_vs_token": {
+     "adjusted_rand": 0.15658429282247344,
+     "n_hits": 10000
+    }
+   },
+   "homogeneity": 0.9310776457822519,
+   "completeness": 0.7393012440117377,
+   "clusters": [
+    {
+     "cluster": 31,
+     "n_hits": 145,
+     "top_tokens": [
+      "▁John",
+      "▁David",
+      "▁William",
+      "▁Robert"
+     ],
+     "dominant_latent": 441,
+     "dominant_share": 0.8413793103448276,
+     "precision": 0.5754716981132075,
+     "median_error_share": 0.29860031604766846
+    },
+    {
+     "cluster": 5,
+     "n_hits": 133,
+     "top_tokens": [
+      "▁'",
+      "▁’"
+     ],
+     "dominant_latent": 2224,
+     "dominant_share": 0.9548872180451128,
+     "precision": 1.0,
+     "median_error_share": 0.1422710120677948
+    },
+    {
+     "cluster": 35,
+     "n_hits": 73,
+     "top_tokens": [
+      "▁="
+     ],
+     "dominant_latent": 1506,
+     "dominant_share": 0.6027397260273972,
+     "precision": 0.6984126984126984,
+     "median_error_share": 0.43276435136795044
+    },
+    {
+     "cluster": 39,
+     "n_hits": 66,
+     "top_tokens": [
+      "▁Brown",
+      "▁Jackson",
+      "▁Richardson",
+      "▁Hope"
+     ],
+     "dominant_latent": 2916,
+     "dominant_share": 0.24242424242424243,
+     "precision": 0.45714285714285713,
+     "median_error_share": 0.27591755986213684
+    },
+    {
+     "cluster": 33,
+     "n_hits": 62,
+     "top_tokens": [
+      "▁@"
+     ],
+     "dominant_latent": 65,
+     "dominant_share": 0.27419354838709675,
+     "precision": 0.08333333333333333,
+     "median_error_share": 1.6265312433242798
+    },
+    {
+     "cluster": 28,
+     "n_hits": 62,
+     "top_tokens": [
+      "▁",
+      "▁(",
+      "1",
+      "3"
+     ],
+     "dominant_latent": 15677,
+     "dominant_share": 0.27419354838709675,
+     "precision": 1.0,
+     "median_error_share": 0.40113791823387146
+    },
+    {
+     "cluster": 9,
+     "n_hits": 58,
+     "top_tokens": [
+      "▁this",
+      "▁This",
+      "▁these",
+      "▁These"
+     ],
+     "dominant_latent": 182,
+     "dominant_share": 1.0,
+     "precision": 0.651685393258427,
+     "median_error_share": 0.07002852857112885
+    },
+    {
+     "cluster": 40,
+     "n_hits": 55,
+     "top_tokens": [
+      "▁Hurricane",
+      "▁Dream",
+      "▁Greens",
+      "edge"
+     ],
+     "dominant_latent": 446,
+     "dominant_share": 0.12727272727272726,
+     "precision": 1.0,
+     "median_error_share": 0.23318153619766235
+    },
+    {
+     "cluster": 26,
+     "n_hits": 54,
+     "top_tokens": [
+      "▁"
+     ],
+     "dominant_latent": 1039,
+     "dominant_share": 0.2962962962962963,
+     "precision": 0.35555555555555557,
+     "median_error_share": 0.18585675954818726
+    },
+    {
+     "cluster": 37,
+     "n_hits": 54,
+     "top_tokens": [
+      "▁="
+     ],
+     "dominant_latent": 2046,
+     "dominant_share": 0.8148148148148148,
+     "precision": 0.5866666666666667,
+     "median_error_share": 0.7771857380867004
+    },
+    {
+     "cluster": 11,
+     "n_hits": 52,
+     "top_tokens": [
+      "▁a",
+      "▁an",
+      "▁A"
+     ],
+     "dominant_latent": 2556,
+     "dominant_share": 0.28846153846153844,
+     "precision": 0.6521739130434783,
+     "median_error_share": 0.21488186717033386
+    },
+    {
+     "cluster": 18,
+     "n_hits": 46,
+     "top_tokens": [
+      "▁New",
+      "▁The",
+      "▁Washington",
+      "▁Digital"
+     ],
+     "dominant_latent": 5675,
+     "dominant_share": 0.5652173913043478,
+     "precision": 0.8666666666666667,
+     "median_error_share": 0.00335118779912591
+    },
+    {
+     "cluster": 30,
+     "n_hits": 43,
+     "top_tokens": [
+      "-"
+     ],
+     "dominant_latent": 512,
+     "dominant_share": 0.9767441860465116,
+     "precision": 0.7777777777777778,
+     "median_error_share": 0.1364482343196869
+    },
+    {
+     "cluster": 19,
+     "n_hits": 40,
+     "top_tokens": [
+      ".",
+      "▁H",
+      "▁de",
+      "▁K"
+     ],
+     "dominant_latent": 284,
+     "dominant_share": 0.25,
+     "precision": 0.3225806451612903,
+     "median_error_share": 0.15527793765068054
+    },
+    {
+     "cluster": 27,
+     "n_hits": 36,
+     "top_tokens": [
+      "▁History",
+      "▁Description",
+      "▁Plot",
+      "▁history"
+     ],
+     "dominant_latent": 2411,
+     "dominant_share": 0.1388888888888889,
+     "precision": 0.7142857142857143,
+     "median_error_share": 0.5998671650886536
+    },
+    {
+     "cluster": 22,
+     "n_hits": 32,
+     "top_tokens": [
+      "▁\"",
+      "▁)",
+      "▁]"
+     ],
+     "dominant_latent": 646,
+     "dominant_share": 0.375,
+     "precision": 0.4,
+     "median_error_share": 0.36025184392929077
+    },
+    {
+     "cluster": 42,
+     "n_hits": 31,
+     "top_tokens": [
+      "▁Sweet",
+      "▁Boss",
+      "▁Par",
+      "▁Angel"
+     ],
+     "dominant_latent": 687,
+     "dominant_share": 0.45161290322580644,
+     "precision": 0.1044776119402985,
+     "median_error_share": 0.4137614965438843
+    },
+    {
+     "cluster": 15,
+     "n_hits": 30,
+     "top_tokens": [
+      "▁South",
+      "▁North"
+     ],
+     "dominant_latent": 5185,
+     "dominant_share": 0.7,
+     "precision": 0.6774193548387096,
+     "median_error_share": 0.1501319706439972
+    },
+    {
+     "cluster": 4,
+     "n_hits": 29,
+     "top_tokens": [
+      "▁each",
+      "▁Each"
+     ],
+     "dominant_latent": 799,
+     "dominant_share": 1.0,
+     "precision": 0.7435897435897436,
+     "median_error_share": 0.20140941441059113
+    },
+    {
+     "cluster": 12,
+     "n_hits": 28,
+     "top_tokens": [
+      "▁."
+     ],
+     "dominant_latent": 3365,
+     "dominant_share": 0.25,
+     "precision": 0.7,
+     "median_error_share": 4.3131279945373535
+    }
+   ],
+   "latents": [
+    {
+     "latent": 224,
+     "n_hits_topped": 350,
+     "clusters_spanned": 2,
+     "noise_share": 0.9285714285714286,
+     "top_tokens": [
+      "▁fiction",
+      "▁Hunters",
+      "▁Boy",
+      "▁War"
+     ],
+     "read_rank": 600
+    },
+    {
+     "latent": 441,
+     "n_hits_topped": 212,
+     "clusters_spanned": 1,
+     "noise_share": 0.41509433962264153,
+     "top_tokens": [
+      "▁William",
+      "▁Robert",
+      "▁David",
+      "▁Chris"
+     ],
+     "read_rank": 4653
+    },
+    {
+     "latent": 1297,
+     "n_hits_topped": 211,
+     "clusters_spanned": 0,
+     "noise_share": 0.966824644549763,
+     "top_tokens": [
+      "▁the",
+      "▁of",
+      "▁a",
+      "▁"
+     ],
+     "read_rank": 195
+    },
+    {
+     "latent": 65,
+     "n_hits_topped": 204,
+     "clusters_spanned": 1,
+     "noise_share": 0.9068627450980392,
+     "top_tokens": [
+      "▁@",
+      "▁Sn",
+      "▁Thanh",
+      "▁Stra"
+     ],
+     "read_rank": 3557
+    },
+    {
+     "latent": 3909,
+     "n_hits_topped": 153,
+     "clusters_spanned": 1,
+     "noise_share": 0.954248366013072,
+     "top_tokens": [
+      "▁Hurricane",
+      "▁Historic",
+      "▁Dance",
+      "▁R"
+     ],
+     "read_rank": 124
+    },
+    {
+     "latent": 33,
+     "n_hits_topped": 143,
+     "clusters_spanned": 1,
+     "noise_share": 0.9300699300699301,
+     "top_tokens": [
+      "▁K",
+      "▁S",
+      "▁F",
+      "▁J"
+     ],
+     "read_rank": 3645
+    },
+    {
+     "latent": 687,
+     "n_hits_topped": 134,
+     "clusters_spanned": 3,
+     "noise_share": 0.7985074626865671,
+     "top_tokens": [
+      "▁Par",
+      "▁Day",
+      "▁Fel",
+      "▁Viet"
+     ],
+     "read_rank": 4363
+    },
+    {
+     "latent": 796,
+     "n_hits_topped": 128,
+     "clusters_spanned": 1,
+     "noise_share": 0.9375,
+     "top_tokens": [
+      "▁used",
+      "▁assigned",
+      "▁caused",
+      "▁described"
+     ],
+     "read_rank": 1599
+    },
+    {
+     "latent": 2224,
+     "n_hits_topped": 127,
+     "clusters_spanned": 1,
+     "noise_share": 0.0,
+     "top_tokens": [
+      "▁'",
+      "▁’"
+     ],
+     "read_rank": 3240
+    },
+    {
+     "latent": 1324,
+     "n_hits_topped": 116,
+     "clusters_spanned": 0,
+     "noise_share": 0.9827586206896551,
+     "top_tokens": [
+      "▁was",
+      "▁be",
+      "▁been",
+      "▁still"
+     ],
+     "read_rank": 104
+    },
+    {
+     "latent": 479,
+     "n_hits_topped": 116,
+     "clusters_spanned": 1,
+     "noise_share": 0.9482758620689655,
+     "top_tokens": [
+      "▁used",
+      "▁damage",
+      "▁made",
+      "▁found"
+     ],
+     "read_rank": 1922
+    },
+    {
+     "latent": 311,
+     "n_hits_topped": 104,
+     "clusters_spanned": 2,
+     "noise_share": 0.7884615384615384,
+     "top_tokens": [
+      "▁In",
+      "▁After",
+      "▁While",
+      "▁As"
+     ],
+     "read_rank": 1450
+    },
+    {
+     "latent": 1128,
+     "n_hits_topped": 100,
+     "clusters_spanned": 0,
+     "noise_share": 0.98,
+     "top_tokens": [
+      "▁use",
+      "▁role",
+      "▁nature",
+      "▁meaning"
+     ],
+     "read_rank": 840
+    },
+    {
+     "latent": 3314,
+     "n_hits_topped": 94,
+     "clusters_spanned": 0,
+     "noise_share": 0.9574468085106383,
+     "top_tokens": [
+      "▁Ducks",
+      "▁End",
+      "▁Boss",
+      "▁Clothes"
+     ],
+     "read_rank": 90
+    },
+    {
+     "latent": 182,
+     "n_hits_topped": 89,
+     "clusters_spanned": 1,
+     "noise_share": 0.34831460674157305,
+     "top_tokens": [
+      "▁this",
+      "▁This",
+      "▁these",
+      "▁These"
+     ],
+     "read_rank": 2702
+    },
+    {
+     "latent": 1097,
+     "n_hits_topped": 78,
+     "clusters_spanned": 0,
+     "noise_share": 1.0,
+     "top_tokens": [
+      "▁the",
+      "▁of",
+      "▁,",
+      "▁him"
+     ],
+     "read_rank": 679
+    },
+    {
+     "latent": 2046,
+     "n_hits_topped": 75,
+     "clusters_spanned": 2,
+     "noise_share": 0.22666666666666666,
+     "top_tokens": [
+      "▁=",
+      "▁@",
+      "\n"
+     ],
+     "read_rank": 3988
+    },
+    {
+     "latent": 3780,
+     "n_hits_topped": 73,
+     "clusters_spanned": 2,
+     "noise_share": 0.5342465753424658,
+     "top_tokens": [
+      "▁h",
+      "▁km",
+      "▁m",
+      "▁mm"
+     ],
+     "read_rank": 342
+    },
+    {
+     "latent": 677,
+     "n_hits_topped": 70,
+     "clusters_spanned": 0,
+     "noise_share": 0.9428571428571428,
+     "top_tokens": [
+      "▁diagram",
+      "▁history",
+      "▁Man",
+      "▁cake"
+     ],
+     "read_rank": 285
+    },
+    {
+     "latent": 249,
+     "n_hits_topped": 65,
+     "clusters_spanned": 1,
+     "noise_share": 0.8615384615384616,
+     "top_tokens": [
+      "▁a",
+      "▁A"
+     ],
+     "read_rank": 2878
+    }
+   ]
+  }
+ ]
+}
