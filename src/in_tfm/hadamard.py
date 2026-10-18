@@ -9,7 +9,7 @@ strongly the neuron fired.
 
 import numpy as np
 import torch
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Float, Int
 from sklearn.preprocessing import normalize
 
 
@@ -20,24 +20,6 @@ def near_square_shape(n: int) -> tuple[int, int]:
     while n % h:
         h -= 1
     return h, n // h
-
-
-def high_activation_hits(
-    outputs: Float[torch.Tensor, "batch seq hidden"],
-    neuron_idx: int,
-    thresh: float,
-    valid_mask: Bool[torch.Tensor, "batch seq"] | None = None,
-) -> tuple[Int[np.ndarray, "n_hits"], Int[np.ndarray, "n_hits"]]:
-    """`valid_mask` excludes padding. Ragged batches (text) pad to the longest sequence, and a
-    pad position can sit above the threshold like any other - those hits cluster perfectly
-    happily and mean nothing, so they have to be dropped before `argwhere`, not after.
-    """
-    token_activation = outputs[..., neuron_idx].detach().cpu().numpy()  # (batch, seq_len)
-    above = token_activation > thresh
-    if valid_mask is not None:
-        above &= valid_mask.detach().cpu().numpy()
-    hits = np.argwhere(above)  # (num_hits, 2): (batch_idx, token_idx)
-    return hits[:, 0], hits[:, 1]
 
 
 def hadamard_products(

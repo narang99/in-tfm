@@ -16,7 +16,7 @@ from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
 import run_neuron_report as report
-from in_tfm.bucketing import merged_bucket_ids
+from in_tfm.hit_selection.strategies.bucketed import merged_bucket_ids
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
 from in_tfm.hit_selection import HitSelection, select_hits

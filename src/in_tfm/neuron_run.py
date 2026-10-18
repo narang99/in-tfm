@@ -149,7 +149,11 @@ def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[Sample
           f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded")
 
     targets = [(n, polarity) for n in config.neuron_idxs for polarity in polarities_for(config)]
-    selections = {t: select_hits(scan, *t, config.hits, config.seed) for t in targets}
+    selections = {
+        (n, polarity): select_hits(
+            scan, n, polarity, config.hits, config.seed
+        ) for (n, polarity) in targets
+    }
     merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], scan.valid_mask.shape[1])
     with timed("pass 2: gather"):
         gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
