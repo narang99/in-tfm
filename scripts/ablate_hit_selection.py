@@ -23,7 +23,7 @@ from in_tfm.hit_selection import HitSelection, select_hits
 from in_tfm.neuron_capture import ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run
 from in_tfm.run_config import HitSelectionConfig, load_run_config
-from in_tfm.text_corpus import load_texts
+from in_tfm.sources.wikitext import load_texts
 
 MODES: dict[str, dict] = {
     "elbow": {"method": "elbow"},

@@ -84,6 +84,6 @@ Things to review or understand for the STL-10 mini-Inception work, in the order 
 ## 6. Already merged, only if time allows
 
 - #46 to #53 (model, conv token layout, DeepLift, plumbing, adapter, hub loading, training).
-- The open question from earlier: the image-normalization contract in `dicom.py` and `presenters/image.py`.
+- The open question from earlier: the image-normalization contract in `sources/dicom.py` and `presenters/image.py`.
   - I passed an `ImageNormalization` Protocol and was asked whether the contract is transform and inverse-transform.
   - It was deferred and not answered.

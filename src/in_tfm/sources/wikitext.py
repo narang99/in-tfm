@@ -3,7 +3,7 @@
 import random
 import re
 
-from .run_config import TextDataConfig
+from ..run_config import TextDataConfig
 
 
 WIKITEXT_TITLE = re.compile(r"^ = [^=].* = \n?$")

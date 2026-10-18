@@ -113,7 +113,9 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
     - `comparison.py` measures DeepLift against Integrated Gradients
   - `activation_ranges/`: each cluster's activations against the neuron's noise
     - `ranges.py` collects them, `figure.py` and `plot.py` draw them
-  - `text_corpus.py`: wikitext as paragraphs or articles
+  - `sources/`: where samples come from, one file per source
+    - `base.py` holds `ModelBatch` and the `SampleSource` protocol
+    - `dicom.py` and `text.py` are the two sources, `wikitext.py` loads the text corpus
 - `scripts/run_neuron_report.py`: neuron reports for any onboarded model
   - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs
   - settings live in `src/in_tfm/run_config.py`
