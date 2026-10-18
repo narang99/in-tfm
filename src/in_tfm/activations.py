@@ -95,16 +95,10 @@ def get_activations(
 
 
 def cat_captures(tensors: list[torch.Tensor]) -> torch.Tensor:
-    """Concatenate per-batch captures along the batch axis, asserting they agree on width.
+    """Concat only works if all tensors are of the same size
 
-    This used to pad ragged batches out to the widest one, which meant a sample's columns
-    depended on which batch it landed in - and a hit found here is later explained by a
-    re-run on that sample alone. Sources now emit a fixed sequence width instead
-    (sources.TextSource._encode; images are fixed-size by nature), so there is nothing to pad
-    and a column of the result is the same token position in every pass.
-
-    That check is the whole invariant: if a source goes back to batch-dependent widths, this
-    is where it surfaces, rather than as a wrong token in a report.
+    Text models can have variable sized batches, their `Source`'s are right now hard-coded to return same sized batches
+    Add a specific check with informative error so that a new Source does not accidentally start variable sized batches
     """
     widths = {t.shape[1] for t in tensors}
     if len(widths) > 1:
