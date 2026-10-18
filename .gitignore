@@ -19,3 +19,5 @@ wheels/
 /experiments
 /data
 /checkpoints
+/experiments_grokking
+/experiment_sae
