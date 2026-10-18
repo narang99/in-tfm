@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.activation_range_plot import get_noise_range, grid_dims_for_labels, shorth
-from in_tfm.activation_range_figure import panels_needed, round_robin_panels, sorted_by_mean_descending
+from in_tfm.activation_ranges.plot import get_noise_range, grid_dims_for_labels, shorth
+from in_tfm.activation_ranges.figure import panels_needed, round_robin_panels, sorted_by_mean_descending
 from in_tfm.activation_ranges import (
     PLOT_NAME,
     ActivationRanges,

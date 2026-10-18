@@ -34,7 +34,7 @@ from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources import dicom_paths
-from in_tfm.text_corpus import load_texts
+from in_tfm.sources.wikitext import load_texts
 
 
 def load_adapter(config: RunConfig) -> ModelAdapter[Any]:

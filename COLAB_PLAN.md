@@ -31,7 +31,7 @@ Four of them sit *above* Colab's preinstalls, and two of those are actively dang
 - **`scikit-learn>=1.9.1` vs 1.6.1** — we import exactly one symbol, `preprocessing.normalize`.
   Ancient API. The floor is pure noise and drags numpy/scipy with it.
 - **`transformers>=5.17.0` vs 5.16.1** — both are 5.x, so `AttentionInterface` and the dropped
-  `find_pruneable_heads_and_indices` both behave the way `attribution.py` and `compat.py` assume.
+  `find_pruneable_heads_and_indices` both behave the way `attribution/attnlrp.py` and `compat.py` assume.
   Staying on Colab's 5.16.1 costs nothing and avoids a reinstall.
 
 Plus one dependency that is **entirely unused** — I grepped `src/` and `scripts/`: zero hits for
@@ -150,7 +150,7 @@ the run inline into the kernel — then a re-run inherits the patches and needs 
 ## 4. Two stages, not one
 
 **Stage 1 — parity.** Cell 3 exactly as above: the same 8 DICOMs / neuron 90 / 4 hits config that
-produced `reports/neuron_90` on the Mac. Should take ~1 min. I check cluster count and threshold
+produced `reports/rad_dino/neuron_90` on the Mac. Should take ~1 min. I check cluster count and threshold
 against the Mac run (`threshold=0.5627`, 1195 hits, 11 clusters, 7 surviving). If those don't
 match, the port is wrong and scaling up would just hide it.
 

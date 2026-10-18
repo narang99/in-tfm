@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch import nn
 
-from in_tfm.deeplift import deeplift_attribution
+from in_tfm.attribution.deeplift import deeplift_attribution
 from in_tfm.layers import conv_getter
 from in_tfm.models.stl_inception import StlInception
 

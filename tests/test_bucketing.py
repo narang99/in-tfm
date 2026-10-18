@@ -1,6 +1,6 @@
 import numpy as np
 
-from in_tfm.bucketing import (
+from in_tfm.hit_selection.strategies.bucketed import (
     assign_buckets,
     bucket_quotas,
     bucketed_sample,

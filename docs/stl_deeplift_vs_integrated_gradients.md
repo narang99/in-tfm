@@ -4,7 +4,7 @@ Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), 
 
 ## Question
 
-- Is our `in_tfm.deeplift` close to captum's Integrated Gradients (IG), and how much faster is it?
+- Is our `in_tfm.attribution.deeplift` close to captum's Integrated Gradients (IG), and how much faster is it?
 - Do neuron reports built with either method show the same thing?
 
 ## What was compared
@@ -150,7 +150,7 @@ Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), 
 
 ## Local rerun on the Mac (MPS)
 
-- Same commands as step 4, with the checkpoint from the laptop's own training run (68.3% test accuracy), written to `reports_stl_deeplift` and `reports_stl_ig`.
+- Same commands as step 4, with the checkpoint from the laptop's own training run (68.3% test accuracy), written to `reports/stl_deeplift` and `reports/stl_ig`.
   - Both exited 0 with a `[total]` line, at 223 s for DeepLift and 261 s for IG.
   - Clustering used CPU HDBSCAN, as cuml is not installed, so kept clusters were 2, 25, 18 and 15 for neurons 0 to 3.
   - Those differ from the Colab counts (4, 27, 23, 16) because of the backend and the different checkpoint.

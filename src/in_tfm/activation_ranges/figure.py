@@ -4,7 +4,7 @@
   - So every panel holds high and low clusters, and not only the top ones in the first panel.
   - hiccup-ide's grid function gave each panel a contiguous run of labels, so it was dropped.
 - The neuron's noise sample is drawn in every panel, next to its shorth range.
-- Panels are laid out and styled by the helpers in `activation_range_plot.py`.
+- Panels are laid out and styled by the helpers in `plot.py`.
 """
 
 import math
@@ -15,7 +15,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .activation_range_plot import (
+from .plot import (
     KELLY_COLORS,
     NOISE_COLOR,
     NOISE_RANGE_COLOR,

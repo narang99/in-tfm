@@ -5,4 +5,4 @@ target: fc2
 layer_idx: 11
 neuron_start: 90
 neuron_end: 100
-out_dir: reports
+out_dir: reports/rad_dino

@@ -30,10 +30,14 @@ How this works:
 
 from collections.abc import Callable
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 from torch import nn
+
+from ..layers import LayerGetter
+from ..sources import ModelBatch
 
 Selector = Callable[[torch.Tensor], torch.Tensor]
 """Picks one scalar per sample out of the explained layer's output."""
@@ -115,3 +119,30 @@ def deeplift_attribution(
         for handle in handles:
             handle.remove()
     return (grad * (x - baseline)).detach()
+
+
+def compute_deeplift_relevance(
+    model: torch.nn.Module,
+    batch: ModelBatch,
+    layer_getter: LayerGetter,
+    neuron_idx: int,
+    token_idx: int | None,
+) -> Float[np.ndarray, "batch ..."]:
+    """DeepLift relevance of one conv neuron at one output position, for models without attention.
+
+    - It takes the same arguments as `compute_attnlrp_relevance`, so the report code treats them alike.
+    - The baseline is zeros in the model's input space, which for normalised images is the mean image.
+    - `token_idx` is the flat position `y * width + x` of the conv's output grid, see token_layout.
+    - Needs one `nn.ReLU` module per activation, since the ops it replaces are found as modules.
+    - The result is shaped like the input, so (batch, c, h, w) for images.
+    - The model is called as `model(leaf)`, so the batch must hold nothing else.
+    """
+    if token_idx is None:
+        raise ValueError("DeepLift here explains a single output position, pass token_idx")
+    model.eval()
+    _, leaf = batch.differentiable()
+
+    def one_position(layer_output: torch.Tensor) -> torch.Tensor:
+        return layer_output[:, neuron_idx].flatten(1)[:, token_idx]
+
+    return deeplift_attribution(model, leaf, layer_getter(model), one_position).cpu().numpy()

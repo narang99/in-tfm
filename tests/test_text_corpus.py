@@ -1,4 +1,4 @@
-from in_tfm.text_corpus import articles, paragraphs
+from in_tfm.sources.wikitext import articles, paragraphs
 
 LONG = "word " * 60
 

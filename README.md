@@ -107,8 +107,15 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
 - `src/in_tfm/`: the library
   - `models/`: one adapter per model, see "Onboarding a model"
   - `neuron_run.py`: the scan, select, gather, cluster and report sequence every script runs
-  - `hit_selection.py`: elbow or bucketed choice of the positions to cluster
-  - `text_corpus.py`: wikitext as paragraphs or articles
+  - `hit_selection/`: the choice of the positions to cluster
+    - `strategies/elbow.py` and `strategies/bucketed.py` hold one strategy each
+  - `attribution/`: one file per attribution method, AttnLRP, DeepLift and Integrated Gradients
+    - `comparison.py` measures DeepLift against Integrated Gradients
+  - `activation_ranges/`: each cluster's activations against the neuron's noise
+    - `ranges.py` collects them, `figure.py` and `plot.py` draw them
+  - `sources/`: where samples come from, one file per source
+    - `base.py` holds `ModelBatch` and the `SampleSource` protocol
+    - `dicom.py` and `text.py` are the two sources, `wikitext.py` loads the text corpus
 - `scripts/run_neuron_report.py`: neuron reports for any onboarded model
   - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs
   - settings live in `src/in_tfm/run_config.py`

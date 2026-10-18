@@ -10,7 +10,12 @@ drowned out.
 """
 
 import numpy as np
+import torch
 from jaxtyping import Float, Int
+
+from ...neuron_capture import ScanResult
+from ...run_config import HitSelectionConfig
+from ..picked_hits import PickedHits
 
 
 def bucket_edges(
@@ -97,3 +102,22 @@ def bucketed_sample(
         np.concatenate([rng.choice(np.flatnonzero(ids == g), quotas[g], replace=False) for g in range(n_groups)])
     )
     return candidates[kept], ids[kept]
+
+
+def bucketed_hits(column: Float[torch.Tensor, "batch seq 1"], floor: float, scan: ScanResult, hits: HitSelectionConfig, seed: int) -> PickedHits:
+    """Row-major order of `argwhere` on the mask matches boolean-mask indexing, so row i of
+    `positions` is the position of `values[i]`."""
+    valid = scan.valid_mask.numpy()
+    values = column[..., 0].numpy()[valid]
+    positions = np.argwhere(valid)
+    kept, bucket_ids = bucketed_sample(
+        values, hits.n_buckets, hits.max_hits, floor, hits.min_bucket_size, np.random.default_rng(seed)
+    )
+    above = values[values > floor]
+    return PickedHits(
+        batch_idx=positions[kept, 0],
+        token_idx=positions[kept, 1],
+        n_above_threshold=len(above),
+        bucket_ids=bucket_ids,
+        bucket_edges=merged_bucket_edges(above, hits.n_buckets, floor, hits.min_bucket_size),
+    )

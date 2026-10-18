@@ -16,14 +16,14 @@ from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
 import run_neuron_report as report
-from in_tfm.bucketing import merged_bucket_ids
+from in_tfm.hit_selection.strategies.bucketed import merged_bucket_ids
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
 from in_tfm.hit_selection import HitSelection, select_hits
 from in_tfm.neuron_capture import ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run
 from in_tfm.run_config import HitSelectionConfig, load_run_config
-from in_tfm.text_corpus import load_texts
+from in_tfm.sources.wikitext import load_texts
 
 MODES: dict[str, dict] = {
     "elbow": {"method": "elbow"},

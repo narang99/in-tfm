@@ -1,7 +1,10 @@
-"""DICOM -> model-ready image conversion, and undoing the processor's normalization for
-display (as opposed to model input).
+"""DICOM files as a sample source.
+
+- Converts a DICOM to a model-ready image.
+- Undoes the processor's normalization for display, as opposed to model input.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -12,6 +15,8 @@ from jaxtyping import Float, UInt8
 from PIL import Image
 from transformers.image_processing_base import BatchFeature
 from transformers.image_processing_utils import BaseImageProcessor
+
+from .base import ModelBatch, SampleId
 
 
 class ImageNormalization(Protocol):
@@ -80,3 +85,38 @@ def inv_tfm(
     img = img * std + mean  # undo normalization -> back to [0,1]
     img = np.clip(img, 0, 1)
     return (img * 255).round().astype(np.uint8)
+
+
+def dicom_paths(dcm_dir: Path, limit: int | None = None) -> list[Path]:
+    """Sorted, since `Path.glob` order depends on the filesystem: the same flags picked
+    different images on two machines."""
+    return sorted(dcm_dir.glob("*.dcm"))[:limit]
+
+
+class DicomSource:
+    """DICOM files on disk, through a transformers image processor."""
+
+    def __init__(self, paths: Sequence[Path], processor: BaseImageProcessor) -> None:
+        self.paths = list(paths)
+        self.processor = processor
+
+    def sample_ids(self) -> Sequence[SampleId]:
+        return [str(p) for p in self.paths]
+
+    def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
+        batch = get_batch(self.processor, [Path(i) for i in ids])
+        n_images = batch["pixel_values"].shape[0]
+        return ModelBatch(
+            kwargs=dict(batch),
+            # the image itself is the leaf - pixel-space relevance is the whole point of the
+            # overlay, so there is nothing to substitute here
+            grad_leaf_key="pixel_values",
+            valid_mask=torch.ones(n_images, self._n_tokens(), dtype=torch.bool),
+        )
+
+    def _n_tokens(self) -> int:
+        """Patch grid plus the CLS token - every image yields exactly this many, which is why
+        the mask is a formality here."""
+        crop = self.processor.crop_size["height"]
+        patch = getattr(self.processor, "patch_size", 14)
+        return (crop // patch) ** 2 + 1

@@ -9,7 +9,7 @@ Prints one row per IG step count, with the time of both methods and how well the
 import torch
 from datasets import load_dataset
 
-from in_tfm.attribution_comparison import ComparisonConfig, StepResult, measure_batch, merge
+from in_tfm.attribution.comparison import ComparisonConfig, StepResult, measure_batch, merge
 from in_tfm.layers import conv_getter
 from in_tfm.models.stl_inception.adapter import load_model
 from in_tfm.models.stl_inception.source import HubImages, eval_transform

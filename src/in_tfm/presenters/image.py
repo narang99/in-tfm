@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from pydantic import BaseModel
 
-from ..dicom import ImageNormalization, inv_tfm
+from ..sources.dicom import ImageNormalization, inv_tfm
 from ..html_report import render_template
 from ..viz import mk_overlay, render_hadamard_tiles, to_pil
 from .artifacts import ClusterArtifacts
