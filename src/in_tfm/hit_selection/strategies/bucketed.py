@@ -15,7 +15,7 @@ from jaxtyping import Float, Int
 
 from ...neuron_capture import ScanResult
 from ...run_config import HitSelectionConfig
-from ..picked_hits import PickedHits
+from ..picks import BucketedPick, PickedPositions
 
 
 def bucket_edges(
@@ -104,9 +104,16 @@ def bucketed_sample(
     return candidates[kept], ids[kept]
 
 
-def bucketed_hits(column: Float[torch.Tensor, "batch seq 1"], floor: float, scan: ScanResult, hits: HitSelectionConfig, seed: int) -> PickedHits:
+def bucketed_hits(
+    column: Float[torch.Tensor, "batch seq 1"],
+    sorted_magnitudes: Float[torch.Tensor, "n_pos"],
+    scan: ScanResult,
+    hits: HitSelectionConfig,
+    seed: int,
+) -> tuple[PickedPositions, BucketedPick]:
     """Row-major order of `argwhere` on the mask matches boolean-mask indexing, so row i of
     `positions` is the position of `values[i]`."""
+    floor = hits.bucket_floor_fraction * sorted_magnitudes[-1].item()
     valid = scan.valid_mask.numpy()
     values = column[..., 0].numpy()[valid]
     positions = np.argwhere(valid)
@@ -114,10 +121,10 @@ def bucketed_hits(column: Float[torch.Tensor, "batch seq 1"], floor: float, scan
         values, hits.n_buckets, hits.max_hits, floor, hits.min_bucket_size, np.random.default_rng(seed)
     )
     above = values[values > floor]
-    return PickedHits(
-        batch_idx=positions[kept, 0],
-        token_idx=positions[kept, 1],
-        n_above_threshold=len(above),
+    picked = PickedPositions(batch_idx=positions[kept, 0], token_idx=positions[kept, 1], n_candidates=len(above))
+    pick = BucketedPick(
+        floor=floor,
         bucket_ids=bucket_ids,
         bucket_edges=merged_bucket_edges(above, hits.n_buckets, floor, hits.min_bucket_size),
     )
+    return picked, pick

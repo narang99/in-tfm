@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.hit_selection import select_hits
+from in_tfm.hit_selection import BucketedPick, select_hits
 from in_tfm.neuron_capture import ScanResult
 from in_tfm.run_config import HitSelectionConfig
 
@@ -48,11 +48,11 @@ def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
     first = select_hits(scan, 7, "positive", hits, seed=3)
     again = select_hits(scan, 7, "positive", hits, seed=3)
     assert len(first.batch_idx) == 5
-    assert first.n_above_threshold > 5
+    assert first.n_candidates > 5
     assert (first.batch_idx == again.batch_idx).all() and (first.token_idx == again.token_idx).all()
 
 
 def test_bucketed_selection_labels_every_kept_hit(scan):
     selection = select_hits(scan, 7, "positive", HitSelectionConfig(method="bucketed", max_hits=60), seed=0)
-    assert selection.bucket_ids is not None and selection.bucket_edges is not None
-    assert len(selection.bucket_ids) == len(selection.batch_idx)
+    assert isinstance(selection.pick, BucketedPick)
+    assert len(selection.pick.bucket_ids) == len(selection.batch_idx)

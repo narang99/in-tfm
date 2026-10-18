@@ -37,7 +37,10 @@ class BucketedPickMeta(BaseModel):
     floor: float
     """Signed, like the elbow cutoff."""
     bucket_edges: list[float]
-    """Lower edge of every merged bucket, then the max."""
+    """Lower edge of every merged bucket, then the max.
+
+    - These are magnitudes, like the curve the bucket plot draws, so they stay positive for the negative tail.
+    """
 
 
 PickMeta = Annotated[ElbowPickMeta | BucketedPickMeta, Field(discriminator="method")]

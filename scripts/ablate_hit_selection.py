@@ -19,7 +19,7 @@ import run_neuron_report as report
 from in_tfm.hit_selection.strategies.bucketed import merged_bucket_ids
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
-from in_tfm.hit_selection import HitSelection, select_hits
+from in_tfm.hit_selection import BucketedPick, HitSelection, select_hits
 from in_tfm.neuron_capture import ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run
 from in_tfm.run_config import HitSelectionConfig, load_run_config
@@ -83,7 +83,7 @@ def summarise(
         neuron=neuron_idx,
         mode=mode,
         threshold=selection.threshold,
-        n_above_threshold=selection.n_above_threshold,
+        n_above_threshold=selection.n_candidates,
         n_kept=len(labels),
         cluster_seconds=cluster_seconds,
         n_clusters=int((sizes > 0).sum()),
@@ -114,7 +114,7 @@ class BucketRow(BaseModel):
 def bucket_breakdown(
     neuron_idx: int,
     mode: str,
-    selection: HitSelection,
+    pick: BucketedPick,
     corpus_values: np.ndarray,
     activations: np.ndarray,
     labels: np.ndarray,
@@ -122,10 +122,9 @@ def bucket_breakdown(
 ) -> tuple[list[BucketRow], str]:
     """`clusters_homed` counts clusters whose most common bucket is this one, so each cluster
     is counted once. `clusters_touching` counts every cluster with at least one hit here."""
-    assert selection.bucket_ids is not None
-    corpus = corpus_values[corpus_values > selection.threshold]
-    corpus_ids = merged_bucket_ids(corpus, hits.n_buckets, selection.threshold, hits.min_bucket_size)
-    kept_bucket = selection.bucket_ids
+    corpus = corpus_values[corpus_values > pick.floor]
+    corpus_ids = merged_bucket_ids(corpus, hits.n_buckets, pick.floor, hits.min_bucket_size)
+    kept_bucket = pick.bucket_ids
     n_groups = corpus_ids.max() + 1
     home = {c: np.bincount(kept_bucket[labels == c], minlength=n_groups).argmax() for c in set(labels) - {-1}}
     rows = [
@@ -262,9 +261,9 @@ def main() -> None:
         clusterings[(neuron, mode)] = Clustering(
             hdmd=hdmd, labels=labels, activations=kept_activations(scan, neuron, selection)
         )
-        if mode != "elbow":
+        if isinstance(selection.pick, BucketedPick):
             rows, note = bucket_breakdown(
-                neuron, mode, selection, scan.neuron_column(neuron)[..., 0].numpy()[scan.valid_mask.numpy()],
+                neuron, mode, selection.pick, scan.neuron_column(neuron)[..., 0].numpy()[scan.valid_mask.numpy()],
                 kept_activations(scan, neuron, selection), labels, config.hits,
             )
             bucket_rows += rows
