@@ -4,7 +4,7 @@ Things to review or understand for the STL-10 mini-Inception work, in the order 
 
 ## 1. Understand DeepLIFT and our code (do this first)
 
-- Read `src/in_tfm/deeplift.py` and `tests/test_deeplift.py` before anything else.
+- Read `src/in_tfm/attribution/deeplift.py` and `tests/test_deeplift.py` before anything else.
   - Every other attribution file depends on it.
 - The idea to hold on to:
   - Each ReLU and MaxPool2d output is replaced by `y0 + m * (x - x0)`.
@@ -22,12 +22,12 @@ Things to review or understand for the STL-10 mini-Inception work, in the order 
 - Questions to answer for yourself:
   - Why is the completeness test (`test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline`) a good bug detector?
   - What does a zeros baseline mean here? It is the dataset-mean image in normalised space.
-  - Which layers does `deeplift.py` not handle? BatchNorm is folded or in eval mode, check which.
-- Then read `compute_deeplift_relevance` in `src/in_tfm/attribution.py`.
+  - Which layers does `attribution/deeplift.py` not handle? BatchNorm is folded or in eval mode, check which.
+- Then read `compute_deeplift_relevance` in `src/in_tfm/attribution/deeplift.py`.
 
 ## 2. Attribution comparison script (#55)
 
-- `scripts/compare_attribution.py` and `src/in_tfm/attribution_comparison.py`.
+- `scripts/compare_attribution.py` and `src/in_tfm/attribution/comparison.py`.
 - Check that the comparison is fair:
   - Both methods use a zeros baseline and the same scalar: one neuron at each image's own peak position.
   - IG time includes `n_steps` forward and backward passes, DeepLift time includes its two passes.
@@ -47,7 +47,7 @@ Things to review or understand for the STL-10 mini-Inception work, in the order 
 ## 3. Possible change: use captum's `NeuronIntegratedGradients`
 
 - I might replace the hand-written IG wrapper with captum's `NeuronIntegratedGradients`.
-- What is hand-written today, in `src/in_tfm/integrated_gradients.py`:
+- What is hand-written today, in `src/in_tfm/attribution/integrated_gradients.py`:
   - `explained_activation` hooks the layer and picks `layer_output[:, neuron].flatten(1)[arange, positions]`.
   - `integrated_gradients` calls `IntegratedGradients` on that, with positions as `additional_forward_args`.
   - `pick_position` selects one position per image.

@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from in_tfm.attribution import compute_deeplift_relevance, compute_integrated_gradients_relevance
-from in_tfm.attribution_comparison import (
+from in_tfm.attribution.comparison import (
     ComparisonConfig,
     completeness_gap,
     measure_batch,

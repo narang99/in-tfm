@@ -109,6 +109,8 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - `neuron_run.py`: the scan, select, gather, cluster and report sequence every script runs
   - `hit_selection/`: the choice of the positions to cluster
     - `strategies/elbow.py` and `strategies/bucketed.py` hold one strategy each
+  - `attribution/`: one file per attribution method, AttnLRP, DeepLift and Integrated Gradients
+    - `comparison.py` measures DeepLift against Integrated Gradients
   - `text_corpus.py`: wikitext as paragraphs or articles
 - `scripts/run_neuron_report.py`: neuron reports for any onboarded model
   - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs

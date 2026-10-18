@@ -4,7 +4,7 @@ Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), 
 
 ## Question
 
-- Is our `in_tfm.deeplift` close to captum's Integrated Gradients (IG), and how much faster is it?
+- Is our `in_tfm.attribution.deeplift` close to captum's Integrated Gradients (IG), and how much faster is it?
 - Do neuron reports built with either method show the same thing?
 
 ## What was compared

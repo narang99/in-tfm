@@ -16,8 +16,8 @@ from jaxtyping import Float
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..device import default_device
 from .deeplift import deeplift_attribution
-from .device import default_device
 from .integrated_gradients import Attribution, Images, Positions, explained_activation, integrated_gradients, pick_position
 
 

@@ -31,7 +31,7 @@ Four of them sit *above* Colab's preinstalls, and two of those are actively dang
 - **`scikit-learn>=1.9.1` vs 1.6.1** — we import exactly one symbol, `preprocessing.normalize`.
   Ancient API. The floor is pure noise and drags numpy/scipy with it.
 - **`transformers>=5.17.0` vs 5.16.1** — both are 5.x, so `AttentionInterface` and the dropped
-  `find_pruneable_heads_and_indices` both behave the way `attribution.py` and `compat.py` assume.
+  `find_pruneable_heads_and_indices` both behave the way `attribution/attnlrp.py` and `compat.py` assume.
   Staying on Colab's 5.16.1 costs nothing and avoids a reinstall.
 
 Plus one dependency that is **entirely unused** — I grepped `src/` and `scripts/`: zero hits for

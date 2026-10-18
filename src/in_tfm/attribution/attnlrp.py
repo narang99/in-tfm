@@ -1,4 +1,4 @@
-"""Pixel-space attribution for a single MLP neuron: Integrated Gradients, and AttnLRP via lxt.
+"""AttnLRP relevance for a single MLP neuron, via lxt.
 
 AttnLRP needs `lxt.efficient` patched onto the model's ops before any forward/backward pass.
 Each architecture's patch lives with its adapter in `models`. `compat` is imported first (below)
@@ -10,34 +10,13 @@ import types
 
 import numpy as np
 import torch
-from captum.attr import NeuronIntegratedGradients
 from jaxtyping import Float
 
-from . import compat  # noqa: F401  (import order matters - see compat.py)
+from .. import compat  # noqa: F401  (import order matters - see compat.py)
 from lxt.efficient.patches import check_already_patched, wrap_attention_forward
-from transformers.models.dinov2.modeling_dinov2 import Dinov2Model
 
-from .deeplift import deeplift_attribution
-from .integrated_gradients import explained_activation, integrated_gradients
-from .layers import LayerGetter
-from .sources import ModelBatch
-
-
-def neuron_ig(
-    model: Dinov2Model,
-    pixel_values: Float[torch.Tensor, "batch c h w"],
-    layer_getter: LayerGetter,
-    neuron_idx: int,
-    token_idx: int,
-) -> Float[torch.Tensor, "batch h w"]:
-    """Sums over the channel axis before returning, matching compute_attnlrp_relevance's
-    contract so callers (e.g. mk_overlay) don't need to care which attribution method produced
-    the map.
-    """
-    forward_fn = lambda px: model(pixel_values=px)
-    ig = NeuronIntegratedGradients(forward_fn, layer_getter(model))
-    attr = ig.attribute(pixel_values, (token_idx, neuron_idx), internal_batch_size=4)
-    return attr.sum(dim=1)
+from ..layers import LayerGetter
+from ..sources import ModelBatch
 
 
 def patch_eager_attention(module: types.ModuleType) -> bool:
@@ -106,54 +85,3 @@ def compute_attnlrp_relevance(
             f"(got kwargs: {sorted(batch.kwargs)})"
         )
     return (leaf.grad * leaf).detach().cpu().numpy()
-
-
-def compute_deeplift_relevance(
-    model: torch.nn.Module,
-    batch: ModelBatch,
-    layer_getter: LayerGetter,
-    neuron_idx: int,
-    token_idx: int | None,
-) -> Float[np.ndarray, "batch ..."]:
-    """DeepLift relevance of one conv neuron at one output position, for models without attention.
-
-    - It takes the same arguments as `compute_attnlrp_relevance`, so the report code treats them alike.
-    - The baseline is zeros in the model's input space, which for normalised images is the mean image.
-    - `token_idx` is the flat position `y * width + x` of the conv's output grid, see token_layout.
-    - Needs one `nn.ReLU` module per activation, since the ops it replaces are found as modules.
-    - The result is shaped like the input, so (batch, c, h, w) for images.
-    - The model is called as `model(leaf)`, so the batch must hold nothing else.
-    """
-    if token_idx is None:
-        raise ValueError("DeepLift here explains a single output position, pass token_idx")
-    model.eval()
-    _, leaf = batch.differentiable()
-
-    def one_position(layer_output: torch.Tensor) -> torch.Tensor:
-        return layer_output[:, neuron_idx].flatten(1)[:, token_idx]
-
-    return deeplift_attribution(model, leaf, layer_getter(model), one_position).cpu().numpy()
-
-
-def compute_integrated_gradients_relevance(
-    model: torch.nn.Module,
-    batch: ModelBatch,
-    layer_getter: LayerGetter,
-    neuron_idx: int,
-    token_idx: int | None,
-    n_steps: int = 128,
-    internal_batch_size: int = 256,
-) -> Float[np.ndarray, "batch ..."]:
-    """The same explanation as `compute_deeplift_relevance`, through captum's Integrated Gradients.
-
-    - It exists to check DeepLift against a method with no approximation rules, at the cost of `n_steps` passes.
-    - The baseline is zeros, as for DeepLift, so both sum to the same activation change when IG has converged.
-    """
-    if token_idx is None:
-        raise ValueError("Integrated Gradients here explains a single output position, pass token_idx")
-    model.eval()
-    _, leaf = batch.differentiable()
-    images = leaf.detach()
-    positions = torch.full((len(images),), token_idx, device=images.device)
-    forward = explained_activation(model, layer_getter(model), neuron_idx)
-    return integrated_gradients(forward, images, positions, n_steps, internal_batch_size).cpu().numpy()
