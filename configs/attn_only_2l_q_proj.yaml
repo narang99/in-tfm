@@ -5,7 +5,7 @@ target: q_proj
 layer_idx: 0
 neuron_start: 3
 neuron_end: 4
-out_dir: reports_attn_only_2l
+out_dir: reports/attn_only_2l
 text:
   n_samples: 48
   max_length: 64

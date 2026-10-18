@@ -150,7 +150,7 @@ the run inline into the kernel — then a re-run inherits the patches and needs 
 ## 4. Two stages, not one
 
 **Stage 1 — parity.** Cell 3 exactly as above: the same 8 DICOMs / neuron 90 / 4 hits config that
-produced `reports/neuron_90` on the Mac. Should take ~1 min. I check cluster count and threshold
+produced `reports/rad_dino/neuron_90` on the Mac. Should take ~1 min. I check cluster count and threshold
 against the Mac run (`threshold=0.5627`, 1195 hits, 11 clusters, 7 surviving). If those don't
 match, the port is wrong and scaling up would just hide it.
 

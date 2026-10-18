@@ -11,10 +11,8 @@ wheels/
 
 # datasets
 /dicoms
-# generated outputs - report dirs are per-run artifacts, never source
+# generated outputs - every report lives under reports/, as per-run artifacts, never source
 /reports
-/reports_*
-/colab_reports
 
 /experiments
 /data

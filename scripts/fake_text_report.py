@@ -149,7 +149,7 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report-dir", type=Path, default=Path("reports_fake/neuron_90"))
+    parser.add_argument("--report-dir", type=Path, default=Path("reports/fake/neuron_90"))
     args = parser.parse_args()
 
     source = StubSource()
