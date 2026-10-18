@@ -39,6 +39,14 @@ from .html_report import (
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
+from .report_meta import (
+    BucketedPickMeta,
+    ClusterMeta,
+    ElbowPickMeta,
+    ReportMeta,
+    load_report_meta,
+    write_report_meta,
+)
 from .sources import SampleId, SampleSource
 from .viz import save_bucket_edges_plot, save_elbow_plot
 
@@ -47,28 +55,6 @@ AttrFn = Callable[..., np.ndarray]
 
 HITS_CACHE_NAME = "hits.pt"
 SAMPLE_SEED = 0
-
-
-class ClusterMeta(BaseModel):
-    n_hits: int
-    n_unique_images: int
-
-
-class ReportMeta(BaseModel):
-    """What `meta.json` holds - everything `render_report` needs besides the cached hits."""
-
-    neuron_idx: int
-    threshold: float
-    bucket_edges: list[float] | None = None
-    """Set when hits were picked by bucketed sampling, which decides the plot the report shows."""
-    n_hits: int
-    min_uniq_images_per_cluster: int
-    n_clusters: int
-    hadamard_shape: HadamardShape
-    """Cached with the hits so a re-render can reshape their Hadamard vectors without the model."""
-    clusters: dict[int, ClusterMeta]
-    """Largest first - the order sections appear in the report."""
-    sample_ids: list[SampleId]
 
 
 def save_hits(hits: list[ClusterHit], cluster_dir: Path) -> None:
@@ -90,7 +76,7 @@ def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
-    meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
+    meta = load_report_meta(report_dir)
     sections = [
         _cluster_section(
             cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
@@ -128,9 +114,11 @@ def _cluster_nav(meta: ReportMeta) -> str:
 
 
 def _activation_plot(meta: ReportMeta) -> str:
-    if meta.bucket_edges is None:
-        return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
-    return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
+    match meta.pick:
+        case ElbowPickMeta():
+            return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+        case BucketedPickMeta():
+            return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
 
 
 def _activation_ranges_plot(report_dir: Path) -> str:
@@ -255,11 +243,9 @@ class NeuronClusterHits(BaseModel):
         uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
         return ReportMeta(
             neuron_idx=self.neuron_idx,
-            threshold=self.threshold,
-            bucket_edges=None if self.bucket_edges is None else self.bucket_edges.tolist(),
+            pick=self._pick_meta(),
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
-            n_clusters=len(cluster_ids),
             hadamard_shape=self.hadamard_shape,
             clusters={
                 cid: ClusterMeta(n_hits=counts[cid], n_unique_images=uniq_images[cid])
@@ -267,6 +253,11 @@ class NeuronClusterHits(BaseModel):
             },
             sample_ids=list(self.sample_ids),
         )
+
+    def _pick_meta(self) -> ElbowPickMeta | BucketedPickMeta:
+        if self.bucket_edges is None:
+            return ElbowPickMeta(cutoff=self.threshold)
+        return BucketedPickMeta(floor=self.threshold, bucket_edges=self.bucket_edges.tolist())
 
     def _write_activation_ranges(self, report_dir: Path, cluster_ids: list[int]) -> None:
         if self.hit_activations is None or self.noise_activations is None:
@@ -308,7 +299,7 @@ class NeuronClusterHits(BaseModel):
             cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
         ]
         meta = self._meta(cluster_ids, min_uniq_images)
-        (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
+        write_report_meta(report_dir, meta)
 
         self._write_activation_ranges(report_dir, cluster_ids)
         for cid in cluster_ids:

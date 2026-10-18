@@ -14,7 +14,7 @@ from matplotlib.figure import Figure
 from pydantic import BaseModel
 
 from .html_report import page, render_template
-from .neuron_report import ReportMeta
+from .report_meta import load_report_meta
 from .neuron_tracking import StepRecord, TrackingLog
 
 
@@ -59,7 +59,7 @@ def match_clusters(
 
 
 def load_cluster_means(neuron_report_dir: Path) -> dict[int, torch.Tensor]:
-    meta = ReportMeta.model_validate_json((neuron_report_dir / "meta.json").read_text())
+    meta = load_report_meta(neuron_report_dir)
     return {cid: torch.load(neuron_report_dir / f"cluster_{cid}" / "mean.pt") for cid in meta.clusters}
 
 
