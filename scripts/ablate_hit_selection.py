@@ -16,7 +16,7 @@ from scipy.optimize import linear_sum_assignment
 from transformers import PreTrainedTokenizerBase
 
 import run_neuron_report as report
-from in_tfm.hit_selection.strategies.bucketed import merged_bucket_ids
+from in_tfm.hit_selection.strategies.bucketed import group_of_each_value, plan_buckets
 from in_tfm.clustering import cluster_labels
 from in_tfm.hadamard import hadamard_from_rows
 from in_tfm.hit_selection import BucketedPick, HitSelection, select_hits
@@ -123,7 +123,7 @@ def bucket_breakdown(
     """`clusters_homed` counts clusters whose most common bucket is this one, so each cluster
     is counted once. `clusters_touching` counts every cluster with at least one hit here."""
     corpus = corpus_values[corpus_values > pick.floor]
-    corpus_ids = merged_bucket_ids(corpus, hits.n_buckets, pick.floor, hits.min_bucket_size)
+    corpus_ids = group_of_each_value(corpus, plan_buckets(corpus, hits.n_buckets, pick.floor, hits.min_bucket_size))
     kept_bucket = pick.bucket_ids
     n_groups = corpus_ids.max() + 1
     home = {c: np.bincount(kept_bucket[labels == c], minlength=n_groups).argmax() for c in set(labels) - {-1}}

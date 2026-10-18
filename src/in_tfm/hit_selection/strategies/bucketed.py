@@ -7,72 +7,115 @@ Buckets with fewer than `min_bucket_size` values are merged with their neighbour
 too small to hold a cluster of its own has no use as a separate stratum.
 Each remaining bucket gets an equal share of the budget, so the rare high activations are not
 drowned out.
+
+Names used below:
+- A raw bucket is one of the `n_buckets` equal-width slices.
+- A group is one or more neighbouring raw buckets after merging. Group 0 is the lowest.
+- A candidate is a value above the floor. `candidate_idx` arrays index into the candidates, not into all values.
 """
 
 import numpy as np
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Bool, Float, Int
+from pydantic import BaseModel, ConfigDict
 
 from ...neuron_capture import ScanResult
 from ...run_config import HitSelectionConfig
 from ..picks import BucketedPick, PickedPositions
 
 
-def bucket_edges(
-    values: Float[np.ndarray, "n"], n_buckets: int, floor: float
-) -> Float[np.ndarray, "n_edges"]:
-    return np.linspace(floor, values.max(), n_buckets + 1)
+class BucketLayout(BaseModel):
+    raw_edges: list[float]
+    """`n_buckets + 1` edges, from the floor to the max."""
+    groups: list[list[int]]
+    """The raw buckets in each group, lowest group first."""
+
+    def group_edges(self) -> Float[np.ndarray, "n_groups_plus_1"]:
+        """Lower edge of every group, then the max."""
+        lower_edges = [self.raw_edges[raw_buckets[0]] for raw_buckets in self.groups]
+        return np.array(lower_edges + [self.raw_edges[-1]])
+
+    def group_of_raw_bucket(self) -> Int[np.ndarray, "n_buckets"]:
+        group_of = np.zeros(len(self.raw_edges) - 1, dtype=int)
+        for group, raw_buckets in enumerate(self.groups):
+            for raw_bucket in raw_buckets:
+                group_of[raw_bucket] = group
+        return group_of
 
 
-def assign_buckets(
-    values: Float[np.ndarray, "n"], edges: Float[np.ndarray, "n_edges"]
-) -> Int[np.ndarray, "n"]:
-    """The max lands on the last edge, so it is clipped into the last bucket."""
-    n_buckets = len(edges) - 1
-    return np.clip(np.digitize(values, edges) - 1, 0, n_buckets - 1)
+class BucketedSample(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    kept_value_idx: Int[np.ndarray, "n_kept"]
+    """Indices into the values passed in, ascending."""
+    group_of_kept: Int[np.ndarray, "n_kept"]
+    n_candidates: int
+    layout: BucketLayout | None
+    """None when no value is above the floor."""
 
 
-def merge_small_buckets(sizes: Int[np.ndarray, "n_buckets"], min_size: int) -> Int[np.ndarray, "n_buckets"]:
-    """Group id (0 is the lowest) per bucket.
-    Walks down from the sparse top, closing a group once it holds `min_size` values.
-    A leftover lowest group that is still too small joins the group above it."""
-    group_of = np.zeros(len(sizes), dtype=int)
-    group, held = 0, 0
-    for bucket in reversed(range(len(sizes))):
-        group_of[bucket] = group
-        held += sizes[bucket]
+def equal_width_edges(values: Float[np.ndarray, "n"], n_buckets: int, floor: float) -> list[float]:
+    return np.linspace(floor, values.max(), n_buckets + 1).tolist()
+
+
+def raw_bucket_of_each_value(values: Float[np.ndarray, "n"], raw_edges: list[float]) -> Int[np.ndarray, "n"]:
+    """Raw bucket `b` holds `raw_edges[b] <= value < raw_edges[b + 1]`.
+
+    - `np.digitize` returns, per value, how many edges are at or below it, so 1 for the first bucket.
+    - The max sits on the last edge and would get its own bucket past the end, so it is clipped into the last one.
+    """
+    last_bucket = len(raw_edges) - 2
+    return np.clip(np.digitize(values, raw_edges) - 1, 0, last_bucket)
+
+
+def count_per_bucket(bucket_of_each_value: Int[np.ndarray, "n"], n_buckets: int) -> list[int]:
+    return [int((bucket_of_each_value == bucket).sum()) for bucket in range(n_buckets)]
+
+
+def merge_small_buckets(sizes: list[int], min_size: int) -> list[list[int]]:
+    """The raw buckets in each group, lowest group first.
+
+    - Walks down from the sparse top, closing a group once it holds `min_size` values.
+    - A leftover lowest group that is still too small joins the group above it.
+    """
+    groups_from_top: list[list[int]] = []
+    open_group: list[int] = []
+    held = 0
+    for raw_bucket in reversed(range(len(sizes))):
+        open_group.append(raw_bucket)
+        held += sizes[raw_bucket]
         if held >= min_size:
-            group, held = group + 1, 0
-    lowest = group_of.max()
-    if lowest > 0 and sizes[group_of == lowest].sum() < min_size:
-        group_of[group_of == lowest] = lowest - 1
-    return group_of.max() - group_of
+            groups_from_top.append(open_group)
+            open_group, held = [], 0
+    if open_group and groups_from_top:
+        groups_from_top[-1].extend(open_group)
+    elif open_group:
+        groups_from_top.append(open_group)
+    return [sorted(group) for group in reversed(groups_from_top)]
 
 
-def merged_bucket_ids(
-    values: Float[np.ndarray, "n"], n_buckets: int, floor: float, min_bucket_size: int
-) -> Int[np.ndarray, "n"]:
-    edges = bucket_edges(values, n_buckets, floor)
-    buckets = assign_buckets(values, edges)
-    return merge_small_buckets(np.bincount(buckets, minlength=n_buckets), min_bucket_size)[buckets]
+def plan_buckets(
+    candidate_values: Float[np.ndarray, "n"], n_buckets: int, floor: float, min_bucket_size: int
+) -> BucketLayout:
+    raw_edges = equal_width_edges(candidate_values, n_buckets, floor)
+    sizes = count_per_bucket(raw_bucket_of_each_value(candidate_values, raw_edges), n_buckets)
+    return BucketLayout(raw_edges=raw_edges, groups=merge_small_buckets(sizes, min_bucket_size))
 
 
-def merged_bucket_edges(
-    values: Float[np.ndarray, "n"], n_buckets: int, floor: float, min_bucket_size: int
-) -> Float[np.ndarray, "n_groups_plus_1"]:
-    """Lower edge of every merged bucket, then the max."""
-    edges = bucket_edges(values, n_buckets, floor)
-    sizes = np.bincount(assign_buckets(values, edges), minlength=n_buckets)
-    group_of = merge_small_buckets(sizes, min_bucket_size)
-    first_raw_bucket_of_each_group = np.flatnonzero(np.diff(group_of, prepend=-1))
-    return np.append(edges[first_raw_bucket_of_each_group], edges[-1])
+def group_of_each_value(values: Float[np.ndarray, "n"], layout: BucketLayout) -> Int[np.ndarray, "n"]:
+    """Looks up each value's raw bucket in `group_of_raw_bucket`.
+
+    - The indexing below is the same as `[group_of_raw_bucket[b] for b in raw_buckets]`.
+    """
+    raw_buckets = raw_bucket_of_each_value(values, layout.raw_edges)
+    return layout.group_of_raw_bucket()[raw_buckets]
 
 
-def bucket_quotas(sizes: Int[np.ndarray, "n_buckets"], budget: int) -> Int[np.ndarray, "n_buckets"]:
+def bucket_quotas(sizes: list[int], budget: int) -> list[int]:
     """Equal share per bucket, where a small bucket gives all it has.
     The unused share is spread over the larger buckets, so the whole budget is spent whenever
     there are enough values."""
-    quotas = np.zeros_like(sizes)
+    quotas = [0] * len(sizes)
     remaining = budget
     smallest_first = np.argsort(sizes)
     for position, bucket in enumerate(smallest_first):
@@ -82,6 +125,17 @@ def bucket_quotas(sizes: Int[np.ndarray, "n_buckets"], budget: int) -> Int[np.nd
     return quotas
 
 
+def sample_each_group(
+    group_of_candidate: Int[np.ndarray, "n_candidates"], quotas: list[int], rng: np.random.Generator
+) -> Int[np.ndarray, "n_kept"]:
+    """Candidate indices, ascending. Groups are drawn lowest first, which fixes what a seed picks."""
+    picked = []
+    for group, quota in enumerate(quotas):
+        members = np.flatnonzero(group_of_candidate == group)
+        picked.append(rng.choice(members, quota, replace=False))
+    return np.sort(np.concatenate(picked))
+
+
 def bucketed_sample(
     values: Float[np.ndarray, "n"],
     n_buckets: int,
@@ -89,19 +143,34 @@ def bucketed_sample(
     floor: float,
     min_bucket_size: int,
     rng: np.random.Generator,
-) -> tuple[Int[np.ndarray, "n_kept"], Int[np.ndarray, "n_kept"]]:
-    """Indices into `values` (ascending) of the kept values, and the merged bucket of each.
-    Only values above `floor` are considered."""
-    candidates = np.flatnonzero(values > floor)
-    if len(candidates) == 0:
-        return candidates, candidates
-    ids = merged_bucket_ids(values[candidates], n_buckets, floor, min_bucket_size)
-    n_groups = ids.max() + 1
-    quotas = bucket_quotas(np.bincount(ids, minlength=n_groups), budget)
-    kept = np.sort(
-        np.concatenate([rng.choice(np.flatnonzero(ids == g), quotas[g], replace=False) for g in range(n_groups)])
+) -> BucketedSample:
+    candidate_value_idx = np.flatnonzero(values > floor)
+    if len(candidate_value_idx) == 0:
+        return BucketedSample(kept_value_idx=candidate_value_idx, group_of_kept=candidate_value_idx, n_candidates=0, layout=None)
+    candidate_values = values[candidate_value_idx]
+    layout = plan_buckets(candidate_values, n_buckets, floor, min_bucket_size)
+    group_of_candidate = group_of_each_value(candidate_values, layout)
+    quotas = bucket_quotas(count_per_bucket(group_of_candidate, len(layout.groups)), budget)
+    kept_candidate_idx = sample_each_group(group_of_candidate, quotas, rng)
+    return BucketedSample(
+        kept_value_idx=candidate_value_idx[kept_candidate_idx],
+        group_of_kept=group_of_candidate[kept_candidate_idx],
+        n_candidates=len(candidate_value_idx),
+        layout=layout,
     )
-    return candidates[kept], ids[kept]
+
+
+def valid_values_and_positions(
+    column: Float[torch.Tensor, "batch seq 1"], valid_mask: Bool[torch.Tensor, "batch seq"]
+) -> tuple[Float[np.ndarray, "n_valid"], Int[np.ndarray, "n_valid"], Int[np.ndarray, "n_valid"]]:
+    """Every valid position's value, with its batch and token index.
+
+    - Boolean-mask indexing and `argwhere` both walk the grid row by row, so entry i of each output is the same position.
+    """
+    valid = valid_mask.numpy()
+    values = column[..., 0].numpy()[valid]
+    positions = np.argwhere(valid)
+    return values, positions[:, 0], positions[:, 1]
 
 
 def bucketed_hits(
@@ -111,20 +180,14 @@ def bucketed_hits(
     hits: HitSelectionConfig,
     seed: int,
 ) -> tuple[PickedPositions, BucketedPick]:
-    """Row-major order of `argwhere` on the mask matches boolean-mask indexing, so row i of
-    `positions` is the position of `values[i]`."""
     floor = hits.bucket_floor_fraction * sorted_magnitudes[-1].item()
-    valid = scan.valid_mask.numpy()
-    values = column[..., 0].numpy()[valid]
-    positions = np.argwhere(valid)
-    kept, bucket_ids = bucketed_sample(
+    values, batch_idx, token_idx = valid_values_and_positions(column, scan.valid_mask)
+    sample = bucketed_sample(
         values, hits.n_buckets, hits.max_hits, floor, hits.min_bucket_size, np.random.default_rng(seed)
     )
-    above = values[values > floor]
-    picked = PickedPositions(batch_idx=positions[kept, 0], token_idx=positions[kept, 1], n_candidates=len(above))
-    pick = BucketedPick(
-        floor=floor,
-        bucket_ids=bucket_ids,
-        bucket_edges=merged_bucket_edges(above, hits.n_buckets, floor, hits.min_bucket_size),
-    )
+    if sample.layout is None:
+        raise ValueError(f"no activation above the bucket floor {floor:.4f}, lower bucket_floor_fraction")
+    kept = sample.kept_value_idx
+    picked = PickedPositions(batch_idx=batch_idx[kept], token_idx=token_idx[kept], n_candidates=sample.n_candidates)
+    pick = BucketedPick(floor=floor, bucket_ids=sample.group_of_kept, bucket_edges=sample.layout.group_edges())
     return picked, pick
