@@ -111,6 +111,8 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
     - `strategies/elbow.py` and `strategies/bucketed.py` hold one strategy each
   - `attribution/`: one file per attribution method, AttnLRP, DeepLift and Integrated Gradients
     - `comparison.py` measures DeepLift against Integrated Gradients
+  - `activation_ranges/`: each cluster's activations against the neuron's noise
+    - `ranges.py` collects them, `figure.py` and `plot.py` draw them
   - `text_corpus.py`: wikitext as paragraphs or articles
 - `scripts/run_neuron_report.py`: neuron reports for any onboarded model
   - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs

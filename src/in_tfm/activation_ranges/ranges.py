@@ -11,8 +11,8 @@ import numpy as np
 from jaxtyping import Float, Int
 from pydantic import BaseModel
 
-from .activation_range_figure import save_activation_range_plot
-from .neuron_capture import ScanResult
+from ..neuron_capture import ScanResult
+from .figure import save_activation_range_plot
 
 RANGES_NAME = "activation_ranges.json"
 PLOT_NAME = "activation_ranges.jpg"

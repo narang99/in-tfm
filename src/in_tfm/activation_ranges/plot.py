@@ -3,7 +3,7 @@
 - Adapted from `olt/act_ranges/plotting.py`, `stats.py` and `constants/general.py` of hiccup-ide (hariom/hp-do).
   - The unchanged copy is in git history, commit `8118be1`.
 - Dropped: the interactive and jpeg grid functions and `noise_overlay`, which the figure builder replaces.
-- Names are public now, since `activation_range_figure.py` imports them.
+- Names are public now, since `figure.py` imports them.
 """
 
 import math
