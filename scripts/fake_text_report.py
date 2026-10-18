@@ -17,14 +17,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from in_tfm.neuron_report import (
-    ClusterMeta,
-    ReportMeta,
-    cluster_dir_for,
-    render_report,
-    save_hits,
-)
+from in_tfm.neuron_report import cluster_dir_for, render_report, save_hits
 from in_tfm.presenters import ClusterHit, TextPresenter
+from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta, write_report_meta
 from in_tfm.viz import save_elbow_plot
 
 HADAMARD_SHAPE = (8, 16)
@@ -134,15 +129,14 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
 
     meta = ReportMeta(
         neuron_idx=90,
-        threshold=0.0809,
+        pick=ElbowPickMeta(cutoff=0.0809),
         n_hits=sum(c.n_hits for c in clusters.values()),
         min_uniq_images_per_cluster=2,
-        n_clusters=len(clusters),
         hadamard_shape=HADAMARD_SHAPE,
         clusters=clusters,
         sample_ids=sample_ids,
     )
-    (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
+    write_report_meta(report_dir, meta)
     elbow = np.sort(np.random.default_rng(0).exponential(0.2, 400))[::-1].copy()
     save_elbow_plot(elbow, 40, report_dir / "elbow.png")
 

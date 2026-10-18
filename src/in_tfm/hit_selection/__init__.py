@@ -1,4 +1,4 @@
-from .picked_hits import PickedHits
+from .picks import BucketedPick, ElbowPick, Pick
 from .selection import HitSelection, select_hits
 
-__all__ = ["HitSelection", "PickedHits", "select_hits"]
+__all__ = ["BucketedPick", "ElbowPick", "HitSelection", "Pick", "select_hits"]

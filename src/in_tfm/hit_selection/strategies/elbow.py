@@ -12,7 +12,7 @@ from jaxtyping import Bool, Float, Int
 
 from ...neuron_capture import ScanResult
 from ...run_config import HitSelectionConfig
-from ..picked_hits import PickedHits
+from ..picks import ElbowPick, PickedPositions
 
 
 def find_elbow_index_in_sorted_data(data: torch.Tensor) -> int:
@@ -30,30 +30,6 @@ def find_elbow_index_in_sorted_data(data: torch.Tensor) -> int:
     distances = numerator / denominator
 
     return typing.cast(int, torch.argmax(distances).item())
-
-
-def positive_sorted_activations(
-    outputs: Float[torch.Tensor, "batch seq hidden"],
-    neuron_idx: int,
-    valid_mask: Bool[torch.Tensor, "batch seq"] | None = None,
-) -> Float[torch.Tensor, "n_pos"]:
-    """`valid_mask` drops padding before the elbow is computed. Padding would otherwise enter
-    the activation distribution the threshold is derived from, moving the cutoff for every
-    real token."""
-    values = outputs[..., neuron_idx]
-    values = values[valid_mask] if valid_mask is not None else values.flatten()
-    values = values[values > 0]
-    return torch.sort(values).values
-
-
-def find_activation_threshold(
-    outputs: Float[torch.Tensor, "batch seq hidden"],
-    neuron_idx: int,
-    valid_mask: Bool[torch.Tensor, "batch seq"] | None = None,
-) -> tuple[float, Float[torch.Tensor, "n_pos"], int]:
-    sorted_values = positive_sorted_activations(outputs, neuron_idx, valid_mask)
-    elbow_idx = find_elbow_index_in_sorted_data(sorted_values)
-    return sorted_values[elbow_idx].item(), sorted_values, elbow_idx
 
 
 def high_activation_hits(
@@ -74,10 +50,18 @@ def high_activation_hits(
     return hits[:, 0], hits[:, 1]
 
 
-def elbow_hits(column: Float[torch.Tensor, "batch seq 1"], magnitude: float, scan: ScanResult, hits: HitSelectionConfig, seed: int) -> PickedHits:
-    batch_idx, token_idx = high_activation_hits(column, 0, magnitude, scan.valid_mask)
+def elbow_hits(
+    column: Float[torch.Tensor, "batch seq 1"],
+    sorted_magnitudes: Float[torch.Tensor, "n_pos"],
+    scan: ScanResult,
+    hits: HitSelectionConfig,
+    seed: int,
+) -> tuple[PickedPositions, ElbowPick]:
+    elbow_idx = find_elbow_index_in_sorted_data(sorted_magnitudes)
+    pick = ElbowPick(cutoff=sorted_magnitudes[elbow_idx].item(), elbow_idx=elbow_idx)
+    batch_idx, token_idx = high_activation_hits(column, 0, pick.cutoff, scan.valid_mask)
     n_above = len(batch_idx)
     if n_above > hits.max_hits:
         keep = np.sort(np.random.default_rng(seed).choice(n_above, hits.max_hits, replace=False))
         batch_idx, token_idx = batch_idx[keep], token_idx[keep]
-    return PickedHits(batch_idx=batch_idx, token_idx=token_idx, n_above_threshold=n_above)
+    return PickedPositions(batch_idx=batch_idx, token_idx=token_idx, n_candidates=n_above), pick

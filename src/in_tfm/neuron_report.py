@@ -28,6 +28,7 @@ from tqdm import tqdm
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
+from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
     ClusterLink,
     accent_class,
@@ -39,6 +40,14 @@ from .html_report import (
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
+from .report_meta import (
+    BucketedPickMeta,
+    ClusterMeta,
+    ElbowPickMeta,
+    ReportMeta,
+    load_report_meta,
+    write_report_meta,
+)
 from .sources import SampleId, SampleSource
 from .viz import save_bucket_edges_plot, save_elbow_plot
 
@@ -47,28 +56,6 @@ AttrFn = Callable[..., np.ndarray]
 
 HITS_CACHE_NAME = "hits.pt"
 SAMPLE_SEED = 0
-
-
-class ClusterMeta(BaseModel):
-    n_hits: int
-    n_unique_images: int
-
-
-class ReportMeta(BaseModel):
-    """What `meta.json` holds - everything `render_report` needs besides the cached hits."""
-
-    neuron_idx: int
-    threshold: float
-    bucket_edges: list[float] | None = None
-    """Set when hits were picked by bucketed sampling, which decides the plot the report shows."""
-    n_hits: int
-    min_uniq_images_per_cluster: int
-    n_clusters: int
-    hadamard_shape: HadamardShape
-    """Cached with the hits so a re-render can reshape their Hadamard vectors without the model."""
-    clusters: dict[int, ClusterMeta]
-    """Largest first - the order sections appear in the report."""
-    sample_ids: list[SampleId]
 
 
 def save_hits(hits: list[ClusterHit], cluster_dir: Path) -> None:
@@ -90,7 +77,7 @@ def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
-    meta = ReportMeta.model_validate_json((report_dir / "meta.json").read_text())
+    meta = load_report_meta(report_dir)
     sections = [
         _cluster_section(
             cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
@@ -128,9 +115,11 @@ def _cluster_nav(meta: ReportMeta) -> str:
 
 
 def _activation_plot(meta: ReportMeta) -> str:
-    if meta.bucket_edges is None:
-        return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
-    return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
+    match meta.pick:
+        case ElbowPickMeta():
+            return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
+        case BucketedPickMeta():
+            return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
 
 
 def _activation_ranges_plot(report_dir: Path) -> str:
@@ -193,18 +182,13 @@ class NeuronClusterHits(BaseModel):
     sample_ids: list[SampleId]
     layer_getter: LayerGetter
     neuron_idx: int
-    token_idx: Int[np.ndarray, "n_hits"]
-    batch_idx: Int[np.ndarray, "n_hits"]
+    selection: HitSelection
     labels: Int[np.ndarray, "n_hits"]
+    """One per hit of `selection`, in the same order."""
     hdmds: Float[np.ndarray, "n_hits hidden"]
     hadamard_shape: HadamardShape
-    threshold: float
-    elbow_values: Float[np.ndarray, "n_pos"]
-    elbow_idx: int
-    bucket_edges: Float[np.ndarray, "n_edges"] | None = None
-    hit_activations: Float[np.ndarray, "n_hits"] | None = None
     noise_activations: Float[np.ndarray, "n"] | None = None
-    """With the hits' activations, the report gets a collapsed activation range plot."""
+    """With it, the report gets a collapsed activation range plot."""
     device: str = Field(default_factory=default_device)
 
     def sample_cluster(
@@ -214,7 +198,7 @@ class NeuronClusterHits(BaseModel):
         model = self.model.to(self.device)
         results: list[ClusterHit] = []
         for i in tqdm(idxs):
-            bid, tid = self.batch_idx[i], self.token_idx[i]
+            bid, tid = self.selection.batch_idx[i], self.selection.token_idx[i]
             sample_id = self.sample_ids[bid]
             singleton_batch = self.source.to_model_batch([sample_id]).to(self.device)
             relevance = attr_fn(model, singleton_batch, self.layer_getter, self.neuron_idx, tid)
@@ -252,14 +236,12 @@ class NeuronClusterHits(BaseModel):
 
     def _meta(self, cluster_ids: list[int], min_uniq_images: int) -> ReportMeta:
         counts = cluster_counts(self.labels)
-        uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
+        uniq_images = cluster_unique_image_counts(self.labels, self.selection.batch_idx)
         return ReportMeta(
             neuron_idx=self.neuron_idx,
-            threshold=self.threshold,
-            bucket_edges=None if self.bucket_edges is None else self.bucket_edges.tolist(),
+            pick=self._pick_meta(),
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
-            n_clusters=len(cluster_ids),
             hadamard_shape=self.hadamard_shape,
             clusters={
                 cid: ClusterMeta(n_hits=counts[cid], n_unique_images=uniq_images[cid])
@@ -268,11 +250,27 @@ class NeuronClusterHits(BaseModel):
             sample_ids=list(self.sample_ids),
         )
 
+    def _save_selection_plot(self, report_dir: Path) -> None:
+        curve = self.selection.sorted_magnitudes.numpy()
+        match self.selection.pick:
+            case ElbowPick(elbow_idx=elbow_idx):
+                save_elbow_plot(curve, elbow_idx, report_dir / "elbow.png")
+            case BucketedPick(bucket_edges=edges):
+                save_bucket_edges_plot(curve, edges, report_dir / "buckets.png")
+
+    def _pick_meta(self) -> ElbowPickMeta | BucketedPickMeta:
+        threshold = self.selection.threshold
+        match self.selection.pick:
+            case ElbowPick():
+                return ElbowPickMeta(cutoff=threshold)
+            case BucketedPick(bucket_edges=edges):
+                return BucketedPickMeta(floor=threshold, bucket_edges=edges.tolist())
+
     def _write_activation_ranges(self, report_dir: Path, cluster_ids: list[int]) -> None:
-        if self.hit_activations is None or self.noise_activations is None:
+        if self.noise_activations is None:
             return
         ranges = ActivationRanges(
-            clusters=cluster_activations(self.labels, self.hit_activations, cluster_ids),
+            clusters=cluster_activations(self.labels, self.selection.activations, cluster_ids),
             noise=self.noise_activations.tolist(),
         )
         write_activation_ranges(report_dir, ranges)
@@ -298,17 +296,14 @@ class NeuronClusterHits(BaseModel):
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.bucket_edges is None:
-            save_elbow_plot(self.elbow_values, self.elbow_idx, report_dir / "elbow.png")
-        else:
-            save_bucket_edges_plot(self.elbow_values, self.bucket_edges, report_dir / "buckets.png")
+        self._save_selection_plot(report_dir)
 
-        uniq_images = cluster_unique_image_counts(self.labels, self.batch_idx)
+        uniq_images = cluster_unique_image_counts(self.labels, self.selection.batch_idx)
         cluster_ids = [
             cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
         ]
         meta = self._meta(cluster_ids, min_uniq_images)
-        (report_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
+        write_report_meta(report_dir, meta)
 
         self._write_activation_ranges(report_dir, cluster_ids)
         for cid in cluster_ids:
