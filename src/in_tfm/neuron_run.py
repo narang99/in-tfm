@@ -106,7 +106,10 @@ def report_neuron(
     clustering = config.clustering
     hdmd = normalized_rows(rows) if config.clustering.on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
-        labels = cluster_labels(hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples)
+        labels = cluster_labels(
+            hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples,
+            clustering.distance, clustering.mass,
+        )
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
