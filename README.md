@@ -113,6 +113,9 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
     - `comparison.py` measures DeepLift against Integrated Gradients
   - `activation_ranges/`: each cluster's activations against the neuron's noise
     - `ranges.py` collects them, `figure.py` and `plot.py` draw them
+  - `cluster_units/`: a report's clusters read back from its folder, and groups of them
+    - `ClusterLike` is what a cluster and a group share, so comparisons and merging take either
+  - `cluster_merging/`: groups clusters by k-means or by cosine and activation thresholds
   - `sources/`: where samples come from, one file per source
     - `base.py` holds `ModelBatch` and the `SampleSource` protocol
     - `dicom.py` and `text.py` are the two sources, `wikitext.py` loads the text corpus
@@ -123,6 +126,8 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - nested sections take dotted flags, e.g. `--clustering.min-cluster-size 20`
   - repeat a list flag per value, e.g. `--neurons 5 --neurons 7`
   - rad-dino needs its file, `--config configs/rad_dino_fc2.yaml`, since the defaults are Gemma's
+  - `--merge-clusters.method thresholds` or `kmeans` groups each report's clusters
+- `scripts/regroup_reports.py`: groups the clusters of finished reports, without the model
 - `scripts/ablate_hit_selection.py`: elbow against bucketed hit selection, for language models
 - `experiments/`: ablation results (git-ignored - see each README for how to regenerate)
 - `PLAN.md`, `COLAB_PLAN.md`: the vision-to-language port plan and the Colab setup notes
