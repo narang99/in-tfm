@@ -123,6 +123,19 @@ class ClusteringConfig(Section):
     selection_method: Literal["eom", "leaf"] = "leaf"
 
 
+class MergeClustersConfig(Section):
+    method: Literal["none", "kmeans", "thresholds"] = Field(
+        "none",
+        description="none: every cluster is its own group. kmeans: k-means over the unit cluster means. "
+        "thresholds: clusters share a group only if both thresholds hold for every pair",
+    )
+    k: int | None = Field(None, description="kmeans only: the number of groups, picked by an elbow if unset")
+    min_cosine: float = Field(0.98, description="thresholds only: the lowest cosine between two cluster means")
+    max_median_gap: float = Field(
+        0.1, description="thresholds only: the largest gap between two median activations, as a fraction of the largest cluster median"
+    )
+
+
 class ReportConfig(Section):
     max_hits_per_cluster: int = 10
     min_uniq_samples_per_cluster: int = 2
@@ -153,6 +166,7 @@ class RunConfig(BaseSettings):
     stl: StlDataConfig = StlDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
+    merge_clusters: MergeClustersConfig = MergeClustersConfig()
     report: ReportConfig = ReportConfig()
 
     @classmethod
