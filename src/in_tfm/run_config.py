@@ -30,15 +30,19 @@ class ModelName(StrEnum):
     ATTN_ONLY_2L = "self/attn-only-2l"
     RAD_DINO = "microsoft/rad-dino"
     STL_INCEPTION = "self/stl-inception"
+    MNIST_CNN = "self/mnist-cnn"
+    MNIST_CNN_SMALL = "self/mnist-cnn-small"
 
 
-Modality = Literal["text", "image", "stl"]
+Modality = Literal["text", "image", "stl", "mnist"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.RAD_DINO: "image",
     ModelName.STL_INCEPTION: "stl",
+    ModelName.MNIST_CNN: "mnist",
+    ModelName.MNIST_CNN_SMALL: "mnist",
 }
 
 
@@ -55,6 +59,8 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
+    ModelName.MNIST_CNN: {Target.CONV},
+    ModelName.MNIST_CNN_SMALL: {Target.CONV},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -94,6 +100,13 @@ class StlDataConfig(Section):
         "deeplift", description="how a hit is explained in pixels, integrated-gradients is the slow reference"
     )
     ig_steps: int = Field(128, description="integrated-gradients only: interpolation steps per explained hit")
+
+
+class MnistDataConfig(Section):
+    dataset: str = Field("ylecun/mnist", description="hf dataset with a grayscale `image` and a `label` column, 28x28")
+    split: Literal["train", "test"] = "test"
+    n_images: int = Field(1000, description="the first n images of the split, which is not sorted by class")
+    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
 
 
 class HitSelectionConfig(Section):
@@ -151,6 +164,7 @@ class RunConfig(BaseSettings):
     text: TextDataConfig = TextDataConfig()
     image: ImageDataConfig = ImageDataConfig()
     stl: StlDataConfig = StlDataConfig()
+    mnist: MnistDataConfig = MnistDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -184,7 +198,7 @@ class RunConfig(BaseSettings):
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "image", "stl"} - {self.modality}
+        others = {"text", "image", "stl", "mnist"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self

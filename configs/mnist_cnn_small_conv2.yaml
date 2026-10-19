@@ -1,0 +1,12 @@
+# Run with: uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_conv2.yaml
+# Every conv2 channel of the 2/4 network, on the first 1000 MNIST test images.
+# Train it with: uv run python scripts/train_mnist.py --channels.conv1 2 --channels.conv2 4 --out-dir checkpoints/mnist_cnn_2_4
+model: self/mnist-cnn-small
+target: conv
+layer_name: conv2
+neuron_start: 0
+neuron_end: 3
+batch_size: 64
+out_dir: reports/mnist_cnn_small
+mnist:
+  n_images: 1000

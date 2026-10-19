@@ -29,6 +29,7 @@ from typing import Any
 from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
 from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
@@ -54,11 +55,21 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
                 config.stl.attribution,
                 config.stl.ig_steps,
             )
+        case ModelName.MNIST_CNN:
+            return MnistCnnAdapter.from_pretrained(
+                config.layer_name, config.mnist.dataset, config.mnist.split, config.mnist.checkpoint
+            )
+        case ModelName.MNIST_CNN_SMALL:
+            return MnistCnnSmallAdapter.from_pretrained(
+                config.layer_name, config.mnist.dataset, config.mnist.split, config.mnist.checkpoint
+            )
 
 
 def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int]:
     if config.modality == "stl":
         return list(range(config.stl.n_images))
+    if config.modality == "mnist":
+        return list(range(config.mnist.n_images))
     if config.modality == "text":
         texts = load_texts(config.text, config.seed)
         print(f"loaded {len(texts)} {config.text.unit}s")
