@@ -9,10 +9,10 @@ def tiny_split(n: int) -> MnistTensors:
     return MnistTensors(images=torch.rand(n, 1, 28, 28, generator=generator), labels=torch.arange(n) % 10)
 
 
-def test_every_conv_is_3x3_with_stride_1():
+def test_every_conv_is_3x3_with_stride_2():
     convs = [m for m in MnistCnn().modules() if isinstance(m, torch.nn.Conv2d)]
     assert len(convs) == 2
-    assert all(c.kernel_size == (3, 3) and c.stride == (1, 1) for c in convs)
+    assert all(c.kernel_size == (3, 3) and c.stride == (2, 2) for c in convs)
 
 
 def test_the_checkpoint_rebuilds_the_trained_widths(tmp_path):
