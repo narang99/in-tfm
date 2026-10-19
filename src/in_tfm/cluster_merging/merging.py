@@ -48,11 +48,17 @@ def grouping_name(config: MergeClustersConfig) -> str:
 
 
 def merge_report_clusters(report_dir: Path, config: MergeClustersConfig, seed: int) -> str | None:
-    """Adds the grouping to the report's `meta.json` and makes it the one the page shows. None for method none."""
+    """Adds the grouping to the report's `meta.json` and makes it the one the page shows.
+
+    None for method none, and for a report without clusters, which has nothing to group.
+    """
     if config.method == "none":
+        return None
+    clusters = load_clusters(report_dir)
+    if not clusters:
         return None
     meta = load_report_meta(report_dir)
     name = grouping_name(config)
-    grouping = merge_clusters(load_clusters(report_dir), config, seed)
+    grouping = merge_clusters(clusters, config, seed)
     write_report_meta(report_dir, meta.model_copy(update={"groupings": {**meta.groupings, name: grouping}, "default_grouping": name}))
     return name

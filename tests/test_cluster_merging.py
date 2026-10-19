@@ -2,7 +2,7 @@ from conftest import FakeCluster, fake_report
 from in_tfm.cluster_merging import grouping_name, merge_clusters, merge_report_clusters
 from in_tfm.cluster_merging.strategies.thresholds import threshold_assignment
 from in_tfm.cluster_units import load_clusters, load_groups
-from in_tfm.report_meta import ReportMeta, load_report_meta
+from in_tfm.report_meta import ReportMeta, load_report_meta, write_report_meta
 from in_tfm.run_config import MergeClustersConfig
 
 THRESHOLDS = MergeClustersConfig(method="thresholds", min_cosine=0.98, max_median_gap=0.1)
@@ -104,3 +104,12 @@ def test_method_none_leaves_the_report_alone(tmp_path):
 def test_a_report_written_before_groupings_still_loads(tmp_path):
     raw = load_report_meta(fake_report(tmp_path)).model_dump(exclude={"groupings", "default_grouping"})
     assert ReportMeta.model_validate(raw).groupings == {}
+
+
+def test_a_report_without_clusters_gets_no_grouping(tmp_path):
+    """A logit of the 2/4 MNIST net had 0 clusters, and an empty grouping broke its page."""
+    report = fake_report(tmp_path)
+    meta = load_report_meta(report)
+    write_report_meta(report, meta.model_copy(update={"clusters": {}}))
+    assert merge_report_clusters(report, THRESHOLDS, seed=0) is None
+    assert load_report_meta(report).default_grouping is None
