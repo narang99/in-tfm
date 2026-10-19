@@ -52,6 +52,7 @@ class Target(StrEnum):
     K_PROJ = "k_proj"
     FC2 = "fc2"
     CONV = "conv"
+    LINEAR = "linear"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
@@ -59,8 +60,8 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
-    ModelName.MNIST_CNN: {Target.CONV},
-    ModelName.MNIST_CNN_SMALL: {Target.CONV},
+    ModelName.MNIST_CNN: {Target.CONV, Target.LINEAR},
+    ModelName.MNIST_CNN_SMALL: {Target.CONV, Target.LINEAR},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -149,7 +150,7 @@ class RunConfig(BaseSettings):
     target: Target = Field(Target.DOWN_PROJ, description="down_proj: MLP neurons. q_proj / k_proj: neuron index = (kv_)head * head_dim + dim")
     layer_idx: int = 10
     layer_name: str | None = Field(
-        None, description="conv only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
+        None, description="conv and linear only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
     )
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
@@ -191,8 +192,8 @@ class RunConfig(BaseSettings):
 
     @model_validator(mode="after")
     def conv_target_names_its_layer(self) -> "RunConfig":
-        if self.target is Target.CONV and self.layer_name is None:
-            raise ValueError("the conv target needs layer_name, a dotted submodule path")
+        if self.target in (Target.CONV, Target.LINEAR) and self.layer_name is None:
+            raise ValueError(f"the {self.target.value} target needs layer_name, a dotted submodule path")
         return self
 
     @model_validator(mode="after")

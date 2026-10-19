@@ -21,10 +21,15 @@ from .model import IMAGE_SIZE, MnistCnn, MnistCnnChannels
 from .source import MnistSource, Unnormalized
 
 
+def positions_in_output(output: torch.Tensor) -> int:
+    """A conv's grid cells, or 1 for the linear head, whose output has no position axis."""
+    return output.shape[-2] * output.shape[-1] if output.ndim == 4 else 1
+
+
 def positions_in_layer(model: torch.nn.Module, layer: torch.nn.Module) -> int:
     """Output positions per image, found by running one blank image on the model's own device."""
     counts: list[int] = []
-    handle = layer.register_forward_hook(lambda module, inputs, output: counts.append(output.shape[-2] * output.shape[-1]))
+    handle = layer.register_forward_hook(lambda module, inputs, output: counts.append(positions_in_output(output)))
     try:
         with torch.no_grad():
             model.eval()(torch.zeros(1, 1, IMAGE_SIZE, IMAGE_SIZE, device=next(model.parameters()).device))

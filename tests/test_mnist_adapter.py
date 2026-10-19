@@ -76,3 +76,18 @@ def test_first_per_class_takes_the_same_number_of_each_digit_in_order():
     from in_tfm.models.mnist_cnn.source import first_per_class
 
     assert first_per_class([7, 2, 7, 7, 2, 1], 2) == [0, 1, 2, 4, 5]
+
+
+def test_the_linear_head_has_one_position_per_image():
+    adapter = MnistCnnAdapter(MnistCnn(MnistCnnAdapter.channels), "head.1", fake_rows(2), "test")
+    assert batch_for(adapter, [0, 1]).valid_mask.shape == (2, 1)
+
+
+def test_deeplift_on_a_logit_sums_to_its_change_from_a_blank_image():
+    adapter = MnistCnnAdapter(MnistCnn(MnistCnnAdapter.channels), "head.1", fake_rows(1), "test")
+    model = adapter.get_model().eval()
+    batch = batch_for(adapter, [0])
+    with torch.no_grad():
+        change = (model(batch.kwargs["x"]) - model(torch.zeros_like(batch.kwargs["x"])))[0, 7]
+    relevance = compute_deeplift_relevance(model, batch, conv_getter("head.1"), 7, 0)
+    assert relevance.sum() == pytest.approx(change.item(), rel=1e-3, abs=1e-5)

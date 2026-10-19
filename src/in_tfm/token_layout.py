@@ -1,6 +1,8 @@
 """How a layer's tensors map onto the `(batch, seq, hidden)` shape the pipeline works in.
 
 - A linear layer already has that shape, so its layout is the identity.
+  - A linear layer after a flatten has no position axis, so it gets one of length 1.
+    - Each sample is then a single position, and a hit is a whole sample.
 - A conv is a linear map over unfolded patches, so it can be viewed the same way.
   - `seq` is the output grid flattened row by row, so `token_idx = y * width + x`.
   - The input becomes the patch each output position reads, flattened to `C_in * k * k`.
@@ -25,12 +27,16 @@ class TokenLayout(Protocol):
     def weight(self, layer_weight: torch.Tensor) -> Float[torch.Tensor, "out_hidden hidden"]: ...
 
 
+def with_position_axis(tensor: torch.Tensor) -> torch.Tensor:
+    return tensor.unsqueeze(1) if tensor.ndim == 2 else tensor
+
+
 class IdentityLayout:
     def inputs(self, layer_input: torch.Tensor) -> torch.Tensor:
-        return layer_input
+        return with_position_axis(layer_input)
 
     def outputs(self, layer_output: torch.Tensor) -> torch.Tensor:
-        return layer_output
+        return with_position_axis(layer_output)
 
     def weight(self, layer_weight: torch.Tensor) -> torch.Tensor:
         return layer_weight
