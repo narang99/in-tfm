@@ -135,12 +135,11 @@ class ClusteringConfig(Section):
     min_cluster_size: int = 10
     min_samples: int | None = Field(None, description="HDBSCAN min_samples, defaults to min_cluster_size")
     selection_method: Literal["eom", "leaf"] = "leaf"
-    distance: Literal["euclidean", "mass_overlap"] = Field(
+    distance: Literal["euclidean", "weighted_jaccard"] = Field(
         "euclidean",
-        description="euclidean: between the L2-normalised vectors. mass_overlap: the highest pair score minus each "
-        "pair's score, where a score counts the dims two hits share among those carrying `mass` of each sign",
+        description="euclidean: between the L2-normalised vectors. weighted_jaccard: 1 - sum(min) / sum(max) between "
+        "each hit's share of contribution per dim, with positive and negative parts kept apart",
     )
-    mass: float = Field(0.9, description="mass_overlap only: the share of each sign's total a hit's dims must reach")
 
 
 class ReportConfig(Section):

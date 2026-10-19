@@ -10,11 +10,11 @@ from functools import cache
 from typing import Literal, Protocol
 
 import numpy as np
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Float, Int
 
 
 ClusterSelectionMethod = Literal["eom", "leaf"]
-ClusteringDistance = Literal["euclidean", "mass_overlap"]
+ClusteringDistance = Literal["euclidean", "weighted_jaccard"]
 
 
 class HDBSCANBackend(Protocol):
@@ -46,35 +46,30 @@ def resolve_hdbscan_backend() -> tuple[type[HDBSCANBackend], str]:
         return CpuHDBSCAN, "hdbscan (cpu)"
 
 
-def mass_sets(points: Float[np.ndarray, "n_points dim"], mass: float) -> Bool[np.ndarray, "n_points dim"]:
-    """Per row, the smallest set of dims, largest first, whose values reach `mass` of the row's total.
+def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+    """Each row's positive and negative parts side by side, scaled so the row's magnitudes sum to 1.
 
-    A row with nothing positive gets an empty set."""
-    order = np.argsort(-points, axis=1)
-    ranked = np.take_along_axis(points, order, axis=1)
-    before = np.cumsum(ranked, axis=1) - ranked
-    picked_ranked = (ranked > 0) & (before < mass * ranked.clip(min=0).sum(axis=1, keepdims=True))
-    picked = np.zeros_like(picked_ranked)
-    np.put_along_axis(picked, order, picked_ranked, axis=1)
-    return picked
+    A row says where its contribution comes from, with signs kept apart so +a and -a never match."""
+    parts = np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(np.float64)
+    totals = parts.sum(axis=1, keepdims=True)
+    return parts / np.where(totals > 0, totals, 1.0)
 
 
-def mass_overlap_scores(points: Float[np.ndarray, "n_points dim"], mass: float) -> Int[np.ndarray, "n_points n_points"]:
-    """Dims two rows share among those carrying `mass` of each sign, positive with positive and negative with negative."""
-    positive = mass_sets(points.clip(min=0), mass).astype(np.int32)
-    negative = mass_sets((-points).clip(min=0), mass).astype(np.int32)
-    return positive @ positive.T + negative @ negative.T
+def weighted_jaccard_distances(
+    points: Float[np.ndarray, "n_points dim"], chunk: int = 256
+) -> Float[np.ndarray, "n_points n_points"]:
+    """1 - sum(min) / sum(max) between the rows' contribution shares, also called the Ruzicka distance.
 
-
-def mass_overlap_distances(points: Float[np.ndarray, "n_points dim"], mass: float) -> Float[np.ndarray, "n_points n_points"]:
-    """The highest score between two different rows, minus each pair's score.
-
-    - A row's score with itself is its own set size, not the maximum, so the diagonal is set to 0 by hand.
-    - This is not a metric: the triangle inequality can fail.
-    - The matrix is n² floats, so it suits hit counts in the low thousands, not tens of thousands."""
-    scores = mass_overlap_scores(points, mass).astype(np.float64)
-    np.fill_diagonal(scores, -np.inf)
-    distances = scores.max() - scores
+    - It is plain Jaccard with each dim partly in a set, so a dim counts in proportion to its size.
+    - It is a metric.
+    - Pairs are built a chunk of rows at a time, since a full n x n x dim array would be large."""
+    shares = contribution_shares(points)
+    distances = np.empty((len(shares), len(shares)))
+    for start in range(0, len(shares), chunk):
+        block = shares[start:start + chunk, None, :]
+        overlap = np.minimum(block, shares[None]).sum(axis=-1)
+        union = np.maximum(block, shares[None]).sum(axis=-1)
+        distances[start:start + chunk] = 1.0 - overlap / np.where(union > 0, union, 1.0)
     np.fill_diagonal(distances, 0.0)
     return distances
 
@@ -106,7 +101,6 @@ def cluster_labels(
     cluster_selection_method: ClusterSelectionMethod = "leaf",
     min_samples: int | None = None,
     distance: ClusteringDistance = "euclidean",
-    mass: float = 0.9,
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop.
 
@@ -116,11 +110,11 @@ def cluster_labels(
     `min_samples=None` leaves HDBSCAN's own default, which is `min_cluster_size`.
     A smaller value makes it less strict about what counts as dense, so fewer points are noise.
 
-    `mass_overlap` compares which dims carry each point, not how much: see `mass_overlap_distances`.
+    `weighted_jaccard` compares where each point's contribution comes from: see `weighted_jaccard_distances`.
     It always runs on CPU."""
-    if distance == "mass_overlap":
-        print(f"[cluster] {len(points)} points x {points.shape[1]} dims, mass overlap at {mass:.0%}, via sklearn (cpu)")
-        distances = mass_overlap_distances(points, mass)
+    if distance == "weighted_jaccard":
+        print(f"[cluster] {len(points)} points x {points.shape[1]} dims, weighted jaccard, via sklearn (cpu)")
+        distances = weighted_jaccard_distances(points)
         return _cluster_precomputed(distances, min_cluster_size, cluster_selection_method, min_samples)
 
     backend, name = resolve_hdbscan_backend()

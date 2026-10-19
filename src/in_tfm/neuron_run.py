@@ -108,7 +108,7 @@ def report_neuron(
     with timed(f"{tag}: cluster"):
         labels = cluster_labels(
             hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples,
-            clustering.distance, clustering.mass,
+            clustering.distance,
         )
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
