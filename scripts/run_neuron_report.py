@@ -26,10 +26,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from datasets import load_dataset
+
 from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
+from in_tfm.models.mnist_cnn.source import first_per_class
 from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
 from in_tfm.neuron_run import run_neuron_reports, timed
@@ -69,7 +72,8 @@ def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int]:
     if config.modality == "stl":
         return list(range(config.stl.n_images))
     if config.modality == "mnist":
-        return list(range(config.mnist.n_images))
+        labels = load_dataset(config.mnist.dataset, split=config.mnist.split)["label"]
+        return first_per_class(labels, config.mnist.images_per_class)
     if config.modality == "text":
         texts = load_texts(config.text, config.seed)
         print(f"loaded {len(texts)} {config.text.unit}s")

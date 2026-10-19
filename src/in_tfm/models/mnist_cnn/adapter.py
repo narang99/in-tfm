@@ -1,7 +1,7 @@
 """Two trained MNIST networks, each its own model, sharing one adapter implementation.
 
-- `MnistCnnAdapter` is the 4/8 channel network, the smallest one with high accuracy.
-- `MnistCnnSmallAdapter` is the 2/4 channel network, the smallest one, at about 95% accuracy.
+- `MnistCnnAdapter` is the 8/16 channel network, the smallest one above 98% accuracy.
+- `MnistCnnSmallAdapter` is the 2/4 channel network, the smallest one, at about 94% accuracy.
 - Hits are explained with DeepLift against a blank image, see `MnistCnn`.
 """
 
@@ -69,7 +69,7 @@ class MnistAdapter:
 
 
 class MnistCnnAdapter(MnistAdapter):
-    channels = MnistCnnChannels(conv1=4, conv2=8)
+    channels = MnistCnnChannels(conv1=8, conv2=16)
     default_checkpoint = Path("checkpoints/mnist_cnn/final.pt")
 
 

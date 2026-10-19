@@ -1,12 +1,12 @@
 # Run with: uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_conv2.yaml
-# Every conv2 channel of the 4/8 network, on the first 1000 MNIST test images.
+# conv2 channels of the 8/16 network, on the first 100 MNIST test images of each digit.
 # The checkpoint is checkpoints/mnist_cnn/final.pt, written by scripts/train_mnist.py with its defaults.
 model: self/mnist-cnn
 target: conv
 layer_name: conv2
 neuron_start: 0
-neuron_end: 7
+neuron_end: 15
 batch_size: 64
 out_dir: reports/mnist_cnn
 mnist:
-  n_images: 1000
+  images_per_class: 100

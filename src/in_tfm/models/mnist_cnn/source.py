@@ -16,11 +16,19 @@ class Unnormalized:
     image_std = [1.0]
 
 
-class MnistSource:
-    """Images of one MNIST split, picked by dataset index. The sample id is `{split}:{index}`.
+def first_per_class(labels: Sequence[int], per_class: int) -> list[int]:
+    """The first `per_class` indices of every label, in dataset order, so every digit is equally represented."""
+    taken: dict[int, int] = {}
+    indices = []
+    for index, label in enumerate(labels):
+        if taken.get(label, 0) < per_class:
+            taken[label] = taken.get(label, 0) + 1
+            indices.append(index)
+    return indices
 
-    - The hub split is in shuffled class order, so the first n images cover every digit.
-    """
+
+class MnistSource:
+    """Images of one MNIST split, picked by dataset index. The sample id is `{split}:{index}`."""
 
     def __init__(self, split_rows, indices: Sequence[int], split: str, n_tokens: int) -> None:
         self.split_rows = split_rows

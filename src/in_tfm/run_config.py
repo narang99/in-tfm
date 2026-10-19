@@ -105,7 +105,7 @@ class StlDataConfig(Section):
 class MnistDataConfig(Section):
     dataset: str = Field("ylecun/mnist", description="hf dataset with a grayscale `image` and a `label` column, 28x28")
     split: Literal["train", "test"] = "test"
-    n_images: int = Field(1000, description="the first n images of the split, which is not sorted by class")
+    images_per_class: int = Field(100, description="the first n images of each digit in the split")
     checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
 
 
