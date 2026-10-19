@@ -3,18 +3,18 @@
 - A chosen step `t` needs the network just before it (state `t - 1`) and just after it (state `t`).
 - The initial network (state 0) and the final one are always reported, so the page can show where training ended up.
 - HDBSCAN cluster ids mean nothing across two reports, so clusters are matched by the cosine similarity of their mean Hadamard products.
+  - Matching takes `ClusterLike`, so groups of clusters can be matched the same way.
   - The Hadamard product is input times weight row, so the weights changing between states makes the match approximate.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
-import torch
-from jaxtyping import Float
 from matplotlib.figure import Figure
 from pydantic import BaseModel
 
+from .cluster_units import ClusterLike, unit_means
 from .html_report import page, render_template
-from .report_meta import load_report_meta
 from .neuron_tracking import StepRecord, TrackingLog
 
 
@@ -43,24 +43,16 @@ def state_report_dir(reports_dir: Path, state: int) -> Path:
     return reports_dir / f"state_{state:04d}"
 
 
-def match_clusters(
-    means_a: dict[int, Float[torch.Tensor, "hidden"]], means_b: dict[int, Float[torch.Tensor, "hidden"]]
-) -> list[ClusterMatch]:
-    """Each cluster of `a` with its most similar cluster of `b`, a cluster of `b` may be chosen by several."""
-    matches = []
-    for id_a, mean_a in means_a.items():
-        similarities = {
-            id_b: torch.nn.functional.cosine_similarity(mean_a, mean_b, dim=0).item() for id_b, mean_b in means_b.items()
-        }
-        if similarities:
-            best = max(similarities, key=similarities.get)
-            matches.append(ClusterMatch(cluster_a=id_a, cluster_b=best, similarity=similarities[best]))
-    return matches
-
-
-def load_cluster_means(neuron_report_dir: Path) -> dict[int, torch.Tensor]:
-    meta = load_report_meta(neuron_report_dir)
-    return {cid: torch.load(neuron_report_dir / f"cluster_{cid}" / "mean.pt") for cid in meta.clusters}
+def match_clusters(units_a: Sequence[ClusterLike], units_b: Sequence[ClusterLike]) -> list[ClusterMatch]:
+    """Each unit of `a` with its most similar unit of `b`, a unit of `b` may be chosen by several."""
+    if not units_a or not units_b:
+        return []
+    similarity = unit_means(units_a) @ unit_means(units_b).T
+    best = similarity.argmax(dim=1)
+    return [
+        ClusterMatch(cluster_a=a.id, cluster_b=units_b[int(j)].id, similarity=similarity[i, j].item())
+        for i, (a, j) in enumerate(zip(units_a, best))
+    ]
 
 
 DISTANCE_PLOT_NAME = "distances.png"

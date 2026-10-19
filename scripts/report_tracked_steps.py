@@ -15,6 +15,7 @@ from datasets import load_dataset
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from in_tfm.cluster_units import load_clusters
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter, load_model
 from in_tfm.models.stl_inception.source import HubImages, spread_indices
 from in_tfm.neuron_run import run_neuron_reports
@@ -23,7 +24,6 @@ from in_tfm.run_config import RunConfig, load_run_config
 from in_tfm.tracking_reports import (
     DISTANCE_PLOT_NAME,
     match_clusters,
-    load_cluster_means,
     save_distance_plot,
     state_report_dir,
     states_to_report,
@@ -76,10 +76,10 @@ def main() -> None:
         neuron_dirs[report.state] = report_state(config, run, dataset, report.state, reports_dir)
         print(f"state {report.state} ({', '.join(report.labels)}): {time.perf_counter() - start:.0f}s")
 
-    means = {state: load_cluster_means(path) for state, path in neuron_dirs.items()}
-    pairs = {"initial to final": match_clusters(means[0], means[len(log.steps)])}
+    clusters = {state: load_clusters(path) for state, path in neuron_dirs.items()}
+    pairs = {"initial to final": match_clusters(clusters[0], clusters[len(log.steps)])}
     for r in chosen:
-        pairs[f"step {r.step}, before to after"] = match_clusters(means[r.step - 1], means[r.step])
+        pairs[f"step {r.step}, before to after"] = match_clusters(clusters[r.step - 1], clusters[r.step])
 
     save_distance_plot(log, chosen, reports_dir / DISTANCE_PLOT_NAME)
     print("index:", write_index(reports_dir, log, chosen, states, pairs))

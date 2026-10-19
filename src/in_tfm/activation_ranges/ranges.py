@@ -47,6 +47,12 @@ def cluster_activations(
     return {cid: activations[labels == cid].tolist() for cid in cluster_ids}
 
 
+def read_activation_ranges(report_dir: Path) -> ActivationRanges | None:
+    """None for a report written without noise activations, which then has no ranges."""
+    path = report_dir / RANGES_NAME
+    return ActivationRanges.model_validate_json(path.read_text()) if path.exists() else None
+
+
 def write_activation_ranges(report_dir: Path, ranges: ActivationRanges) -> None:
     (report_dir / RANGES_NAME).write_text(ranges.model_dump_json())
     if ranges.clusters:

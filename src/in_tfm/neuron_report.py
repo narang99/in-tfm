@@ -27,6 +27,7 @@ from tqdm import tqdm
 
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
+from .cluster_units import MEAN_NAME, HitTable, cluster_dir_for, write_hit_table
 from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
@@ -68,10 +69,6 @@ def load_hits(cluster_dir: Path) -> list[ClusterHit]:
     # weights_only=False: the cache holds numpy arrays, which the safe loader rejects
     saved = torch.load(cluster_dir / HITS_CACHE_NAME, weights_only=False)
     return [ClusterHit.model_validate(d) for d in saved]
-
-
-def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
-    return report_dir / f"cluster_{cluster_id}"
 
 
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
@@ -231,7 +228,7 @@ class NeuronClusterHits(BaseModel):
         (`mean.pt`) into its own `cluster_{id}/` subfolder."""
         cluster_dir = cluster_dir_for(report_dir, cluster_id)
         cluster_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(self._cluster_mean_hadamard(cluster_id), cluster_dir / "mean.pt")
+        torch.save(self._cluster_mean_hadamard(cluster_id), cluster_dir / MEAN_NAME)
         save_hits(self.sample_cluster(cluster_id, max_n=max_n, attr_fn=attr_fn), cluster_dir)
 
     def _meta(self, cluster_ids: list[int], min_uniq_images: int) -> ReportMeta:
@@ -265,6 +262,14 @@ class NeuronClusterHits(BaseModel):
                 return ElbowPickMeta(cutoff=threshold)
             case BucketedPick(bucket_edges=edges):
                 return BucketedPickMeta(floor=threshold, bucket_edges=edges.tolist())
+
+    def _hit_table(self) -> HitTable:
+        return HitTable(
+            batch_idx=self.selection.batch_idx,
+            token_idx=self.selection.token_idx,
+            labels=self.labels,
+            activations=self.selection.activations,
+        )
 
     def _write_activation_ranges(self, report_dir: Path, cluster_ids: list[int]) -> None:
         if self.noise_activations is None:
@@ -306,6 +311,7 @@ class NeuronClusterHits(BaseModel):
         write_report_meta(report_dir, meta)
 
         self._write_activation_ranges(report_dir, cluster_ids)
+        write_hit_table(report_dir, self._hit_table())
         for cid in cluster_ids:
             self._cache_cluster(cid, report_dir, attr_fn, max_n)
         return render_report(report_dir, self.presenter)

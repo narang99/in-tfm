@@ -4,6 +4,7 @@ from .ranges import (
     ActivationRanges,
     cluster_activations,
     hit_activations,
+    read_activation_ranges,
     sample_noise,
     write_activation_ranges,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "ActivationRanges",
     "cluster_activations",
     "hit_activations",
+    "read_activation_ranges",
     "sample_noise",
     "write_activation_ranges",
 ]
