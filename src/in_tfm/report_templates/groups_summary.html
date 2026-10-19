@@ -1,0 +1,26 @@
+{% from "components.html" import details %}
+{% call details("groups: " ~ description, start_open=true) %}
+<table class="groups-table">
+<tr><th>group</th><th>clusters</th><th>hits</th><th>median activation</th><th>lowest member cosine</th></tr>
+{% for group in groups %}
+<tr><td><a href="#group-{{ group.id }}">group {{ group.id }}</a></td><td>{% for cid in group.cluster_ids %}<a href="#cluster-{{ cid }}">{{ cid }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td><td>{{ group.n_hits }}</td><td>{{ "%.3f"|format(group.median_activation) }}</td><td>{{ "%.3f"|format(group.min_member_cosine) }}</td></tr>
+{% endfor %}
+</table>
+{% for plot in plots %}<img class="group-plot" src="{{ plot.src }}" alt="{{ plot.alt }}">{% endfor %}
+{% endcall %}
+{% call details("cluster similarity, ordered by group (cosine of mean Hadamard products)") %}
+<div class="similarity"><table>
+<tr><th></th>{% for cid in similarity.cluster_ids %}<th><a href="#cluster-{{ cid }}">{{ cid }}</a></th>{% endfor %}</tr>
+{% for row in similarity.rows %}
+<tr><th><a href="#cluster-{{ row.cluster_id }}">{{ row.cluster_id }}</a></th>{% for value in row.values %}<td style="--strength:{{ "%.2f"|format(value|abs) }}" class="{{ "pos" if value >= 0 else "neg" }}">{{ "%.2f"|format(value) }}</td>{% endfor %}</tr>
+{% endfor %}
+</table></div>
+{% endcall %}
+<script>
+function openAncestors() {
+  var el = document.getElementById(location.hash.slice(1));
+  for (; el; el = el.parentElement) { if (el.tagName === "DETAILS") { el.open = true; } }
+}
+addEventListener("hashchange", openAncestors);
+openAncestors();
+</script>

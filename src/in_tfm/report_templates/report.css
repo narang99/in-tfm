@@ -59,3 +59,17 @@ details > img { display:block; margin-top:8px; }
 img.elbow { max-width:420px; }
 details { margin-top:10px; }
 details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
+.group { border:1px solid var(--line); border-left:8px solid var(--accent); border-radius:8px; margin:32px 0; padding:4px 14px; }
+.group-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; padding:10px 0; cursor:pointer; }
+.group-badge { font-size:1.15rem; font-weight:700; }
+.group-stats { color:var(--muted); font-size:0.85rem; }
+.group > .cluster { margin:24px 0; }
+.groups-table { border-collapse:collapse; font-size:0.85rem; margin:8px 0; }
+.groups-table th, .groups-table td { padding:4px 10px; border-bottom:1px solid var(--line); text-align:left; }
+img.group-plot { display:block; margin-top:12px; }
+.similarity { overflow-x:auto; margin-top:8px; }
+.similarity table { border-collapse:collapse; font-size:0.7rem; font-variant-numeric:tabular-nums; }
+.similarity th, .similarity td { padding:2px 6px; text-align:center; border:1px solid var(--line); }
+.similarity th a { color:var(--muted); text-decoration:none; }
+.similarity td.pos { background:rgba(59,130,246,calc(0.6 * var(--strength))); }
+.similarity td.neg { background:rgba(245,158,11,calc(0.6 * var(--strength))); }
