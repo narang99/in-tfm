@@ -17,6 +17,9 @@ class ImageClusterView(BaseModel):
     original_url: str
     overlay_url: str
     hadamard_url: str
+    n_hits: int
+    n_zero_relevance: int
+    """Hits whose relevance is zero everywhere, which an overlay alone shows as a plain image."""
 
 
 class ImagePresenter:
@@ -42,6 +45,8 @@ class ImagePresenter:
             original_url=artifacts.save_grid(originals, "original.jpg"),
             overlay_url=artifacts.save_grid(overlays, "overlay.jpg"),
             hadamard_url=artifacts.save_grid(tiles, "hadamard.jpg"),
+            n_hits=len(hits),
+            n_zero_relevance=sum(not h.relevance.any() for h in hits),
         )
         return render_template("image_cluster.html", view=view)
 

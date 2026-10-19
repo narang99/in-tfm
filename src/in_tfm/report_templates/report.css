@@ -1,7 +1,7 @@
 :root { color-scheme: light dark;
-  --bg:#fff; --fg:#1a1a1a; --muted:#777; --line:#e3e3e3; --panel:#fafafa; }
+  --bg:#fff; --fg:#1a1a1a; --muted:#777; --line:#e3e3e3; --panel:#fafafa; --warn:#c62828; }
 @media (prefers-color-scheme: dark) { :root {
-  --bg:#161616; --fg:#e6e6e6; --muted:#9a9a9a; --line:#333; --panel:#1e1e1e; } }
+  --bg:#161616; --fg:#e6e6e6; --muted:#9a9a9a; --line:#333; --panel:#1e1e1e; --warn:#ff6b6b; } }
 body { background:var(--bg); color:var(--fg); max-width:980px; margin:0 auto;
   padding:32px 20px 64px; line-height:1.5;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; }
@@ -54,6 +54,7 @@ body.hide-sink .when-no-sink { display:contents; }
 .sink-toggle { display:inline-flex; align-items:center; gap:6px; margin:8px 0; cursor:pointer;
   color:var(--muted); font-size:0.85rem; }
 .scale { color:var(--muted); font-size:0.7rem; margin:2px 0 4px; }
+.relevance-warning { color:var(--warn); font-size:0.85rem; font-weight:600; margin:8px 0 4px; }
 img { max-width:100%; border-radius:4px; }
 details > img { display:block; margin-top:8px; }
 img.elbow { max-width:420px; }

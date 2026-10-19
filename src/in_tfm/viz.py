@@ -268,9 +268,13 @@ def mk_overlay(
     """`inv_img` must already be denormalized (e.g. via inv_tfm) and `neuron_att` must already
     have its channel axis collapsed - attr_fn implementations (neuron_ig,
     compute_attnlrp_relevance) are responsible for that, not this function.
+
+    An all-zero map has nothing to scale by, so the plain image is returned instead of a NaN heat map.
     """
     overlay = neuron_att.detach().cpu().numpy()
-    overlay = overlay / np.abs(overlay).max()
     base = to_pil(inv_img, size=size)
+    if not overlay.any():
+        return base
+    overlay = overlay / np.abs(overlay).max()
     heat = apply_cmap(overlay, cmap, vmin=-1, vmax=1, size=size, interpolation=Image.BILINEAR)
     return Image.blend(base, heat, alpha=alpha)
