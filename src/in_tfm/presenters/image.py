@@ -47,8 +47,12 @@ class ImagePresenter:
 
     def _denormalized(self, hit: ClusterHit) -> np.ndarray:
         """The model input with the processor's mean/std undone - what the overlay is blended
-        onto, so the two line up pixel for pixel."""
-        return inv_tfm(self.processor, hit.model_input)
+        onto, so the two line up pixel for pixel.
+
+        A single-channel image is repeated to RGB, since PIL cannot build an image from (H, W, 1)
+        and the overlay is blended onto an RGB heat map."""
+        image = inv_tfm(self.processor, hit.model_input)
+        return np.repeat(image, 3, axis=-1) if image.shape[-1] == 1 else image
 
     def _relevance_map(self, hit: ClusterHit) -> torch.Tensor:
         """Collapse the channel axis of a (C, H, W) relevance array down to (H, W)."""
