@@ -1,4 +1,4 @@
-"""A page for a density-peak forest: where the roots are, how the trees spread, and how each tree grows.
+"""A page for a density-peak forest: where the roots are, and how each tree grows.
 
 It sits next to the neuron report as `density_peaks.html`, and the report links to it.
 Plots are matplotlib, since they are real charts. Patches are PIL tiles, like the rest of the report.
@@ -8,12 +8,10 @@ from pathlib import Path
 
 import numpy as np
 from jaxtyping import Bool, Float, Int
-from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 from pydantic import BaseModel, ConfigDict
-from sklearn.decomposition import PCA
 
-from .density_peaks import DensityPeakForest, ForestTrees, PeakDistance, comparable_rows, root_mask
+from .density_peaks import DensityPeakForest, ForestTrees, PeakDistance, log_density, root_mask
 from .html_report import page, render_template
 from .presenters import HadamardShape
 from .viz import render_hadamard_tiles
@@ -28,8 +26,6 @@ OTHER_TREES_COLOUR = "#9a9aa2"
 
 class RootRule(BaseModel):
     k: int
-    root_delta: float
-    root_density_quantile: float
     distance: PeakDistance
 
 
@@ -67,26 +63,9 @@ def tree_colour(tree_id: int) -> str:
     return TREE_COLOURS[tree_id] if tree_id < len(TREE_COLOURS) else OTHER_TREES_COLOUR
 
 
-def distinct_rows(
-    forest: DensityPeakForest, hadamards: Float[np.ndarray, "n_hits dim"]
-) -> Float[np.ndarray, "n_distinct dim"]:
-    first_hit = np.unique(forest.distinct_of_hit, return_index=True)[1]
-    return hadamards[first_hit]
-
-
-def log_density(kth_distance: Float[np.ndarray, "n_distinct"]) -> Float[np.ndarray, "n_distinct"]:
-    """-log10(d_k + offset), with the offset half the smallest nonzero d_k.
-
-    - Many points tie at d_k = 0, so a plain 1 / d_k is infinite for them.
-    - A log axis spreads the dense end, where the roots are."""
-    nonzero = kth_distance[kth_distance > 0]
-    offset = nonzero.min() / 2 if len(nonzero) else 1.0
-    return -np.log10(kth_distance + offset)
-
-
-def save_decision_graph(forest: DensityPeakForest, trees: ForestTrees, rule: RootRule, path: Path) -> None:
+def save_decision_graph(forest: DensityPeakForest, trees: ForestTrees, path: Path) -> None:
     """Real centres sit top right: dense, and far from anything denser."""
-    x, is_root = log_density(forest.kth_distance), root_mask(forest, rule.root_delta, rule.root_density_quantile)
+    x, is_root = log_density(forest.kth_distance), root_mask(forest, trees.cuts)
     fig = Figure(figsize=(7, 4.6), layout="constrained")
     ax = fig.subplots()
     ax.scatter(x[~is_root], forest.delta[~is_root], s=6, color="#b0b0b5", alpha=0.6, linewidth=0, label="distinct hit")
@@ -94,36 +73,12 @@ def save_decision_graph(forest: DensityPeakForest, trees: ForestTrees, rule: Roo
         ax.scatter(x[root], forest.delta[root], s=40 + 3 * np.sqrt(forest.counts[root]), color=tree_colour(tree_id),
                    edgecolor="black", linewidth=0.6, zorder=3)
         ax.annotate(f"T{tree_id}", (x[root], forest.delta[root]), xytext=(4, 3), textcoords="offset points", fontsize=8)
-    ax.axhline(rule.root_delta, color="#eb6834", linestyle="--", linewidth=1, label=f"root delta = {rule.root_delta}")
-    density_cut = log_density(forest.kth_distance)[forest.kth_distance <= np.quantile(forest.kth_distance, rule.root_density_quantile)].min()
-    ax.axvline(density_cut, color="#6b6b70", linestyle=":", linewidth=1, label=f"densest {rule.root_density_quantile:.0%}")
+    ax.axhline(trees.cuts.delta, color="#eb6834", linestyle="--", linewidth=1, label=f"delta elbow = {trees.cuts.delta:.3f}")
+    ax.axvline(trees.cuts.rho, color="#6b6b70", linestyle=":", linewidth=1, label=f"density elbow = {trees.cuts.rho:.2f}")
     ax.set_xlabel("density: -log10(d_k + offset), right is denser")
     ax.set_ylabel("delta: distance to the nearest denser hit")
     ax.legend(frameon=False, fontsize=8, loc="upper left")
     ax.spines[["top", "right"]].set_visible(False)
-    fig.savefig(path, dpi=110)
-
-
-def save_forest_view(
-    forest: DensityPeakForest,
-    trees: ForestTrees,
-    rows: Float[np.ndarray, "n_distinct dim"],
-    distance: PeakDistance,
-    path: Path,
-) -> None:
-    """Positions are a 2D PCA, only for drawing. The links come from the real distance."""
-    xy = PCA(2).fit_transform(comparable_rows(rows, distance))
-    linked = np.flatnonzero((forest.parent >= 0) & (trees.depth > 0))
-    fig = Figure(figsize=(8, 6), layout="constrained")
-    ax = fig.subplots()
-    segments = np.stack([xy[linked], xy[forest.parent[linked]]], axis=1)
-    ax.add_collection(LineCollection(segments, colors=[tree_colour(t) for t in trees.tree[linked]], linewidths=0.4, alpha=0.5))
-    for tree_id, root in enumerate(trees.roots):
-        ax.scatter(*xy[root], s=120, marker="*", color=tree_colour(tree_id), edgecolor="black", linewidth=0.7, zorder=3)
-        ax.annotate(f"T{tree_id}", xy[root], xytext=(5, 4), textcoords="offset points", fontsize=9, weight="bold")
-    ax.autoscale()
-    ax.set_xticks([])
-    ax.set_yticks([])
     fig.savefig(path, dpi=110)
 
 
@@ -188,8 +143,7 @@ def write_forest_page(
 ) -> Path:
     out_dir = report_dir / FOREST_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    save_decision_graph(forest, trees, rule, out_dir / "decision_graph.png")
-    save_forest_view(forest, trees, distinct_rows(forest, hits.hadamards), rule.distance, out_dir / "forest.png")
+    save_decision_graph(forest, trees, out_dir / "decision_graph.png")
     body = render_template(
         "density_peaks.html",
         title=title,
@@ -197,9 +151,9 @@ def write_forest_page(
         n_distinct=len(forest.counts),
         most_copies=int(forest.counts.max()),
         rule=rule,
+        cuts=trees.cuts,
         n_trees=len(trees.roots),
         decision_graph_src=f"{FOREST_DIR}/decision_graph.png",
-        forest_src=f"{FOREST_DIR}/forest.png",
         trees=[tree_row(t, forest, trees, hits, shape, out_dir) for t in range(len(trees.roots))],
     )
     path = report_dir / FOREST_PAGE
