@@ -5,7 +5,8 @@
 <li>Identical hits are merged into one point with a count. The most common is seen {{ most_copies }} times.</li>
 <li>Density: 1 / d<sub>k</sub>, where d<sub>k</sub> is the distance at which a hit's neighbours, counted with their copies, reach k = {{ rule.k }}.</li>
 <li>Each hit links to its nearest denser hit (Rodriguez and Laio, 2014). Following the links always ends at a root.</li>
-<li>A root is at least {{ rule.root_delta }} from anything denser, and in the densest {{ "%.0f"|format(100 * rule.root_density_quantile) }}% of hits.</li>
+<li>A root is at least {{ "%.3f"|format(cuts.delta) }} from anything denser, and at density {{ "%.2f"|format(cuts.rho) }} or more on the decision graph's axis.</li>
+<li>Both cut-offs are elbows: sort the values largest first, and take the one farthest from the line between the ends.</li>
 <li>Tree T<i>n</i> is cluster <i>n</i> in the report.</li>
 </ul>
 
@@ -14,19 +15,11 @@
 <li>Real centres sit top right: dense, and far from anything denser.</li>
 <li>Top left is outliers: far from everything, but sparse.</li>
 <li>The offset is half the smallest nonzero d<sub>k</sub>, so hits at d<sub>k</sub> = 0 still have a place on the axis.</li>
-<li>The two thresholds are a choice. Moving them changes the number of trees.</li>
+<li>Each axis gets its own elbow, so density and delta are never compared in each other's units.</li>
 </ul>
 <img class="plot" src="{{ decision_graph_src }}" alt="decision graph: density percentile against distance to the nearest denser hit">
 
-<h2>2. The forest</h2>
-<ul class="notes">
-<li>Each line joins a hit to its nearest denser hit, coloured by tree. Stars are roots.</li>
-<li>Positions are a 2D PCA, only for drawing. The links come from the real distance.</li>
-<li>Trees past the 8th are grey.</li>
-</ul>
-<img class="plot" src="{{ forest_src }}" alt="the forest drawn on a 2D PCA">
-
-<h2>3. Growth of each tree</h2>
+<h2>2. Growth of each tree</h2>
 <ul class="notes">
 <li>One row per tree, largest first. Left to right: the root, then hits further from it, in links.</li>
 <li>Each pair: the mean Hadamard product, then the mean input that produced it. Green is positive, red is negative.</li>
