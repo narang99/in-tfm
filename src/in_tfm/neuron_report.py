@@ -28,6 +28,7 @@ from tqdm import tqdm
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
+from .forest_report import FOREST_PAGE
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
     ClusterLink,
@@ -85,7 +86,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir)))
+    report_path.write_text(_index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir) + _forest_link(report_dir)))
     return report_path
 
 
@@ -127,6 +128,13 @@ def _activation_ranges_plot(report_dir: Path) -> str:
     if not (report_dir / PLOT_NAME).exists():
         return ""
     return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
+
+
+def _forest_link(report_dir: Path) -> str:
+    """Only reports clustered with density peaks have the page."""
+    if not (report_dir / FOREST_PAGE).exists():
+        return ""
+    return f'<p class="meta"><a href="{FOREST_PAGE}">density-peak forest: decision graph, trees and their growth</a></p>'
 
 
 def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str) -> str:
