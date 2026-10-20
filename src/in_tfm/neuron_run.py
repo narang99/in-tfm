@@ -22,6 +22,7 @@ from .clustering import cluster_labels
 from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
 from .device import empty_cache
 from .forest_report import HitArrays, RootRule, write_forest_page
+from .forest_tree_report import write_forest_tree_page
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
@@ -90,7 +91,12 @@ def write_density_peaks_page(
 ) -> None:
     rule = RootRule(k=clustering.k, distance=clustering.distance)
     shape = near_square_shape(hits.hadamards.shape[1])
-    print(f"[forest] -> {write_forest_page(report_dir, forest, trees, hits, shape, rule, f'Neuron {neuron_idx}')}")
+    title = f"Neuron {neuron_idx}"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    tree_page = write_forest_tree_page(report_dir, forest, trees, hits, shape, title)
+    print(f"[forest tree] -> {tree_page}")
+    tree_link = tree_page.name if tree_page else None
+    print(f"[forest] -> {write_forest_page(report_dir, forest, trees, hits, shape, rule, title, tree_link)}")
 
 
 def hit_labels(

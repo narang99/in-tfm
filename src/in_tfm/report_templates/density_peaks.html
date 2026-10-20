@@ -1,5 +1,5 @@
 <h1>{{ title }}: density-peak forest</h1>
-<p class="meta">{{ n_hits }} hits &middot; {{ n_distinct }} distinct &middot; {{ n_trees }} trees &middot; <a href="index.html">back to the report</a></p>
+<p class="meta">{{ n_hits }} hits &middot; {{ n_distinct }} distinct &middot; {{ n_trees }} trees &middot; {% if tree_page %}<a href="{{ tree_page }}">the trees, interactive</a> &middot; {% endif %}<a href="index.html">back to the report</a></p>
 <ul class="notes">
 <li>Hits are compared by {{ rule.distance }} distance on their Hadamard products.</li>
 <li>Identical hits are merged into one point with a count. The most common is seen {{ most_copies }} times.</li>
