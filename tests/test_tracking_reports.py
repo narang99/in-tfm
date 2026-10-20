@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from in_tfm.neuron_tracking import StepRecord, TrackingLog
@@ -21,14 +22,27 @@ def test_adjacent_steps_share_a_state_and_both_labels():
     assert states[3] == ["after step 3", "before step 4"]
 
 
+class Unit:
+    def __init__(self, id: int, mean: list[float]) -> None:
+        self.id = id
+        self.n_hits = 1
+        self.mean = torch.tensor(mean)
+
+    def mean_hadamard(self) -> torch.Tensor:
+        return self.mean
+
+    def activations(self) -> np.ndarray:
+        return np.ones(1)
+
+
 def test_a_cluster_is_matched_to_the_most_similar_cluster_on_the_other_side():
-    a = {0: torch.tensor([1.0, 0.0]), 1: torch.tensor([0.0, 1.0])}
-    b = {7: torch.tensor([0.1, 1.0]), 8: torch.tensor([1.0, 0.1])}
+    a = [Unit(0, [1.0, 0.0]), Unit(1, [0.0, 1.0])]
+    b = [Unit(7, [0.1, 1.0]), Unit(8, [1.0, 0.1])]
     assert {m.cluster_a: m.cluster_b for m in match_clusters(a, b)} == {0: 8, 1: 7}
 
 
 def test_matching_against_no_clusters_gives_no_matches():
-    assert match_clusters({0: torch.ones(2)}, {}) == []
+    assert match_clusters([Unit(0, [1.0, 1.0])], []) == []
 
 
 def test_the_distance_plot_is_written(tmp_path):
