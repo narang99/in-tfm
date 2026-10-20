@@ -6,10 +6,12 @@
 from typing import Literal
 
 import numpy as np
+import torch
 from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
+from ..hit_selection.strategies.elbow import find_elbow_index_in_sorted_data
 from ..weighted_jaccard import compared_parts
 
 PeakDistance = Literal["euclidean", "weighted_jaccard"]
@@ -87,16 +89,9 @@ def log_density(kth_distance: Float[np.ndarray, "n_distinct"]) -> Float[np.ndarr
 
 
 def elbow(values: Float[np.ndarray, "n_values"]) -> float:
-    """Kneedle: sort largest first, scale both axes to [0, 1], and take the value farthest from the chord between the ends.
-
-    A curve with no spread has no elbow, so its one value is returned."""
-    curve = np.sort(values)[::-1]
-    spread = curve[0] - curve[-1]
-    if spread == 0:
-        return float(curve[0])
-    scaled = (curve - curve[-1]) / spread
-    chord = np.linspace(1, 0, len(curve))
-    return float(curve[np.argmax(np.abs(scaled - chord))])
+    """The value at the elbow of `values` sorted largest first. See `find_elbow_index_in_sorted_data`."""
+    curve = np.sort(values)[::-1].copy()
+    return float(curve[find_elbow_index_in_sorted_data(torch.from_numpy(curve))])
 
 
 def delta_for_elbow(forest: DensityPeakForest) -> Float[np.ndarray, "n_distinct"]:
