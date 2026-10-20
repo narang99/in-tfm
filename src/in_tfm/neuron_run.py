@@ -43,7 +43,7 @@ def layer_getter_for(config: RunConfig) -> LayerGetter:
         Target.K_PROJ: k_proj_getter,
         Target.FC2: fc2_getter,
     }
-    if config.target is Target.CONV:
+    if config.target in (Target.CONV, Target.LINEAR):
         return conv_getter(config.layer_name)
     return getters[config.target](config.layer_idx)
 

@@ -17,6 +17,9 @@ class ImageClusterView(BaseModel):
     original_url: str
     overlay_url: str
     hadamard_url: str
+    n_hits: int
+    n_zero_relevance: int
+    """Hits whose relevance is zero everywhere, which an overlay alone shows as a plain image."""
 
 
 class ImagePresenter:
@@ -42,13 +45,19 @@ class ImagePresenter:
             original_url=artifacts.save_grid(originals, "original.jpg"),
             overlay_url=artifacts.save_grid(overlays, "overlay.jpg"),
             hadamard_url=artifacts.save_grid(tiles, "hadamard.jpg"),
+            n_hits=len(hits),
+            n_zero_relevance=sum(not h.relevance.any() for h in hits),
         )
         return render_template("image_cluster.html", view=view)
 
     def _denormalized(self, hit: ClusterHit) -> np.ndarray:
         """The model input with the processor's mean/std undone - what the overlay is blended
-        onto, so the two line up pixel for pixel."""
-        return inv_tfm(self.processor, hit.model_input)
+        onto, so the two line up pixel for pixel.
+
+        A single-channel image is repeated to RGB, since PIL cannot build an image from (H, W, 1)
+        and the overlay is blended onto an RGB heat map."""
+        image = inv_tfm(self.processor, hit.model_input)
+        return np.repeat(image, 3, axis=-1) if image.shape[-1] == 1 else image
 
     def _relevance_map(self, hit: ClusterHit) -> torch.Tensor:
         """Collapse the channel axis of a (C, H, W) relevance array down to (H, W)."""

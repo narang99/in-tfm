@@ -133,6 +133,7 @@ def compute_deeplift_relevance(
     - It takes the same arguments as `compute_attnlrp_relevance`, so the report code treats them alike.
     - The baseline is zeros in the model's input space, which for normalised images is the mean image.
     - `token_idx` is the flat position `y * width + x` of the conv's output grid, see token_layout.
+      - A linear layer without a position axis has one position, so `token_idx` is 0.
     - Needs one `nn.ReLU` module per activation, since the ops it replaces are found as modules.
     - The result is shaped like the input, so (batch, c, h, w) for images.
     - The model is called as `model(leaf)`, so the batch must hold nothing else.
@@ -143,6 +144,6 @@ def compute_deeplift_relevance(
     _, leaf = batch.differentiable()
 
     def one_position(layer_output: torch.Tensor) -> torch.Tensor:
-        return layer_output[:, neuron_idx].flatten(1)[:, token_idx]
+        return layer_output[:, neuron_idx].reshape(len(layer_output), -1)[:, token_idx]
 
     return deeplift_attribution(model, leaf, layer_getter(model), one_position).cpu().numpy()

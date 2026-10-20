@@ -30,15 +30,19 @@ class ModelName(StrEnum):
     ATTN_ONLY_2L = "self/attn-only-2l"
     RAD_DINO = "microsoft/rad-dino"
     STL_INCEPTION = "self/stl-inception"
+    MNIST_CNN = "self/mnist-cnn"
+    MNIST_CNN_SMALL = "self/mnist-cnn-small"
 
 
-Modality = Literal["text", "image", "stl"]
+Modality = Literal["text", "image", "stl", "mnist"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.RAD_DINO: "image",
     ModelName.STL_INCEPTION: "stl",
+    ModelName.MNIST_CNN: "mnist",
+    ModelName.MNIST_CNN_SMALL: "mnist",
 }
 
 
@@ -48,6 +52,7 @@ class Target(StrEnum):
     K_PROJ = "k_proj"
     FC2 = "fc2"
     CONV = "conv"
+    LINEAR = "linear"
 
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
@@ -55,6 +60,8 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
+    ModelName.MNIST_CNN: {Target.CONV, Target.LINEAR},
+    ModelName.MNIST_CNN_SMALL: {Target.CONV, Target.LINEAR},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -94,6 +101,13 @@ class StlDataConfig(Section):
         "deeplift", description="how a hit is explained in pixels, integrated-gradients is the slow reference"
     )
     ig_steps: int = Field(128, description="integrated-gradients only: interpolation steps per explained hit")
+
+
+class MnistDataConfig(Section):
+    dataset: str = Field("ylecun/mnist", description="hf dataset with a grayscale `image` and a `label` column, 28x28")
+    split: Literal["train", "test"] = "test"
+    images_per_class: int = Field(100, description="the first n images of each digit in the split")
+    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
 
 
 class HitSelectionConfig(Section):
@@ -136,7 +150,7 @@ class RunConfig(BaseSettings):
     target: Target = Field(Target.DOWN_PROJ, description="down_proj: MLP neurons. q_proj / k_proj: neuron index = (kv_)head * head_dim + dim")
     layer_idx: int = 10
     layer_name: str | None = Field(
-        None, description="conv only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
+        None, description="conv and linear only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
     )
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
@@ -151,6 +165,7 @@ class RunConfig(BaseSettings):
     text: TextDataConfig = TextDataConfig()
     image: ImageDataConfig = ImageDataConfig()
     stl: StlDataConfig = StlDataConfig()
+    mnist: MnistDataConfig = MnistDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -177,14 +192,14 @@ class RunConfig(BaseSettings):
 
     @model_validator(mode="after")
     def conv_target_names_its_layer(self) -> "RunConfig":
-        if self.target is Target.CONV and self.layer_name is None:
-            raise ValueError("the conv target needs layer_name, a dotted submodule path")
+        if self.target in (Target.CONV, Target.LINEAR) and self.layer_name is None:
+            raise ValueError(f"the {self.target.value} target needs layer_name, a dotted submodule path")
         return self
 
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "image", "stl"} - {self.modality}
+        others = {"text", "image", "stl", "mnist"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self

@@ -1,4 +1,5 @@
 {% from "components.html" import details %}
 <img src="{{ view.original_url }}" alt="original">
+{% if view.n_zero_relevance %}<p class="relevance-warning">{{ view.n_zero_relevance }} of {{ view.n_hits }} hits have no relevance: their activation equals the baseline's, so no pixel explains it.</p>{% endif %}
 <img src="{{ view.overlay_url }}" alt="overlay">
 {% call details("hadamard patterns") %}<img src="{{ view.hadamard_url }}" alt="hadamard">{% endcall %}
