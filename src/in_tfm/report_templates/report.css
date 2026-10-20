@@ -60,3 +60,15 @@ details > img { display:block; margin-top:8px; }
 img.elbow { max-width:420px; }
 details { margin-top:10px; }
 details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
+h2 { font-size:1.1rem; margin:28px 0 6px; padding-top:12px; border-top:1px solid var(--line); }
+.notes { color:var(--muted); font-size:0.85rem; padding-left:20px; }
+img.plot { display:block; background:#fff; padding:6px; }
+.tree { border-top:1px dashed var(--line); padding:6px 0 12px; }
+.tree-head { font-size:0.85rem; margin:4px 0 8px; }
+.tree-head a { color:var(--fg); }
+.swatch { display:inline-block; width:11px; height:11px; border-radius:2px; vertical-align:-1px; margin-right:6px; }
+.stages { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; }
+.stages figure { margin:0; }
+.stages figcaption { color:var(--muted); font-size:0.7rem; text-align:center; margin-top:3px; }
+.pair { display:flex; gap:3px; }
+.pair img { image-rendering:pixelated; border-radius:2px; }

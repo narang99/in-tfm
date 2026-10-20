@@ -1,0 +1,40 @@
+<h1>{{ title }}: density-peak forest</h1>
+<p class="meta">{{ n_hits }} hits &middot; {{ n_distinct }} distinct &middot; {{ n_trees }} trees &middot; <a href="index.html">back to the report</a></p>
+<ul class="notes">
+<li>Hits are compared by {{ rule.distance }} distance on their Hadamard products.</li>
+<li>Identical hits are merged into one point with a count. The most common is seen {{ most_copies }} times.</li>
+<li>Density: 1 / d<sub>k</sub>, where d<sub>k</sub> is the distance at which a hit's neighbours, counted with their copies, reach k = {{ rule.k }}.</li>
+<li>Each hit links to its nearest denser hit (Rodriguez and Laio, 2014). Following the links always ends at a root.</li>
+<li>A root is at least {{ "%.3f"|format(cuts.delta) }} from anything denser, and at density {{ "%.2f"|format(cuts.rho) }} or more on the decision graph's axis.</li>
+<li>Both cut-offs are elbows: sort the values largest first, and take the one farthest from the line between the ends.</li>
+<li>Tree T<i>n</i> is cluster <i>n</i> in the report.</li>
+</ul>
+
+<h2>1. Decision graph</h2>
+<ul class="notes">
+<li>Real centres sit top right: dense, and far from anything denser.</li>
+<li>Top left is outliers: far from everything, but sparse.</li>
+<li>The offset is half the smallest nonzero d<sub>k</sub>, so hits at d<sub>k</sub> = 0 still have a place on the axis.</li>
+<li>Each axis gets its own elbow, so density and delta are never compared in each other's units.</li>
+</ul>
+<img class="plot" src="{{ decision_graph_src }}" alt="decision graph: density percentile against distance to the nearest denser hit">
+
+<h2>2. Growth of each tree</h2>
+<ul class="notes">
+<li>One row per tree, largest first. Left to right: the root, then hits further from it, in links.</li>
+<li>Each pair: the mean Hadamard product, then the mean input that produced it. Green is positive, red is negative.</li>
+<li>Each row has its own colour scale, shared across its stages.</li>
+</ul>
+{% for tree in trees %}
+<div class="tree">
+<p class="tree-head"><span class="swatch" style="background:{{ tree.colour }}"></span><a href="index.html#cluster-{{ tree.tree_id }}"><b>T{{ tree.tree_id }}</b></a>
+&middot; {{ tree.n_hits }} hits ({{ tree.n_distinct }} distinct) &middot; root seen {{ tree.root_copies }}&times;, act {{ "%.2f"|format(tree.root_activation) }}
+&middot; tree act median {{ "%.2f"|format(tree.median_activation) }} &middot; deepest {{ tree.max_depth }} links</p>
+<div class="stages">
+{% for stage in tree.stages %}
+<figure><div class="pair"><img src="{{ stage.hadamard_src }}" alt="mean Hadamard product"><img src="{{ stage.input_src }}" alt="mean input"></div>
+<figcaption>{{ stage.label }}<br>{{ stage.n_hits }} hits &middot; act {{ "%.2f"|format(stage.mean_activation) }}</figcaption></figure>
+{% endfor %}
+</div>
+</div>
+{% endfor %}
