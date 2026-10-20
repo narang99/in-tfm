@@ -10,12 +10,13 @@ from contextlib import contextmanager
 
 import numpy as np
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 
 from .activation_ranges import sample_noise
 from .clustering import cluster_labels
+from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
 from .device import empty_cache
 from .hadamard import hadamard_from_rows, near_square_shape, normalized_rows
 from .hit_selection import HitSelection, select_hits
@@ -24,7 +25,7 @@ from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
-from .run_config import Polarity, RunConfig, Target
+from .run_config import ClusteringConfig, Polarity, RunConfig, Target
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
 
@@ -59,6 +60,22 @@ def polarities_for(config: RunConfig) -> list[Polarity]:
 def report_name(neuron_idx: int, polarity: Polarity) -> str:
     """Positive keeps the historical `neuron_{idx}` so existing reports are not renamed."""
     return f"neuron_{neuron_idx}" if polarity == "positive" else f"neuron_{neuron_idx}_neg"
+
+
+def density_peak_trees(
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig
+) -> tuple[DensityPeakForest, ForestTrees]:
+    forest = density_peak_forest(hdmd, clustering.k, clustering.distance)
+    return forest, forest_trees(forest, clustering.root_delta, clustering.root_density_quantile)
+
+
+def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
+    if clustering.method == "density_peaks":
+        forest, trees = density_peak_trees(hdmd, clustering)
+        return trees.tree[forest.point_of_hit]
+    return cluster_labels(
+        hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples, clustering.distance
+    )
 
 
 class PreparedRun(BaseModel):
@@ -103,13 +120,9 @@ def report_neuron(
     config: RunConfig,
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
-    clustering = config.clustering
     hdmd = normalized_rows(rows) if config.clustering.on == "input" else hadamard_from_rows(rows, weight, neuron_idx)
     with timed(f"{tag}: cluster"):
-        labels = cluster_labels(
-            hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples,
-            clustering.distance,
-        )
+        labels = hit_labels(hdmd, config.clustering)
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
