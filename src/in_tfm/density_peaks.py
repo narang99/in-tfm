@@ -15,6 +15,7 @@ from typing import Literal
 import numpy as np
 from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
+from sklearn.preprocessing import normalize
 
 from .clustering import contribution_shares
 
@@ -55,7 +56,7 @@ class ForestTrees(BaseModel):
 def comparable_rows(points: Float[np.ndarray, "n dim"], distance: PeakDistance) -> Float[np.ndarray, "n d"]:
     if distance == "weighted_jaccard":
         return contribution_shares(points)
-    return points / np.maximum(np.linalg.norm(points, axis=1, keepdims=True), 1e-12)
+    return normalize(points, norm="l2")
 
 
 def _distance_block(
