@@ -63,3 +63,14 @@ def test_page_is_skipped_past_the_value_cap(tmp_path):
     forest, trees, hits = forest_and_hits()
     assert write_forest_tree_page(tmp_path, forest, trees, hits, (3, 3), "Neuron 0", max_values=10) is None
     assert not (tmp_path / TREE_PAGE).exists()
+
+
+def test_depth_profiles_take_the_median_over_the_hits_at_each_depth():
+    forest, trees, hits = forest_and_hits()
+    data = forest_tree_data(forest, trees, hits, (3, 3))
+    tree_of_hit, depth_of_hit = trees.tree[forest.distinct_of_hit], trees.depth[forest.distinct_of_hit]
+    for tree, profile in enumerate(data.depth_profiles):
+        assert sum(profile.hits) == (tree_of_hit == tree).sum()
+        assert len(profile.hits) == depth_of_hit[tree_of_hit == tree].max() + 1
+        at_root = hits.activations[(tree_of_hit == tree) & (depth_of_hit == 0)]
+        assert profile.median_activation[0] == np.median(at_root)

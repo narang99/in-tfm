@@ -1,6 +1,10 @@
 <h1>{{ title }}: forest tree</h1>
 <p class="meta">{{ n_distinct }} distinct points &middot; <a href="density_peaks.html">back to the forest</a> &middot; <a href="index.html">back to the report</a></p>
+<p class="depth-chart-title">Median activation at each depth</p>
+<svg id="depth-chart" class="depth-chart"></svg>
 <ul class="notes">
+<li>The chart above has one line per tree: the median activation of the hits at each depth. Orange is the picked tree. Click a grey line to pick its tree.</li>
+<li>Deep rows hold few hits, so their medians are noisy. Hover a dot for its hit count.</li>
 <li>Each tree hangs from its root at the top. Row <i>n</i> holds the points <i>n</i> links below the root.</li>
 <li>A link joins a point to its nearest denser point, so density falls as you go down.</li>
 <li>Click a point to open its 4 largest children, by hits below them. Click again to close it. "+n more" opens the next 4.</li>
@@ -142,16 +146,59 @@
     });
   }
 
+  const chart = d3.select("#depth-chart");
+  const CHART = { width: 940, height: 250, left: 52, right: 16, top: 28, bottom: 36 };
+  chart.attr("viewBox", `0 0 ${CHART.width} ${CHART.height}`);
+  const profiles = data.depth_profiles;
+  const depthAxis = d3.scaleLinear()
+    .domain([0, d3.max(profiles, p => p.median_activation.length - 1) || 1])
+    .range([CHART.left, CHART.width - CHART.right]);
+  const activationAxis = d3.scaleLinear()
+    .domain(d3.extent(profiles.flatMap(p => p.median_activation))).nice()
+    .range([CHART.height - CHART.bottom, CHART.top]);
+  const depthLine = d3.line().x((_, depth) => depthAxis(depth)).y(activationAxis);
+
+  function drawDepthChart() {
+    chart.selectAll("*").remove();
+    chart.append("g").attr("class", "depth-axis").attr("transform", `translate(0,${CHART.height - CHART.bottom})`)
+      .call(d3.axisBottom(depthAxis).ticks(10).tickFormat(d3.format("d")));
+    chart.append("g").attr("class", "depth-axis").attr("transform", `translate(${CHART.left},0)`)
+      .call(d3.axisLeft(activationAxis).ticks(5));
+    chart.append("text").attr("class", "depth-axis-label").attr("x", CHART.width - CHART.right).attr("y", CHART.height - 4)
+      .text("depth: links below the root");
+    chart.append("text").attr("class", "depth-axis-label").attr("x", 4).attr("y", 12)
+      .style("text-anchor", "start").text("median activation");
+
+    const others = d3.range(profiles.length).filter(tree => tree !== treeId);
+    chart.append("g").selectAll("path").data(others).join("path")
+      .attr("class", "depth-line").attr("d", tree => depthLine(profiles[tree].median_activation))
+      .on("click", (_, tree) => pickTree(tree))
+      .append("title").text(tree => `T${tree} · ${d3.sum(profiles[tree].hits)} hits`);
+
+    const picked = profiles[treeId];
+    chart.append("path").attr("class", "depth-line picked").attr("d", depthLine(picked.median_activation));
+    chart.append("g").selectAll("circle").data(picked.median_activation).join("circle").attr("class", "depth-dot")
+      .attr("cx", (_, depth) => depthAxis(depth)).attr("cy", activationAxis).attr("r", 3.5)
+      .append("title").text((median, depth) => `T${treeId} · depth ${depth} · median ${median.toPrecision(3)} · ${picked.hits[depth]} hits`);
+  }
+
   function reset() {
     open = new Map([[data.roots[treeId], CHILDREN_PER_CLICK]]);
     render();
+    drawDepthChart();
     centreOnRoot();
+  }
+
+  function pickTree(tree) {
+    treeId = tree;
+    pick.property("value", tree);
+    reset();
   }
 
   const pick = d3.select("#tree-pick");
   pick.selectAll("option").data(data.roots).join("option").attr("value", (_, i) => i)
     .text((root, i) => `T${i} · ${data.subtree_hits[root]} hits`);
-  pick.on("change", event => { treeId = +event.target.value; reset(); });
+  pick.on("change", event => pickTree(+event.target.value));
   d3.selectAll("input[name=tree-view]").on("change", event => { view = event.target.value; render(); });
   d3.select("#tree-reset").on("click", reset);
   reset();
