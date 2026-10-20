@@ -16,12 +16,12 @@ def test_copies_are_merged_and_counted():
     point = np.array([1.0, 2.0, 0.0])
     forest = density_peak_forest(np.stack([point, point, point, [0.0, 0.0, 1.0]]), k=2)
     assert sorted(forest.counts.tolist()) == [1, 3]
-    assert forest.point_of_hit[0] == forest.point_of_hit[1] == forest.point_of_hit[2]
+    assert forest.distinct_of_hit[0] == forest.distinct_of_hit[1] == forest.distinct_of_hit[2]
 
 
 def test_a_point_seen_more_than_k_times_has_kth_distance_zero():
     forest = density_peak_forest(np.vstack([np.tile([1.0, 0.0, 0.0], (6, 1)), [[0.0, 1.0, 0.0]]]), k=5)
-    repeated = forest.point_of_hit[0]
+    repeated = forest.distinct_of_hit[0]
     assert forest.kth_distance[repeated] == 0.0
 
 
@@ -32,7 +32,7 @@ def test_kth_distance_counts_neighbour_copies():
     points = np.vstack([lone, near, near, far])
     forest = density_peak_forest(points, k=2, distance="euclidean")
     unit = lambda v: v / np.linalg.norm(v)
-    assert np.isclose(forest.kth_distance[forest.point_of_hit[0]], np.linalg.norm(unit(lone) - unit(near)))
+    assert np.isclose(forest.kth_distance[forest.distinct_of_hit[0]], np.linalg.norm(unit(lone) - unit(near)))
 
 
 def test_every_point_but_the_densest_links_to_a_denser_one():
@@ -45,7 +45,7 @@ def test_every_point_but_the_densest_links_to_a_denser_one():
 def test_two_blobs_give_two_trees_and_no_noise():
     points = two_blobs(np.random.default_rng(0))
     forest = density_peak_forest(points, k=3, distance="weighted_jaccard")
-    labels = forest_trees(forest, root_delta=0.5, root_density_quantile=0.5).tree[forest.point_of_hit]
+    labels = forest_trees(forest, root_delta=0.5, root_density_quantile=0.5).tree[forest.distinct_of_hit]
     assert len(set(labels[:12])) == 1 and len(set(labels[12:])) == 1
     assert labels[0] != labels[12] and labels.min() == 0
 
@@ -53,7 +53,7 @@ def test_two_blobs_give_two_trees_and_no_noise():
 def test_trees_are_numbered_largest_first_and_roots_have_depth_zero():
     forest = density_peak_forest(two_blobs(np.random.default_rng(0)), k=3)
     trees = forest_trees(forest, root_delta=0.5, root_density_quantile=0.5)
-    hits_per_tree = np.bincount(trees.tree[forest.point_of_hit])
+    hits_per_tree = np.bincount(trees.tree[forest.distinct_of_hit])
     assert hits_per_tree.tolist() == [12, 8]
     assert np.all(trees.depth[trees.roots] == 0)
     assert np.all(trees.tree[trees.roots] == np.arange(len(trees.roots)))

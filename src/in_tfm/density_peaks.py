@@ -24,20 +24,20 @@ DISTANCE_BLOCK_ELEMENTS = 2**26
 
 
 class DensityPeakForest(BaseModel):
-    """Per distinct point unless named per hit."""
+    """Per distinct point (`n_distinct`) unless named per hit. `distinct_of_hit` maps each hit to its distinct point."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    point_of_hit: Int[np.ndarray, "n_hits"]
-    counts: Int[np.ndarray, "n_points"]
+    distinct_of_hit: Int[np.ndarray, "n_hits"]
+    counts: Int[np.ndarray, "n_distinct"]
     """How many hits share each distinct point."""
-    kth_distance: Float[np.ndarray, "n_points"]
+    kth_distance: Float[np.ndarray, "n_distinct"]
     """The distance at which the point's neighbours, counted with their copies, reach k. Smaller is denser."""
-    density_rank: Int[np.ndarray, "n_points"]
+    density_rank: Int[np.ndarray, "n_distinct"]
     """0 is the sparsest point."""
-    parent: Int[np.ndarray, "n_points"]
+    parent: Int[np.ndarray, "n_distinct"]
     """The nearest denser point, or -1 for the densest point."""
-    delta: Float[np.ndarray, "n_points"]
+    delta: Float[np.ndarray, "n_distinct"]
     """The distance to the parent. The densest point gets its distance to the farthest point."""
 
 
@@ -46,9 +46,9 @@ class ForestTrees(BaseModel):
 
     roots: Int[np.ndarray, "n_trees"]
     """Distinct points, largest tree first."""
-    tree: Int[np.ndarray, "n_points"]
+    tree: Int[np.ndarray, "n_distinct"]
     """Position in `roots` of the point's tree."""
-    depth: Int[np.ndarray, "n_points"]
+    depth: Int[np.ndarray, "n_distinct"]
     """Links from the point up to its root."""
 
 
@@ -127,12 +127,12 @@ def density_peak_forest(
 ) -> DensityPeakForest:
     """`points` are compared as `distance` sees them: contribution shares, or L2-normalised rows."""
     rows = comparable_rows(points.astype(np.float64), distance)
-    distinct, point_of_hit, counts = np.unique(rows.round(6), axis=0, return_inverse=True, return_counts=True)
+    distinct, distinct_of_hit, counts = np.unique(rows.round(6), axis=0, return_inverse=True, return_counts=True)
     kth_distance = _kth_distances(distinct, counts, k, distance)
     ranks = _density_ranks(kth_distance, counts)
     parent, delta = _nearest_denser(distinct, ranks, distance)
     return DensityPeakForest(
-        point_of_hit=point_of_hit.ravel(), counts=counts, kth_distance=kth_distance, density_rank=ranks,
+        distinct_of_hit=distinct_of_hit.ravel(), counts=counts, kth_distance=kth_distance, density_rank=ranks,
         parent=parent, delta=delta,
     )
 

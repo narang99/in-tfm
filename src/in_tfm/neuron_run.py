@@ -72,7 +72,7 @@ def density_peak_trees(
 def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
     if clustering.method == "density_peaks":
         forest, trees = density_peak_trees(hdmd, clustering)
-        return trees.tree[forest.point_of_hit]
+        return trees.tree[forest.distinct_of_hit]
     return cluster_labels(
         hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples, clustering.distance
     )
