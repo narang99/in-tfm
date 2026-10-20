@@ -16,6 +16,7 @@ class DecoderTextAdapter(ABC):
     """Wraps an HF-shaped causal LM, whose decoder stack is `hf_model.model`."""
 
     attr_fn = staticmethod(compute_attnlrp_relevance)
+    prepend_bos = False
 
     def __init__(
         self,
@@ -42,7 +43,13 @@ class DecoderTextAdapter(ABC):
     def _apply_attn_lrp_patch(self) -> None: ...
 
     def make_source(self, samples: Sequence[str]) -> TextSource:
-        return TextSource(samples, self.tokenizer, self.get_model().embed_tokens, self.max_length)
+        return TextSource(
+            samples,
+            self.tokenizer,
+            self.get_model().embed_tokens,
+            self.max_length,
+            self.prepend_bos,
+        )
 
     def make_presenter(self, source: TextSource, clustered_label: str) -> TextPresenter:
         return TextPresenter(source, clustered_label=clustered_label)

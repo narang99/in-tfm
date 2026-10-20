@@ -19,6 +19,9 @@ def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
 
 
 class AttnOnly2LAdapter(text.DecoderTextAdapter):
+    # TransformerLens prepends BOS by default, and the practice notebooks run this model through it.
+    prepend_bos = True
+
     @classmethod
     def from_pretrained(cls, max_length: int = 128) -> "AttnOnly2LAdapter":
         hf_model, tokenizer = load_attn_only_2l()

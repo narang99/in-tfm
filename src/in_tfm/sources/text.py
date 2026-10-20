@@ -20,8 +20,10 @@ class TextSource:
         tokenizer,
         embed: torch.nn.Module,
         max_length: int = 128,
+        prepend_bos: bool = False,
     ) -> None:
         self.texts = list(texts)
+        self.prepend_bos = prepend_bos
         self.tokenizer = tokenizer
         self.embed = embed
         self.max_length = max_length
@@ -74,9 +76,14 @@ class TextSource:
         when it is not - `max_length` is the knob.
         """
         return self.tokenizer(
-            [self.text_for(i) for i in ids],
+            [self._with_bos(self.text_for(i)) for i in ids],
             return_tensors="pt",
             padding="max_length",
             truncation=True,
             max_length=self.max_length,
         )
+
+    def _with_bos(self, text: str) -> str:
+        """Some tokenizers (GPT-NeoX) never add BOS themselves, but parse its string as the
+        special token, which is how TransformerLens prepends it."""
+        return self.tokenizer.bos_token + text if self.prepend_bos else text
