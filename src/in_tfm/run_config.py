@@ -6,7 +6,7 @@ Values come from two places, and the command line wins:
   another, so they live in git
 - flags, for one-off changes on top of it
 
-Nested sections use dotted flags, e.g. `--clustering.min-cluster-size 20`.
+Nested sections use dotted flags, e.g. `--clustering.strategy.min-cluster-size 20`.
 Overriding one key of a section keeps the file's other keys for that section.
 """
 
@@ -14,7 +14,7 @@ import argparse
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -126,21 +126,42 @@ class HitSelectionConfig(Section):
     )
 
 
+class HdbscanConfig(Section):
+    """Dense regions split by sparse gaps. Hits in no dense region are noise."""
+
+    method: Literal["hdbscan"] = "hdbscan"
+    min_cluster_size: int = 10
+    min_samples: int | None = Field(None, description="defaults to min_cluster_size")
+    selection_method: Literal["eom", "leaf"] = "leaf"
+
+
+class DensityPeaksConfig(Section):
+    """Each hit links to its nearest denser hit, and every hit lands in the tree of a root. See in_tfm.density_peaks."""
+
+    method: Literal["density_peaks"] = "density_peaks"
+    k: int = Field(5, description="a hit's density is 1 / the distance to its kth neighbour")
+
+
+ClusteringStrategy = Annotated[HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")]
+
+MOVED_TO_STRATEGY = {
+    "method": "method",
+    "min_cluster_size": "hdbscan",
+    "min_samples": "hdbscan",
+    "selection_method": "hdbscan",
+    "k": "density_peaks",
+}
+"""Keys that used to sit directly under `clustering`, and the strategy that now holds each."""
+
+
 class ClusteringConfig(Section):
+    """Settings every strategy shares sit here. Each strategy's own settings sit under `strategy`, picked by `method`."""
+
     on: Literal["hadamard", "input"] = Field(
         "hadamard",
         description="hadamard: input * weight row. input: the raw input at each hit, "
         "L2-normalised the same way, an ablation of the weight row",
     )
-    method: Literal["hdbscan", "density_peaks"] = Field(
-        "hdbscan",
-        description="hdbscan: dense regions split by sparse gaps, the rest is noise. density_peaks: each hit links to "
-        "its nearest denser hit, every hit lands in the tree of a root, see in_tfm.density_peaks",
-    )
-    min_cluster_size: int = 10
-    min_samples: int | None = Field(None, description="HDBSCAN min_samples, defaults to min_cluster_size")
-    k: int = Field(5, description="density_peaks only: a hit's density is 1 / the distance to its kth neighbour")
-    selection_method: Literal["eom", "leaf"] = "leaf"
     distance: Literal["euclidean", "weighted_jaccard"] = Field(
         "euclidean",
         description="euclidean: between the L2-normalised vectors. weighted_jaccard: 1 - sum(min) / sum(max) between "
@@ -151,6 +172,19 @@ class ClusteringConfig(Section):
         description="false: no L2 on the clustered rows, and no L1 or L2 inside the distance, so a hit's size counts. "
         "The Hadamard tiles in the reports are then raw too",
     )
+    strategy: ClusteringStrategy = Field(
+        HdbscanConfig(), description="hdbscan or density_peaks, picked by strategy.method"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def strategy_keys_are_under_strategy(cls, data: Any) -> Any:
+        """Old files put these keys directly under `clustering`. Say where each went, rather than only that it is unknown."""
+        if isinstance(data, dict) and (moved := sorted(MOVED_TO_STRATEGY.keys() & data.keys())):
+            key = moved[0]
+            where = "strategy.method" if key == "method" else f"strategy.{key}, with strategy.method: {MOVED_TO_STRATEGY[key]}"
+            raise ValueError(f"clustering.{key} moved to clustering.{where}")
+        return data
 
 
 class ReportConfig(Section):

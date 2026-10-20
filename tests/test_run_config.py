@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from in_tfm.run_config import ModelName, Target, load_run_config
+from in_tfm.run_config import DensityPeaksConfig, HdbscanConfig, ModelName, Target, load_run_config
 
 
 def write_yaml(tmp_path: Path, text: str) -> str:
@@ -19,10 +19,10 @@ def test_defaults_need_no_arguments():
 
 
 def test_file_sets_defaults(tmp_path):
-    path = write_yaml(tmp_path, "layer_idx: 3\nclustering: {min_cluster_size: 20}\n")
+    path = write_yaml(tmp_path, "layer_idx: 3\nclustering: {strategy: {method: hdbscan, min_cluster_size: 20}}\n")
     config = load_run_config(["--config", path])
     assert config.layer_idx == 3
-    assert config.clustering.min_cluster_size == 20
+    assert config.clustering.strategy.min_cluster_size == 20
 
 
 def test_flags_override_the_file(tmp_path):
@@ -31,15 +31,51 @@ def test_flags_override_the_file(tmp_path):
 
 
 def test_a_flag_overrides_one_key_of_a_section_and_keeps_the_rest(tmp_path):
-    path = write_yaml(tmp_path, "clustering: {min_cluster_size: 20, selection_method: eom}\n")
-    config = load_run_config(["--config", path, "--clustering.min-cluster-size", "30"])
-    assert config.clustering.min_cluster_size == 30
-    assert config.clustering.selection_method == "eom"
+    path = write_yaml(tmp_path, "clustering: {strategy: {method: hdbscan, min_cluster_size: 20, selection_method: eom}}\n")
+    config = load_run_config(["--config", path, "--clustering.strategy.min-cluster-size", "30"])
+    assert config.clustering.strategy == HdbscanConfig(min_cluster_size=30, selection_method="eom")
 
 
 def test_normalising_is_on_unless_turned_off():
     assert load_run_config([]).clustering.normalise
     assert not load_run_config(["--clustering.normalise", "false"]).clustering.normalise
+
+
+def test_hdbscan_is_the_default_strategy():
+    assert load_run_config([]).clustering.strategy == HdbscanConfig()
+
+
+def test_density_peaks_is_picked_by_its_method(tmp_path):
+    path = write_yaml(tmp_path, "clustering: {distance: weighted_jaccard, strategy: {method: density_peaks}}\n")
+    config = load_run_config(["--config", path, "--clustering.strategy.k", "7"])
+    assert config.clustering.strategy == DensityPeaksConfig(k=7)
+    assert config.clustering.distance == "weighted_jaccard"
+
+
+def test_a_setting_of_the_other_strategy_is_an_error():
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        load_run_config(["--clustering.strategy.method", "hdbscan", "--clustering.strategy.k", "7"])
+
+
+def test_a_strategy_setting_without_a_method_is_an_error():
+    with pytest.raises(ValidationError, match="discriminator"):
+        load_run_config(["--clustering.strategy.k", "7"])
+
+
+@pytest.mark.parametrize("old_key, where", [
+    ("min_cluster_size: 20", "clustering.strategy.min_cluster_size, with strategy.method: hdbscan"),
+    ("k: 7", "clustering.strategy.k, with strategy.method: density_peaks"),
+    ("method: density_peaks", "clustering.strategy.method"),
+])
+def test_an_old_flat_key_says_where_it_moved(tmp_path, old_key, where):
+    path = write_yaml(tmp_path, f"clustering: {{{old_key}}}\n")
+    with pytest.raises(ValidationError, match=where):
+        load_run_config(["--config", path])
+
+
+@pytest.mark.parametrize("path", sorted(Path("configs").glob("*.yaml")), ids=lambda path: path.name)
+def test_every_checked_in_config_loads(path):
+    load_run_config(["--config", str(path)])
 
 
 def test_neurons_come_from_repeated_flags():
@@ -60,7 +96,7 @@ def test_a_target_the_model_lacks_is_rejected_up_front():
 
 
 def test_a_typo_in_the_file_is_an_error(tmp_path):
-    path = write_yaml(tmp_path, "clustering: {min_cluster_sise: 20}\n")
+    path = write_yaml(tmp_path, "clustering: {strategy: {method: hdbscan, min_cluster_sise: 20}}\n")
     with pytest.raises(ValidationError, match="min_cluster_sise"):
         load_run_config(["--config", path])
 

@@ -23,7 +23,9 @@
   - this is an exact decomposition of the activation: `sum(input * weight[neuron])`
   - clustering groups hits by *which input dimensions drove the activation*, not by how
     strongly the neuron fired
-- Cluster those vectors with HDBSCAN
+- Cluster those vectors, with the strategy picked by `clustering.strategy.method`
+  - `hdbscan`, the default: dense regions split by sparse gaps, the rest is noise
+  - `density_peaks`: each hit links to its nearest denser hit, and every hit lands in a root's tree
 - Track every vector back to its sample and position
   - this is what makes a human-readable report possible: firing tokens, attribution shading,
     per-cluster hit counts
@@ -120,7 +122,7 @@ its own README under `experiments/<name>/` with the exact setup, numbers and cav
   - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs
   - settings live in `src/in_tfm/run_config.py`
   - `--config configs/<file>.yaml` sets defaults, and flags override them
-  - nested sections take dotted flags, e.g. `--clustering.min-cluster-size 20`
+  - nested sections take dotted flags, e.g. `--clustering.strategy.min-cluster-size 20`
   - repeat a list flag per value, e.g. `--neurons 5 --neurons 7`
   - rad-dino needs its file, `--config configs/rad_dino_fc2.yaml`, since the defaults are Gemma's
 - `scripts/ablate_hit_selection.py`: elbow against bucketed hit selection, for language models

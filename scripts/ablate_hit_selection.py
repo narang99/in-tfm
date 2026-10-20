@@ -22,7 +22,7 @@ from in_tfm.hadamard import hadamard_from_rows
 from in_tfm.hit_selection import BucketedPick, HitSelection, select_hits
 from in_tfm.neuron_capture import ScanResult, merge_positions
 from in_tfm.neuron_run import layer_getter_for, prepare_run
-from in_tfm.run_config import HitSelectionConfig, load_run_config
+from in_tfm.run_config import HdbscanConfig, HitSelectionConfig, RunConfig, load_run_config
 from in_tfm.sources.wikitext import load_texts
 
 MODES: dict[str, dict] = {
@@ -224,8 +224,16 @@ def markdown_table(results: list[ModeResult] | list[BucketRow] | list[CoverageRo
     return "\n".join(rows)
 
 
+def hdbscan_strategy(config: RunConfig) -> HdbscanConfig:
+    """The ablation compares HDBSCAN clusterings, so another strategy is a mistake, not something to ignore."""
+    if not isinstance(config.clustering.strategy, HdbscanConfig):
+        raise ValueError(f"this script clusters with hdbscan, but clustering.strategy.method is {config.clustering.strategy.method}")
+    return config.clustering.strategy
+
+
 def main() -> None:
     config = load_run_config(sys.argv[1:])
+    hdbscan = hdbscan_strategy(config)
     neuron_idxs = config.neuron_idxs
     texts = load_texts(config.text, config.seed)
     adapter = report.load_adapter(config)
@@ -253,9 +261,7 @@ def main() -> None:
         selection = selections[(neuron, mode)]
         hdmd = hadamard_from_rows(gathered.inputs[index_map], weight, neuron)
         start = time.perf_counter()
-        labels = cluster_labels(
-            hdmd, config.clustering.min_cluster_size, config.clustering.selection_method, config.clustering.min_samples
-        )
+        labels = cluster_labels(hdmd, hdbscan.min_cluster_size, hdbscan.selection_method, hdbscan.min_samples)
         seconds = time.perf_counter() - start
         elbow_value = selections[(neuron, "elbow")].threshold
         clusterings[(neuron, mode)] = Clustering(
