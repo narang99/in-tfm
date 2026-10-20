@@ -11,6 +11,7 @@ from typing import Literal, Protocol
 
 import numpy as np
 from jaxtyping import Float, Int
+from sklearn.preprocessing import normalize
 
 
 ClusterSelectionMethod = Literal["eom", "leaf"]
@@ -47,12 +48,12 @@ def resolve_hdbscan_backend() -> tuple[type[HDBSCANBackend], str]:
 
 
 def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
-    """Each row's positive and negative parts side by side, scaled so the row's magnitudes sum to 1.
+    """Each row's positive and negative parts side by side, L1-normalised.
 
-    A row says where its contribution comes from, with signs kept apart so +a and -a never match."""
+    A row says where its contribution comes from, with signs kept apart so +a and -a never match.
+    An all-zero row stays all zero."""
     parts = np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(np.float64)
-    totals = parts.sum(axis=1, keepdims=True)
-    return parts / np.where(totals > 0, totals, 1.0)
+    return normalize(parts, norm="l1")
 
 
 def weighted_jaccard_distances(

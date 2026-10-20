@@ -61,3 +61,7 @@ def test_weighted_jaccard_separates_two_groups_with_different_dims():
     labels = cluster_labels(np.vstack([group_a, group_b]), min_cluster_size=4, min_samples=2, distance="weighted_jaccard")
     assert len(set(labels[:8])) == 1 and len(set(labels[8:])) == 1
     assert labels[0] != labels[8] and -1 not in labels
+
+
+def test_an_all_zero_row_stays_all_zero():
+    assert np.all(contribution_shares(np.zeros((1, 3))) == 0.0)
