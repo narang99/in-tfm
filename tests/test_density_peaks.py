@@ -1,7 +1,9 @@
-import numpy as np
+import math
 
-from in_tfm import density_peaks
-from in_tfm.density_peaks import density_peak_forest, forest_trees
+import numpy as np
+import pytest
+
+from in_tfm.density_peaks import PeakDistance, comparable_rows, density_peak_forest, forest_trees
 
 
 def two_blobs(rng: np.random.Generator) -> np.ndarray:
@@ -59,10 +61,81 @@ def test_trees_are_numbered_largest_first_and_roots_have_depth_zero():
     assert np.all(trees.tree[trees.roots] == np.arange(len(trees.roots)))
 
 
-def test_small_blocks_give_the_same_forest(monkeypatch):
+def test_small_blocks_give_the_same_forest():
     points = np.random.default_rng(1).normal(size=(40, 6))
     whole = density_peak_forest(points, k=4)
-    monkeypatch.setattr(density_peaks, "DISTANCE_BLOCK_ELEMENTS", 7 * 40 * 12)
-    blocked = density_peak_forest(points, k=4)
+    blocked = density_peak_forest(points, k=4, block_elements=7 * 40 * 12)
     assert np.allclose(whole.kth_distance, blocked.kth_distance)
     assert np.array_equal(whole.parent, blocked.parent)
+
+
+def naive_distance(a: list[float], b: list[float], distance: PeakDistance) -> float:
+    if distance == "weighted_jaccard":
+        union = sum(max(x, y) for x, y in zip(a, b))
+        return 1.0 - sum(min(x, y) for x, y in zip(a, b)) / union if union > 0 else 0.0
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+def naive_kth_distance_of_each_hit(rows: list[list[float]], k: int, distance: PeakDistance) -> list[float]:
+    """Over hits, not distinct points, so copies are counted by simply being there."""
+    kth = []
+    for i, row in enumerate(rows):
+        others = sorted(naive_distance(row, other, distance) for j, other in enumerate(rows) if j != i)
+        kth.append(others[min(k, len(others)) - 1])
+    return kth
+
+
+def naive_nearest_denser(
+    rows: list[list[float]], ranks: list[int], distance: PeakDistance
+) -> tuple[list[int], list[float]]:
+    parents, deltas = [], []
+    for i, row in enumerate(rows):
+        parent, delta = -1, math.inf
+        for j, other in enumerate(rows):
+            if ranks[j] > ranks[i] and naive_distance(row, other, distance) < delta:
+                parent, delta = j, naive_distance(row, other, distance)
+        if parent == -1:
+            delta = max(naive_distance(row, other, distance) for other in rows)
+        parents.append(parent)
+        deltas.append(delta)
+    return parents, deltas
+
+
+def points_with_copies(rng: np.random.Generator) -> np.ndarray:
+    """Signed points, a few of them repeated, so both copy rules are exercised."""
+    points = rng.normal(size=(30, 5))
+    return np.vstack([points, np.repeat(points[:3], [1, 4, 7], axis=0)])
+
+
+@pytest.mark.parametrize("distance", ["euclidean", "weighted_jaccard"])
+@pytest.mark.parametrize("block_elements", [10, 7 * 30 * 10, 2**26])
+def test_kth_distance_matches_a_naive_loop_over_hits(distance, block_elements):
+    points = points_with_copies(np.random.default_rng(2))
+    forest = density_peak_forest(points, k=4, distance=distance, block_elements=block_elements)
+    naive = naive_kth_distance_of_each_hit(comparable_rows(points, distance).tolist(), 4, distance)
+    assert np.allclose(forest.kth_distance[forest.distinct_of_hit], naive, atol=1e-5)
+
+
+def test_kth_distance_with_fewer_than_k_other_hits_is_the_farthest():
+    points = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    forest = density_peak_forest(points, k=5, distance="euclidean")
+    naive = naive_kth_distance_of_each_hit(comparable_rows(points, "euclidean").tolist(), 5, "euclidean")
+    assert np.allclose(forest.kth_distance[forest.distinct_of_hit], naive)
+
+
+@pytest.mark.parametrize("distance", ["euclidean", "weighted_jaccard"])
+@pytest.mark.parametrize("block_elements", [10, 7 * 30 * 10, 2**26])
+def test_parents_match_a_naive_loop_over_distinct_points(distance, block_elements):
+    points = points_with_copies(np.random.default_rng(3))
+    forest = density_peak_forest(points, k=4, distance=distance, block_elements=block_elements)
+    first_hit = np.unique(forest.distinct_of_hit, return_index=True)[1]
+    distinct = comparable_rows(points, distance)[first_hit].tolist()
+    parents, deltas = naive_nearest_denser(distinct, forest.density_rank.tolist(), distance)
+    assert forest.parent.tolist() == parents
+    assert np.allclose(forest.delta, deltas, atol=1e-5)
+
+
+def test_density_ranks_match_a_naive_sort():
+    forest = density_peak_forest(points_with_copies(np.random.default_rng(4)), k=4)
+    by_density = sorted(range(len(forest.counts)), key=lambda p: (-forest.kth_distance[p], forest.counts[p]))
+    assert [int(forest.density_rank[p]) for p in by_density] == list(range(len(forest.counts)))
