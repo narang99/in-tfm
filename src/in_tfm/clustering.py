@@ -57,8 +57,8 @@ def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.n
 
 
 def weighted_jaccard_block(
-    block: Float[np.ndarray, "b two_dim"], shares: Float[np.ndarray, "n_points two_dim"]
-) -> Float[np.ndarray, "b n_points"]:
+    block: Float[np.ndarray, "block_size two_dim"], shares: Float[np.ndarray, "n_points two_dim"]
+) -> Float[np.ndarray, "block_size n_points"]:
     """Distances from each row of `block` to every row of `shares`, both already contribution shares."""
     overlap = np.minimum(block[:, None, :], shares[None]).sum(axis=-1)
     union = np.maximum(block[:, None, :], shares[None]).sum(axis=-1)
