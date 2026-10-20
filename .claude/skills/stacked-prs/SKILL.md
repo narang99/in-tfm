@@ -93,6 +93,29 @@ cannot bypass merge requirements on a stack.
 If the base branch uses a merge queue, the stack is queued rather than merged directly, the queue
 picks the merge method, and the PRs can land in separate groups rather than together.
 
+## Setting a PR body
+
+`gh stack submit` opens each PR with its commit message as the body. Don't use `gh pr edit --body`
+to replace it in this repo:
+
+- It fails with a GraphQL error about Projects (classic) being deprecated.
+- It exits without a clear failure, so the body silently stays unchanged.
+
+Write the body to a file in the scratchpad, then set it through the REST API:
+
+```bash
+gh api -X PATCH repos/<owner>/<repo>/pulls/<number> -F body=@<path/to/body.md> -q '.body' | head -1
+```
+
+- The `-q '.body' | head -1` prints the saved body's first line, which confirms the change.
+
+## Testing a stack
+
+- Running the tests on the top branch is usually enough.
+  - The top branch contains every layer below it.
+- Test each branch only when you are unsure that a lower layer stands alone.
+  - For example, a layer that a later branch fixed, or a test that only lands higher up.
+
 ## What goes in each PR body
 
 Reviewers of a stack have *less* context than usual, because each layer is deliberately partial.
