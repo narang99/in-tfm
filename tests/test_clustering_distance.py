@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.metrics import pairwise_distances
 
 from in_tfm.clustering import cluster_labels, contribution_shares, weighted_jaccard_distances
 
@@ -6,6 +7,17 @@ from in_tfm.clustering import cluster_labels, contribution_shares, weighted_jacc
 def test_shares_keep_signs_apart_and_sum_to_one():
     shares = contribution_shares(np.array([[3.0, -1.0, 0.0]]))
     assert np.allclose(shares, [[0.75, 0.0, 0.0, 0.0, 0.25, 0.0]])
+
+
+def naive_weighted_jaccard(x: np.ndarray, y: np.ndarray) -> float:
+    return 1.0 - np.minimum(x, y).sum() / np.maximum(x, y).sum()
+
+
+def test_matches_a_naive_pair_by_pair_implementation():
+    """Signed points, so both halves of the shares are used. Chunk 7 makes the loop run several times."""
+    points = np.random.default_rng(0).normal(size=(30, 8))
+    expected = pairwise_distances(contribution_shares(points), metric=naive_weighted_jaccard)
+    assert np.allclose(weighted_jaccard_distances(points, chunk=7), expected)
 
 
 def test_distance_matches_the_hand_worked_example():
