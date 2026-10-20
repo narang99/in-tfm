@@ -6,7 +6,9 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 """
 
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -19,6 +21,7 @@ from .activation_ranges import sample_noise
 from .clustering import cluster_labels
 from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
 from .device import empty_cache
+from .forest_report import HitArrays, RootRule, write_forest_page
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
@@ -81,9 +84,24 @@ def density_peak_trees(
     return forest, forest_trees(forest)
 
 
-def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
+def write_density_peaks_page(
+    report_dir: Path, forest: DensityPeakForest, trees: ForestTrees, hits: HitArrays, clustering: ClusteringConfig,
+    neuron_idx: int,
+) -> None:
+    rule = RootRule(k=clustering.k, distance=clustering.distance)
+    shape = near_square_shape(hits.hadamards.shape[1])
+    print(f"[forest] -> {write_forest_page(report_dir, forest, trees, hits, shape, rule, f'Neuron {neuron_idx}')}")
+
+
+def hit_labels(
+    hdmd: Float[np.ndarray, "n_hits hidden"],
+    clustering: ClusteringConfig,
+    forest_page: Callable[[DensityPeakForest, ForestTrees], None],
+) -> Int[np.ndarray, "n_hits"]:
+    """`forest_page` is called with the forest, since building it is the slow part."""
     if clustering.method == "density_peaks":
         forest, trees = density_peak_trees(hdmd, clustering)
+        forest_page(forest, trees)
         return trees.tree[forest.distinct_of_hit]
     return cluster_labels(
         hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples, clustering.distance,
@@ -134,8 +152,15 @@ def report_neuron(
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
+    report_dir = Path(config.out_dir) / report_name(neuron_idx, polarity)
+    hit_arrays = HitArrays(hadamards=hdmd, inputs=rows.detach().cpu().float().numpy(), activations=selection.activations)
     with timed(f"{tag}: cluster"):
-        labels = hit_labels(hdmd, config.clustering)
+        labels = hit_labels(
+            hdmd, config.clustering,
+            lambda forest, trees: write_density_peaks_page(
+                report_dir, forest, trees, hit_arrays, config.clustering, neuron_idx
+            ),
+        )
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
