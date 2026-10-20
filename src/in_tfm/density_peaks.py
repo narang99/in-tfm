@@ -215,8 +215,9 @@ def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quan
     roots = np.flatnonzero(is_root)
     hits_per_root = np.array([forest.counts[root_of == r].sum() for r in roots])
     roots = roots[np.argsort(-hits_per_root, kind="stable")]
-    tree = np.empty(len(is_root), dtype=int)
-    tree[roots] = np.arange(len(roots))
-    tree = tree[root_of]
+    # a lookup from root point to tree number, read only at root points
+    tree_of_root = np.empty(len(is_root), dtype=int)
+    tree_of_root[roots] = np.arange(len(roots))
+    tree = tree_of_root[root_of]
     return ForestTrees(roots=roots, tree=tree, depth=depth)
 
