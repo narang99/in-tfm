@@ -21,6 +21,13 @@ MAX_TREE_PAGE_VALUES = 4_000_000
 VALUE_DECIMALS = 4
 
 
+class DepthProfile(BaseModel):
+    """Per depth of one tree, from the root down. Every depth down to the deepest has at least one hit."""
+
+    median_activation: list[float]
+    hits: list[int]
+
+
 class ForestTreeData(BaseModel):
     """Per distinct point, in the forest's order."""
 
@@ -38,6 +45,9 @@ class ForestTreeData(BaseModel):
     hadamard: list[list[float]]
     input: list[list[float]]
     """The mean over the point's copies. Copies share a Hadamard direction, but their inputs can differ in scale."""
+    depth_profiles: list[DepthProfile]
+    """Per tree, in the order of `roots`."""
+
 
 
 def parent_in_tree(forest: DensityPeakForest, trees: ForestTrees) -> Int[np.ndarray, "n_distinct"]:
@@ -64,6 +74,23 @@ def mean_per_distinct(
     return sums / forest.counts.reshape(-1, *[1] * (values.ndim - 1))
 
 
+def depth_profile(activations: Float[np.ndarray, "n_tree_hits"], depths: Int[np.ndarray, "n_tree_hits"]) -> DepthProfile:
+    at_depth = [activations[depths == depth] for depth in range(depths.max() + 1)]
+    return DepthProfile(
+        median_activation=[round(float(np.median(values)), VALUE_DECIMALS) for values in at_depth],
+        hits=[len(values) for values in at_depth],
+    )
+
+
+def depth_profiles(forest: DensityPeakForest, trees: ForestTrees, activations: Float[np.ndarray, "n_hits"]) -> list[DepthProfile]:
+    """Medians are over hits, so a point's copies each count."""
+    tree_of_hit, depth_of_hit = trees.tree[forest.distinct_of_hit], trees.depth[forest.distinct_of_hit]
+    return [
+        depth_profile(activations[tree_of_hit == tree], depth_of_hit[tree_of_hit == tree])
+        for tree in range(len(trees.roots))
+    ]
+
+
 def rounded(values: np.ndarray) -> list:
     return np.round(values.astype(np.float64), VALUE_DECIMALS).tolist()
 
@@ -82,6 +109,7 @@ def forest_tree_data(
         activation=rounded(mean_per_distinct(hits.activations, forest)),
         hadamard=rounded(mean_per_distinct(hits.hadamards, forest)),
         input=rounded(mean_per_distinct(hits.inputs, forest)),
+        depth_profiles=depth_profiles(forest, trees, hits.activations),
     )
 
 

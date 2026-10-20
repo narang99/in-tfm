@@ -83,3 +83,12 @@ img.plot { display:block; background:#fff; padding:6px; }
 .tree-label { fill:var(--fg); font-size:10px; text-anchor:middle; }
 .tree-label.muted, .tree-depth { fill:var(--muted); }
 .tree-depth { font-size:11px; text-anchor:end; }
+.depth-chart-title { font-size:0.85rem; font-weight:600; margin:0 0 4px; }
+.depth-chart { width:100%; height:auto; display:block; margin:0 0 8px; }
+.depth-axis text { fill:var(--muted); }
+.depth-axis path, .depth-axis line { stroke:var(--line); }
+.depth-axis-label { fill:var(--muted); font-size:11px; text-anchor:end; }
+.depth-line { fill:none; stroke:var(--muted); stroke-opacity:0.45; stroke-width:1.5; cursor:pointer; }
+.depth-line:hover { stroke-opacity:1; stroke-width:2.5; }
+.depth-line.picked { stroke:#eb6834; stroke-opacity:1; stroke-width:2.5; cursor:default; }
+.depth-dot { fill:#eb6834; }
