@@ -5,7 +5,9 @@ from jaxtyping import Float, Int
 from scipy.spatial.distance import cdist
 
 from ..weighted_jaccard import weighted_jaccard_block
-from .forest import DensityPeakForest, ForestTrees, PeakDistance, comparable_rows, merge_copies, root_mask
+from .forest import (
+    DensityPeakForest, ForestTrees, PeakDistance, RootCuts, comparable_rows, merge_copies, root_cuts, root_mask,
+)
 
 DISTANCE_BLOCK_ELEMENTS = 2**26
 """The default cap on a block of rows against every point, about 0.5 GB of float64.
@@ -119,9 +121,12 @@ def nearest_denser(
     return parent, delta
 
 
-def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quantile: float) -> ForestTrees:
-    """Points are visited densest first, so a point's parent always has its tree and depth already."""
-    is_root = root_mask(forest, root_delta, root_density_quantile)
+def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> ForestTrees:
+    """`cuts` defaults to `root_cuts`, the elbows.
+
+    Points are visited densest first, so a point's parent always has its tree and depth already."""
+    cuts = cuts or root_cuts(forest)
+    is_root = root_mask(forest, cuts)
     root_of = np.empty(len(is_root), dtype=int)
     depth = np.zeros(len(is_root), dtype=int)
     for point in np.argsort(-forest.density_rank):
@@ -136,7 +141,7 @@ def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quan
     tree_of_root = np.empty(len(is_root), dtype=int)
     tree_of_root[roots] = np.arange(len(roots))
     tree = tree_of_root[root_of]
-    return ForestTrees(roots=roots, tree=tree, depth=depth)
+    return ForestTrees(cuts=cuts, roots=roots, tree=tree, depth=depth)
 
 
 def density_peak_forest(

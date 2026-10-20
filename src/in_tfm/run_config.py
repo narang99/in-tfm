@@ -140,12 +140,6 @@ class ClusteringConfig(Section):
     min_cluster_size: int = 10
     min_samples: int | None = Field(None, description="HDBSCAN min_samples, defaults to min_cluster_size")
     k: int = Field(5, description="density_peaks only: a hit's density is 1 / the distance to its kth neighbour")
-    root_delta: float = Field(
-        0.25, description="density_peaks only: a root is at least this far from anything denser"
-    )
-    root_density_quantile: float = Field(
-        0.5, description="density_peaks only: a root is in this densest share of hits, which keeps outliers out"
-    )
     selection_method: Literal["eom", "leaf"] = "leaf"
     distance: Literal["euclidean", "weighted_jaccard"] = Field(
         "euclidean",

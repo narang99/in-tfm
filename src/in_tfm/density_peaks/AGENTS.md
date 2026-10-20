@@ -7,7 +7,7 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 
 - `forest.py` holds what has one implementation.
   - The `DensityPeakForest` and `ForestTrees` types.
-  - `comparable_rows`, `merge_copies` and `root_mask`.
+  - `comparable_rows`, `merge_copies`, and the root rule: `elbow`, `root_cuts` and `root_mask`.
 - `vectorized.py` is the implementation callers use.
   - `__init__.py` exposes it, so `from in_tfm.density_peaks import ...` gets the vectorized functions.
 - `naive.py` mirrors it.

@@ -6,7 +6,9 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from ..weighted_jaccard import naive as weighted_jaccard
-from .forest import DensityPeakForest, ForestTrees, PeakDistance, comparable_rows, merge_copies, root_mask
+from .forest import (
+    DensityPeakForest, ForestTrees, PeakDistance, RootCuts, comparable_rows, merge_copies, root_cuts, root_mask,
+)
 
 
 def _distance_matrix(rows: Float[np.ndarray, "n_distinct compared_dim"], distance: PeakDistance) -> list[list[float]]:
@@ -68,9 +70,12 @@ def nearest_denser(
     return np.array(parents, dtype=int), np.array(deltas, dtype=np.float64)
 
 
-def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quantile: float) -> ForestTrees:
-    """Points are visited densest first, so a point's parent always has its tree and depth already."""
-    is_root = root_mask(forest, root_delta, root_density_quantile)
+def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> ForestTrees:
+    """`cuts` defaults to `root_cuts`, the elbows.
+
+    Points are visited densest first, so a point's parent always has its tree and depth already."""
+    cuts = cuts or root_cuts(forest)
+    is_root = root_mask(forest, cuts)
     n = len(is_root)
     root_of, depth = [0] * n, [0] * n
     for point in sorted(range(n), key=lambda p: -forest.density_rank[p]):
@@ -88,7 +93,7 @@ def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quan
 
     tree = [roots.index(root_of[point]) for point in range(n)]
     return ForestTrees(
-        roots=np.array(roots, dtype=int), tree=np.array(tree, dtype=int), depth=np.array(depth, dtype=int)
+        cuts=cuts, roots=np.array(roots, dtype=int), tree=np.array(tree, dtype=int), depth=np.array(depth, dtype=int)
     )
 
 

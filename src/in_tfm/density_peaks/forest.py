@@ -33,8 +33,17 @@ class DensityPeakForest(BaseModel):
     """The distance to the parent. The densest point gets its distance to the farthest point."""
 
 
+class RootCuts(BaseModel):
+    """A root is at or above both: `rho` on the `log_density` axis, and `delta` on the delta axis."""
+
+    rho: float
+    delta: float
+
+
 class ForestTrees(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    cuts: RootCuts
 
     roots: Int[np.ndarray, "n_trees"]
     """Distinct points, largest tree first."""
@@ -67,12 +76,48 @@ def merge_copies(
     return distinct, distinct_of_hit.ravel(), counts
 
 
-def root_mask(
-    forest: DensityPeakForest, root_delta: float, root_density_quantile: float
-) -> Bool[np.ndarray, "n_distinct"]:
-    """Roots are at least `root_delta` from anything denser, and in the densest `root_density_quantile` of points.
+def log_density(kth_distance: Float[np.ndarray, "n_distinct"]) -> Float[np.ndarray, "n_distinct"]:
+    """-log10(d_k + offset), with the offset half the smallest nonzero d_k.
 
-    - The density cut keeps out outliers: they are far from everything, but sparse.
-    - The densest point has no parent, so it is always a root."""
-    dense_enough = forest.kth_distance <= np.quantile(forest.kth_distance, root_density_quantile)
-    return ((forest.delta >= root_delta) & dense_enough) | (forest.parent < 0)
+    - Many points tie at d_k = 0, so a plain 1 / d_k is infinite for them.
+    - A log axis spreads the dense end, where the roots are."""
+    nonzero = kth_distance[kth_distance > 0]
+    offset = nonzero.min() / 2 if len(nonzero) else 1.0
+    return -np.log10(kth_distance + offset)
+
+
+def elbow(values: Float[np.ndarray, "n_values"]) -> float:
+    """Kneedle: sort largest first, scale both axes to [0, 1], and take the value farthest from the chord between the ends.
+
+    A curve with no spread has no elbow, so its one value is returned."""
+    curve = np.sort(values)[::-1]
+    spread = curve[0] - curve[-1]
+    if spread == 0:
+        return float(curve[0])
+    scaled = (curve - curve[-1]) / spread
+    chord = np.linspace(1, 0, len(curve))
+    return float(curve[np.argmax(np.abs(scaled - chord))])
+
+
+def delta_for_elbow(forest: DensityPeakForest) -> Float[np.ndarray, "n_distinct"]:
+    """The densest point's delta is its farthest distance by convention, which would stretch the curve.
+
+    It is capped at the next largest. It is a root anyway."""
+    delta = forest.delta.copy()
+    linked = forest.parent >= 0
+    if linked.any():
+        delta[~linked] = delta[linked].max()
+    return delta
+
+
+def root_cuts(forest: DensityPeakForest) -> RootCuts:
+    """Each axis gets its own elbow, so rho and delta are never compared in each other's units."""
+    return RootCuts(rho=elbow(log_density(forest.kth_distance)), delta=elbow(delta_for_elbow(forest)))
+
+
+def root_mask(forest: DensityPeakForest, cuts: RootCuts) -> Bool[np.ndarray, "n_distinct"]:
+    """The rho cut keeps out outliers: they are far from everything, but sparse.
+
+    The densest point has no parent, so it is always a root."""
+    dense_enough = log_density(forest.kth_distance) >= cuts.rho
+    return ((forest.delta >= cuts.delta) & dense_enough) | (forest.parent < 0)

@@ -78,7 +78,7 @@ def density_peak_trees(
     hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig
 ) -> tuple[DensityPeakForest, ForestTrees]:
     forest = density_peak_forest(hdmd, clustering.k, clustering.distance, clustering.normalise)
-    return forest, forest_trees(forest, clustering.root_delta, clustering.root_density_quantile)
+    return forest, forest_trees(forest)
 
 
 def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:

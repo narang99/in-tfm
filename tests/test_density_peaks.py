@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from in_tfm.density_peaks import comparable_rows, density_peak_forest, forest_trees, merge_copies, naive, vectorized
+from in_tfm.density_peaks import (
+    RootCuts, comparable_rows, density_peak_forest, elbow, forest_trees, merge_copies, naive, root_cuts, vectorized,
+)
+
+
+ANY_DENSITY = float("-inf")
 
 
 def two_blobs(rng: np.random.Generator) -> np.ndarray:
@@ -45,14 +50,14 @@ def test_every_point_but_the_densest_links_to_a_denser_one():
 def test_two_blobs_give_two_trees_and_no_noise():
     points = two_blobs(np.random.default_rng(0))
     forest = density_peak_forest(points, k=3, distance="weighted_jaccard")
-    labels = forest_trees(forest, root_delta=0.5, root_density_quantile=0.5).tree[forest.distinct_of_hit]
+    labels = forest_trees(forest, RootCuts(rho=ANY_DENSITY, delta=0.5)).tree[forest.distinct_of_hit]
     assert len(set(labels[:12])) == 1 and len(set(labels[12:])) == 1
     assert labels[0] != labels[12] and labels.min() == 0
 
 
 def test_trees_are_numbered_largest_first_and_roots_have_depth_zero():
     forest = density_peak_forest(two_blobs(np.random.default_rng(0)), k=3)
-    trees = forest_trees(forest, root_delta=0.5, root_density_quantile=0.5)
+    trees = forest_trees(forest, RootCuts(rho=ANY_DENSITY, delta=0.5))
     hits_per_tree = np.bincount(trees.tree[forest.distinct_of_hit])
     assert hits_per_tree.tolist() == [12, 8]
     assert np.all(trees.depth[trees.roots] == 0)
@@ -115,11 +120,13 @@ def test_nearest_denser_matches_naive(distance, block_elements):
     assert np.allclose(delta, naive_delta)
 
 
-@pytest.mark.parametrize("root_delta", [0.05, 0.3, 2.0])
-def test_forest_trees_match_naive(root_delta):
+@pytest.mark.parametrize(
+    "cuts", [None, RootCuts(rho=ANY_DENSITY, delta=0.05), RootCuts(rho=ANY_DENSITY, delta=0.3), RootCuts(rho=1.0, delta=2.0)]
+)
+def test_forest_trees_match_naive(cuts):
     forest = density_peak_forest(points_with_copies(np.random.default_rng(5)), k=4)
-    trees = vectorized.forest_trees(forest, root_delta, 0.5)
-    naive_trees = naive.forest_trees(forest, root_delta, 0.5)
+    trees = vectorized.forest_trees(forest, cuts)
+    naive_trees = naive.forest_trees(forest, cuts)
     assert np.array_equal(trees.roots, naive_trees.roots)
     assert np.array_equal(trees.tree, naive_trees.tree)
     assert np.array_equal(trees.depth, naive_trees.depth)
@@ -144,3 +151,17 @@ def test_without_normalising_a_scaled_copy_is_its_own_point(distance):
     point = np.array([1.0, -2.0, 0.5])
     assert len(density_peak_forest(np.stack([point, 3 * point]), k=1, distance=distance).counts) == 1
     assert len(density_peak_forest(np.stack([point, 3 * point]), k=1, distance=distance, normalise=False).counts) == 2
+
+
+def test_elbow_is_where_the_sorted_curve_bends():
+    assert elbow(np.array([0.1, 100.0, 0.5, 1.0, 0.3, 0.2, 0.4])) == 1.0
+
+
+def test_a_flat_curve_has_its_one_value_as_elbow():
+    assert elbow(np.full(5, 0.3)) == 0.3
+
+
+def test_default_trees_use_the_elbows_and_keep_them():
+    forest = density_peak_forest(points_with_copies(np.random.default_rng(5)), k=4)
+    assert forest_trees(forest).cuts == root_cuts(forest)
+
