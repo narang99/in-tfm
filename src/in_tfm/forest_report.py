@@ -67,7 +67,9 @@ def tree_colour(tree_id: int) -> str:
     return TREE_COLOURS[tree_id] if tree_id < len(TREE_COLOURS) else OTHER_TREES_COLOUR
 
 
-def distinct_rows(forest: DensityPeakForest, hadamards: Float[np.ndarray, "n_hits dim"]) -> Float[np.ndarray, "n dim"]:
+def distinct_rows(
+    forest: DensityPeakForest, hadamards: Float[np.ndarray, "n_hits dim"]
+) -> Float[np.ndarray, "n_distinct dim"]:
     first_hit = np.unique(forest.distinct_of_hit, return_index=True)[1]
     return hadamards[first_hit]
 
@@ -103,7 +105,11 @@ def save_decision_graph(forest: DensityPeakForest, trees: ForestTrees, rule: Roo
 
 
 def save_forest_view(
-    forest: DensityPeakForest, trees: ForestTrees, rows: Float[np.ndarray, "n dim"], distance: PeakDistance, path: Path
+    forest: DensityPeakForest,
+    trees: ForestTrees,
+    rows: Float[np.ndarray, "n_distinct dim"],
+    distance: PeakDistance,
+    path: Path,
 ) -> None:
     """Positions are a 2D PCA, only for drawing. The links come from the real distance."""
     xy = PCA(2).fit_transform(comparable_rows(rows, distance))
