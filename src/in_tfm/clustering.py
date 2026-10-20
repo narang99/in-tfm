@@ -63,7 +63,9 @@ def weighted_jaccard_distances(
 
     - It is plain Jaccard with each dim partly in a set, so a dim counts in proportion to its size.
     - It is a metric.
-    - Pairs are built a chunk of rows at a time, since a full n x n x dim array would be large."""
+    - Pairs are built a chunk of rows at a time, since a full n x n x dim array would be large.
+    - The math, line by line, with the chunking and a worked example: https://github.com/narang99/in-tfm/pull/91
+    - tests/test_clustering_distance.py checks it against a naive pair-by-pair implementation."""
     shares = contribution_shares(points)
     distances = np.empty((len(shares), len(shares)))
     for start in range(0, len(shares), chunk):
