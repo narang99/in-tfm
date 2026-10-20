@@ -1,68 +1,16 @@
-"""Density-peak forest over a neuron's hits (Rodriguez and Laio, 2014), with a kNN density.
-
-- Every hit links to its nearest denser hit, so following links always climbs to a peak.
-- A root is a hit that is dense and far from anything denser.
-  - Each root grows one tree, and each tree is a cluster.
-- Unlike HDBSCAN, it needs no low-density gap between groups.
-  - So it still splits a continuous cloud, where HDBSCAN returns one cluster or mostly noise.
-  - The cost: it cannot tell two separate peaks from two bumps on one hill.
-- Identical hits are merged first, with a count.
-  - An image patch repeats often, for example a fully inked 3x3 patch, and copies would tie on density.
-"""
-
-from typing import Literal
+"""The forest with numpy, a block of rows at a time. `naive.py` computes the same with plain loops."""
 
 import numpy as np
-from jaxtyping import Bool, Float, Int
-from pydantic import BaseModel, ConfigDict
+from jaxtyping import Float, Int
 from scipy.spatial.distance import cdist
-from sklearn.preprocessing import normalize
 
-from .clustering import contribution_shares, weighted_jaccard_block
+from ..weighted_jaccard import weighted_jaccard_block
+from .forest import DensityPeakForest, ForestTrees, PeakDistance, comparable_rows, merge_copies, root_mask
 
-PeakDistance = Literal["euclidean", "weighted_jaccard"]
 DISTANCE_BLOCK_ELEMENTS = 2**26
 """The default cap on a block of rows against every point, about 0.5 GB of float64.
 
 - Tests pass a small value to force several blocks."""
-
-
-class DensityPeakForest(BaseModel):
-    """Per distinct point (`n_distinct`) unless named per hit. `distinct_of_hit` maps each hit to its distinct point."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    distinct_of_hit: Int[np.ndarray, "n_hits"]
-    counts: Int[np.ndarray, "n_distinct"]
-    """How many hits share each distinct point."""
-    kth_distance: Float[np.ndarray, "n_distinct"]
-    """The distance at which the point's neighbours, counted with their copies, reach k. Smaller is denser."""
-    density_rank: Int[np.ndarray, "n_distinct"]
-    """0 is the sparsest point."""
-    parent: Int[np.ndarray, "n_distinct"]
-    """The nearest denser point, or -1 for the densest point."""
-    delta: Float[np.ndarray, "n_distinct"]
-    """The distance to the parent. The densest point gets its distance to the farthest point."""
-
-
-class ForestTrees(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    roots: Int[np.ndarray, "n_trees"]
-    """Distinct points, largest tree first."""
-    tree: Int[np.ndarray, "n_distinct"]
-    """Position in `roots` of the point's tree."""
-    depth: Int[np.ndarray, "n_distinct"]
-    """Links from the point up to its root."""
-
-
-def comparable_rows(
-    points: Float[np.ndarray, "n_hits dim"], distance: PeakDistance
-) -> Float[np.ndarray, "n_hits compared_dim"]:
-    """`compared_dim` is `dim` for euclidean, and `2 * dim` for weighted Jaccard, which splits each dim by sign."""
-    if distance == "weighted_jaccard":
-        return contribution_shares(points)
-    return normalize(points, norm="l2")
 
 
 def _distance_block(
@@ -83,7 +31,7 @@ def _row_blocks(rows: Float[np.ndarray, "n_distinct compared_dim"], distance: Pe
         yield start, _distance_block(rows[start:start + size], rows, distance)
 
 
-def _kth_distances(
+def kth_distances(
     rows: Float[np.ndarray, "n_distinct compared_dim"],
     counts: Int[np.ndarray, "n_distinct"],
     k: int,
@@ -132,7 +80,7 @@ def _kth_distances(
     return kth
 
 
-def _density_ranks(
+def density_ranks(
     kth_distance: Float[np.ndarray, "n_distinct"], counts: Int[np.ndarray, "n_distinct"]
 ) -> Int[np.ndarray, "n_distinct"]:
     """Ties on distance, common at 0, go to the point with more copies."""
@@ -144,7 +92,7 @@ def _density_ranks(
     return ranks
 
 
-def _nearest_denser(
+def nearest_denser(
     rows: Float[np.ndarray, "n_distinct compared_dim"],
     ranks: Int[np.ndarray, "n_distinct"],
     distance: PeakDistance,
@@ -171,37 +119,6 @@ def _nearest_denser(
     return parent, delta
 
 
-def density_peak_forest(
-    points: Float[np.ndarray, "n_hits dim"],
-    k: int = 5,
-    distance: PeakDistance = "weighted_jaccard",
-    block_elements: int = DISTANCE_BLOCK_ELEMENTS,
-) -> DensityPeakForest:
-    """`points` are compared as `distance` sees them: contribution shares, or L2-normalised rows."""
-    rows = comparable_rows(points.astype(np.float64), distance)
-    # rounding lets float noise still count as a copy
-    # distinct_of_hit[h] is the row of `distinct` that hit h became, counts[p] is how many hits became row p
-    distinct, distinct_of_hit, counts = np.unique(rows.round(6), axis=0, return_inverse=True, return_counts=True)
-    kth_distance = _kth_distances(distinct, counts, k, distance, block_elements)
-    ranks = _density_ranks(kth_distance, counts)
-    parent, delta = _nearest_denser(distinct, ranks, distance, block_elements)
-    return DensityPeakForest(
-        distinct_of_hit=distinct_of_hit.ravel(), counts=counts, kth_distance=kth_distance, density_rank=ranks,
-        parent=parent, delta=delta,
-    )
-
-
-def root_mask(
-    forest: DensityPeakForest, root_delta: float, root_density_quantile: float
-) -> Bool[np.ndarray, "n_distinct"]:
-    """Roots are at least `root_delta` from anything denser, and in the densest `root_density_quantile` of points.
-
-    - The density cut keeps out outliers: they are far from everything, but sparse.
-    - The densest point has no parent, so it is always a root."""
-    dense_enough = forest.kth_distance <= np.quantile(forest.kth_distance, root_density_quantile)
-    return ((forest.delta >= root_delta) & dense_enough) | (forest.parent < 0)
-
-
 def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quantile: float) -> ForestTrees:
     """Points are visited densest first, so a point's parent always has its tree and depth already."""
     is_root = root_mask(forest, root_delta, root_density_quantile)
@@ -221,3 +138,19 @@ def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quan
     tree = tree_of_root[root_of]
     return ForestTrees(roots=roots, tree=tree, depth=depth)
 
+
+def density_peak_forest(
+    points: Float[np.ndarray, "n_hits dim"],
+    k: int = 5,
+    distance: PeakDistance = "weighted_jaccard",
+    block_elements: int = DISTANCE_BLOCK_ELEMENTS,
+) -> DensityPeakForest:
+    """`points` are compared as `distance` sees them: contribution shares, or L2-normalised rows."""
+    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance))
+    kth_distance = kth_distances(distinct, counts, k, distance, block_elements)
+    ranks = density_ranks(kth_distance, counts)
+    parent, delta = nearest_denser(distinct, ranks, distance, block_elements)
+    return DensityPeakForest(
+        distinct_of_hit=distinct_of_hit, counts=counts, kth_distance=kth_distance, density_rank=ranks,
+        parent=parent, delta=delta,
+    )
