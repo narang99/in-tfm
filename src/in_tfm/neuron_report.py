@@ -27,6 +27,7 @@ from tqdm import tqdm
 
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
+from .cluster_merging import merge_report_clusters
 from .cluster_units import MEAN_NAME, HitTable, cluster_dir_for, write_hit_table
 from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
@@ -41,6 +42,7 @@ from .html_report import (
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
+from .run_config import MergeClustersConfig
 from .report_meta import (
     BucketedPickMeta,
     ClusterMeta,
@@ -287,6 +289,8 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn = compute_attnlrp_relevance,
         max_n: int = 5,
         min_uniq_images: int = 2,
+        merge: MergeClustersConfig = MergeClustersConfig(),
+        seed: int = 0,
     ) -> Path:
         """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
@@ -297,6 +301,8 @@ class NeuronClusterHits(BaseModel):
         see cluster_unique_image_counts for why.
 
         `name` defaults to `neuron_{idx}` but can be overridden.
+
+        With a `merge` method other than none, the clusters are grouped once everything they need is on disk.
         """
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
@@ -314,4 +320,5 @@ class NeuronClusterHits(BaseModel):
         write_hit_table(report_dir, self._hit_table())
         for cid in cluster_ids:
             self._cache_cluster(cid, report_dir, attr_fn, max_n)
+        merge_report_clusters(report_dir, merge, seed)
         return render_report(report_dir, self.presenter)

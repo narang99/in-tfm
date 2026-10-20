@@ -130,6 +130,8 @@ def report_neuron(
             attr_fn=run.attr_fn,
             max_n=config.report.max_hits_per_cluster,
             min_uniq_images=config.report.min_uniq_samples_per_cluster,
+            merge=config.merge_clusters,
+            seed=config.seed,
         )
     print(f"[{tag}] report -> {report_path}")
 

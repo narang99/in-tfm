@@ -46,6 +46,37 @@ class BucketedPickMeta(BaseModel):
 PickMeta = Annotated[ElbowPickMeta | BucketedPickMeta, Field(discriminator="method")]
 
 
+class KMeansSweep(BaseModel):
+    ks: list[int]
+    inertia: list[float]
+    silhouette: dict[int, float]
+    """Only for k of at least 2, where silhouette is defined."""
+
+
+class KMeansGroupingMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["kmeans"] = "kmeans"
+    k: int
+    sweep: KMeansSweep | None
+    """None when k was given rather than picked from the sweep's elbow."""
+    members: list[list[int]]
+    """Cluster ids of each group, largest group first."""
+
+
+class ThresholdGroupingMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["thresholds"] = "thresholds"
+    min_cosine: float
+    max_median_gap: float
+    members: list[list[int]]
+    """Cluster ids of each group, largest group first."""
+
+
+GroupingMeta = Annotated[KMeansGroupingMeta | ThresholdGroupingMeta, Field(discriminator="method")]
+
+
 class LegacyReportMeta(BaseModel):
     """`threshold` was the elbow cutoff or the bucket floor, and `bucket_edges` being set was the only sign of which."""
 
@@ -75,6 +106,10 @@ class ReportMeta(BaseModel):
     clusters: dict[int, ClusterMeta]
     """Largest first, the order sections appear in the report."""
     sample_ids: list[SampleId]
+    groupings: dict[str, GroupingMeta] = {}
+    """Named so two ways of grouping the same clusters can be compared. Reports written before groupings have none."""
+    default_grouping: str | None = None
+    """The grouping the page shows, None for one group per cluster."""
 
     @property
     def threshold(self) -> float:

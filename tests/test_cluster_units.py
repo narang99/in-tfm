@@ -2,45 +2,17 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.activation_ranges import ActivationRanges, RANGES_NAME
 from in_tfm.cluster_units import (
     ClusterGroup,
     ClusterLike,
-    HitTable,
     MissingActivationsError,
     activations_by_id,
     load_clusters,
     load_singleton_groups,
     median_activation,
     read_hit_table,
-    write_hit_table,
 )
-from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta, write_report_meta
-
-MEANS = {5: [1.0, 0.0, 0.0], 2: [0.0, 1.0, 0.0], 9: [0.0, 0.0, 1.0]}
-COUNTS = {5: 3, 2: 2, 9: 1}
-
-
-def fake_report(report_dir, with_ranges=True, with_table=True):
-    """Cluster 5 hits samples 0, 0, 1; cluster 2 hits samples 1, 2; cluster 9 hits sample 3."""
-    labels = np.array([5, 5, 5, 2, 2, 9, -1])
-    batch_idx = np.array([0, 0, 1, 1, 2, 3, 3])
-    activations = np.array([1.0, 2.0, 3.0, 10.0, 20.0, 7.0, 0.5])
-    write_report_meta(report_dir, ReportMeta(
-        neuron_idx=0, pick=ElbowPickMeta(cutoff=0.4), n_hits=len(labels), min_uniq_images_per_cluster=1,
-        hadamard_shape=(1, 3), sample_ids=[str(i) for i in range(4)],
-        clusters={cid: ClusterMeta(n_hits=COUNTS[cid], n_unique_images=len(set(batch_idx[labels == cid]))) for cid in MEANS},
-    ))
-    for cid, mean in MEANS.items():
-        (report_dir / f"cluster_{cid}").mkdir()
-        torch.save(torch.tensor(mean), report_dir / f"cluster_{cid}" / "mean.pt")
-    if with_ranges:
-        ranges = ActivationRanges(clusters={cid: activations[labels == cid].tolist() for cid in MEANS}, noise=[0.0])
-        (report_dir / RANGES_NAME).write_text(ranges.model_dump_json())
-    if with_table:
-        write_hit_table(report_dir, HitTable(batch_idx=batch_idx, token_idx=np.zeros(7, dtype=int), labels=labels, activations=activations))
-    return report_dir
-
+from conftest import fake_report
 
 def test_clusters_load_in_the_reports_order_with_their_activations(tmp_path):
     clusters = load_clusters(fake_report(tmp_path))

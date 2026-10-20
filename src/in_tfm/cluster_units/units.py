@@ -80,4 +80,12 @@ class ClusterGroup(BaseModel):
 
 def singleton_groups(clusters: list[Cluster], hit_table: HitTable | None = None) -> list[ClusterGroup]:
     """Group ids follow the order of `clusters`, which in a report is largest first."""
-    return [ClusterGroup(id=i, clusters=[c], hit_table=hit_table) for i, c in enumerate(clusters)]
+    return groups_from_members(clusters, [[c.id] for c in clusters], hit_table)
+
+
+def groups_from_members(
+    clusters: list[Cluster], members: list[list[int]], hit_table: HitTable | None = None
+) -> list[ClusterGroup]:
+    """Group `i` is `members[i]`, so ids follow the grouping's order."""
+    by_id = {c.id: c for c in clusters}
+    return [ClusterGroup(id=i, clusters=[by_id[cid] for cid in ids], hit_table=hit_table) for i, ids in enumerate(members)]
