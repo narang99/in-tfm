@@ -186,6 +186,15 @@ class ClusteringConfig(Section):
             raise ValueError(f"clustering.{key} moved to clustering.{where}")
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def strategy_without_a_method_is_hdbscan(cls, data: Any) -> Any:
+        """HDBSCAN is the default, so tuning it should not need its method too, e.g. `--clustering.strategy.min-cluster-size 20`."""
+        strategy = data.get("strategy") if isinstance(data, dict) else None
+        if isinstance(strategy, dict) and "method" not in strategy:
+            return {**data, "strategy": {"method": "hdbscan", **strategy}}
+        return data
+
 
 class ReportConfig(Section):
     max_hits_per_cluster: int = 10

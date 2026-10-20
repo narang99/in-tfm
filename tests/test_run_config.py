@@ -57,8 +57,10 @@ def test_a_setting_of_the_other_strategy_is_an_error():
         load_run_config(["--clustering.strategy.method", "hdbscan", "--clustering.strategy.k", "7"])
 
 
-def test_a_strategy_setting_without_a_method_is_an_error():
-    with pytest.raises(ValidationError, match="discriminator"):
+def test_a_strategy_without_a_method_is_hdbscan():
+    config = load_run_config(["--clustering.strategy.min-cluster-size", "20"])
+    assert config.clustering.strategy == HdbscanConfig(min_cluster_size=20)
+    with pytest.raises(ValidationError, match="Extra inputs"):
         load_run_config(["--clustering.strategy.k", "7"])
 
 
