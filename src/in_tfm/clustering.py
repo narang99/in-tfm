@@ -75,6 +75,7 @@ def cluster_labels(
     cluster_selection_method: ClusterSelectionMethod = "leaf",
     min_samples: int | None = None,
     distance: ClusteringDistance = "euclidean",
+    normalise: bool = True,
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop.
 
@@ -85,10 +86,10 @@ def cluster_labels(
     A smaller value makes it less strict about what counts as dense, so fewer points are noise.
 
     `weighted_jaccard` compares where each point's contribution comes from: see `weighted_jaccard_distances`.
-    It always runs on CPU."""
+    It always runs on CPU. `normalise` only reaches this path: euclidean takes `points` as they are."""
     if distance == "weighted_jaccard":
         print(f"[cluster] {len(points)} points x {points.shape[1]} dims, weighted jaccard, via sklearn (cpu)")
-        distances = weighted_jaccard_distances(points)
+        distances = weighted_jaccard_distances(points, normalise=normalise)
         return _cluster_precomputed(distances, min_cluster_size, cluster_selection_method, min_samples)
 
     backend, name = resolve_hdbscan_backend()

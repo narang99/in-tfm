@@ -125,14 +125,22 @@ def test_forest_trees_match_naive(root_delta):
     assert np.array_equal(trees.depth, naive_trees.depth)
 
 
+@pytest.mark.parametrize("normalise", [True, False])
 @pytest.mark.parametrize("distance", DISTANCES)
-def test_whole_forest_matches_naive(distance):
+def test_whole_forest_matches_naive(distance, normalise):
     points = points_with_copies(np.random.default_rng(6))
-    forest = vectorized.density_peak_forest(points, k=4, distance=distance, block_elements=10)
-    naive_forest = naive.density_peak_forest(points, k=4, distance=distance)
+    forest = vectorized.density_peak_forest(points, k=4, distance=distance, normalise=normalise, block_elements=10)
+    naive_forest = naive.density_peak_forest(points, k=4, distance=distance, normalise=normalise)
     assert np.array_equal(forest.distinct_of_hit, naive_forest.distinct_of_hit)
     assert np.array_equal(forest.counts, naive_forest.counts)
     assert np.allclose(forest.kth_distance, naive_forest.kth_distance)
     assert np.array_equal(forest.density_rank, naive_forest.density_rank)
     assert np.array_equal(forest.parent, naive_forest.parent)
     assert np.allclose(forest.delta, naive_forest.delta)
+
+
+@pytest.mark.parametrize("distance", DISTANCES)
+def test_without_normalising_a_scaled_copy_is_its_own_point(distance):
+    point = np.array([1.0, -2.0, 0.5])
+    assert len(density_peak_forest(np.stack([point, 3 * point]), k=1, distance=distance).counts) == 1
+    assert len(density_peak_forest(np.stack([point, 3 * point]), k=1, distance=distance, normalise=False).counts) == 2

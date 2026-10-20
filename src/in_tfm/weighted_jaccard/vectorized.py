@@ -5,19 +5,25 @@ from jaxtyping import Float
 from sklearn.preprocessing import normalize
 
 
-def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
-    """Each row's positive and negative parts side by side, L1-normalised.
+def sign_parts(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+    """Each row's positive and negative parts side by side, so +a and -a never match."""
+    return np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(np.float64)
 
-    A row says where its contribution comes from, with signs kept apart so +a and -a never match.
-    An all-zero row stays all zero."""
-    parts = np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(np.float64)
-    return normalize(parts, norm="l1")
+
+def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+    """`sign_parts`, L1-normalised, so a row says where its contribution comes from. An all-zero row stays all zero."""
+    return normalize(sign_parts(points), norm="l1")
+
+
+def compared_parts(points: Float[np.ndarray, "n_points dim"], normalise: bool) -> Float[np.ndarray, "n_points two_dim"]:
+    """Without normalising, a hit's size counts too: x and 3x are no longer the same."""
+    return contribution_shares(points) if normalise else sign_parts(points)
 
 
 def weighted_jaccard_block(
     block: Float[np.ndarray, "block_size two_dim"], shares: Float[np.ndarray, "n_points two_dim"]
 ) -> Float[np.ndarray, "block_size n_points"]:
-    """Distances from each row of `block` to every row of `shares`, both already contribution shares."""
+    """Distances from each row of `block` to every row of `shares`, both already `compared_parts`."""
     # (block_size, 1, two_dim) against (1, n_points, two_dim) broadcasts to (block_size, n_points, two_dim)
     # summing the last axis leaves one number per pair
     overlap = np.minimum(block[:, None, :], shares[None]).sum(axis=-1)
@@ -27,15 +33,15 @@ def weighted_jaccard_block(
 
 
 def weighted_jaccard_distances(
-    points: Float[np.ndarray, "n_points dim"], chunk: int = 256
+    points: Float[np.ndarray, "n_points dim"], chunk: int = 256, normalise: bool = True
 ) -> Float[np.ndarray, "n_points n_points"]:
-    """1 - sum(min) / sum(max) between the rows' contribution shares, also called the Ruzicka distance.
+    """1 - sum(min) / sum(max) between the rows' `compared_parts`, also called the Ruzicka distance.
 
     - It is plain Jaccard with each dim partly in a set, so a dim counts in proportion to its size.
     - It is a metric.
     - Pairs are built a chunk of rows at a time, since a full n x n x dim array would be large.
     - The math, line by line, with the chunking and a worked example: https://github.com/narang99/in-tfm/pull/91"""
-    shares = contribution_shares(points)
+    shares = compared_parts(points, normalise)
     distances = np.empty((len(shares), len(shares)))
     for start in range(0, len(shares), chunk):
         distances[start:start + chunk] = weighted_jaccard_block(shares[start:start + chunk], shares)

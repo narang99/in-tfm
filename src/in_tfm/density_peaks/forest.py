@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
-from ..weighted_jaccard import contribution_shares
+from ..weighted_jaccard import compared_parts
 
 PeakDistance = Literal["euclidean", "weighted_jaccard"]
 
@@ -45,12 +45,14 @@ class ForestTrees(BaseModel):
 
 
 def comparable_rows(
-    points: Float[np.ndarray, "n_hits dim"], distance: PeakDistance
+    points: Float[np.ndarray, "n_hits dim"], distance: PeakDistance, normalise: bool = True
 ) -> Float[np.ndarray, "n_hits compared_dim"]:
-    """`compared_dim` is `dim` for euclidean, and `2 * dim` for weighted Jaccard, which splits each dim by sign."""
+    """`compared_dim` is `dim` for euclidean, and `2 * dim` for weighted Jaccard, which splits each dim by sign.
+
+    `normalise` is L1 for weighted Jaccard and L2 for euclidean. Without it, a hit's size counts in the distance."""
     if distance == "weighted_jaccard":
-        return contribution_shares(points)
-    return normalize(points, norm="l2")
+        return compared_parts(points, normalise)
+    return normalize(points, norm="l2") if normalise else points
 
 
 def merge_copies(

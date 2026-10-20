@@ -93,9 +93,9 @@ def forest_trees(forest: DensityPeakForest, root_delta: float, root_density_quan
 
 
 def density_peak_forest(
-    points: Float[np.ndarray, "n_hits dim"], k: int = 5, distance: PeakDistance = "weighted_jaccard"
+    points: Float[np.ndarray, "n_hits dim"], k: int = 5, distance: PeakDistance = "weighted_jaccard", normalise: bool = True
 ) -> DensityPeakForest:
-    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance))
+    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance, normalise))
     kth_distance = kth_distances(distinct, counts, k, distance)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance)

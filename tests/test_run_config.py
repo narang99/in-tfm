@@ -37,6 +37,11 @@ def test_a_flag_overrides_one_key_of_a_section_and_keeps_the_rest(tmp_path):
     assert config.clustering.selection_method == "eom"
 
 
+def test_normalising_is_on_unless_turned_off():
+    assert load_run_config([]).clustering.normalise
+    assert not load_run_config(["--clustering.normalise", "false"]).clustering.normalise
+
+
 def test_neurons_come_from_repeated_flags():
     assert load_run_config(["--neurons", "5", "--neurons", "7"]).neuron_idxs == [5, 7]
 

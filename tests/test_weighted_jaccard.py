@@ -20,11 +20,12 @@ def test_block_matches_the_naive_loop():
     assert np.allclose(vectorized.weighted_jaccard_block(block, shares), naive.weighted_jaccard_block(block, shares))
 
 
+@pytest.mark.parametrize("normalise", [True, False])
 @pytest.mark.parametrize("chunk", [1, 7, 256])
-def test_distances_match_the_naive_loop(chunk):
+def test_distances_match_the_naive_loop(chunk, normalise):
     points = signed_points_with_a_zero_row(np.random.default_rng(2))
-    expected = naive.weighted_jaccard_distances(points)
-    assert np.allclose(vectorized.weighted_jaccard_distances(points, chunk=chunk), expected)
+    expected = naive.weighted_jaccard_distances(points, normalise=normalise)
+    assert np.allclose(vectorized.weighted_jaccard_distances(points, chunk=chunk, normalise=normalise), expected)
 
 
 def test_shares_keep_signs_apart_and_sum_to_one():
@@ -60,3 +61,9 @@ def test_a_dim_counts_in_proportion_to_its_size():
     big_extra = np.array([1.0, 1.0, 1.0])
     distances = vectorized.weighted_jaccard_distances(np.stack([base, small_extra, big_extra]))
     assert distances[0, 1] < distances[0, 2]
+
+
+def test_without_normalising_size_counts():
+    """sum(min) / sum(max) between a and 3a is 1/3."""
+    a = np.array([1.0, -2.0, 0.5])
+    assert np.isclose(vectorized.weighted_jaccard_distances(np.stack([a, 3 * a]), normalise=False)[0, 1], 2 / 3)

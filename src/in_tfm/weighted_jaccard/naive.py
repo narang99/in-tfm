@@ -4,13 +4,21 @@ import numpy as np
 from jaxtyping import Float
 
 
+def sign_parts(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+    parts = [[max(x, 0.0) for x in row] + [max(-x, 0.0) for x in row] for row in points.tolist()]
+    return np.array(parts, dtype=np.float64).reshape(len(points), 2 * points.shape[1])
+
+
 def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
     shares = []
-    for row in points.tolist():
-        parts = [max(x, 0.0) for x in row] + [max(-x, 0.0) for x in row]
+    for parts in sign_parts(points).tolist():
         total = sum(parts)
         shares.append([part / total if total > 0 else 0.0 for part in parts])
     return np.array(shares, dtype=np.float64).reshape(len(points), 2 * points.shape[1])
+
+
+def compared_parts(points: Float[np.ndarray, "n_points dim"], normalise: bool) -> Float[np.ndarray, "n_points two_dim"]:
+    return contribution_shares(points) if normalise else sign_parts(points)
 
 
 def _pair_distance(a: list[float], b: list[float]) -> float:
@@ -26,8 +34,10 @@ def weighted_jaccard_block(
     return np.array(rows, dtype=np.float64).reshape(len(block), len(shares))
 
 
-def weighted_jaccard_distances(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points n_points"]:
-    shares = contribution_shares(points)
+def weighted_jaccard_distances(
+    points: Float[np.ndarray, "n_points dim"], normalise: bool = True
+) -> Float[np.ndarray, "n_points n_points"]:
+    shares = compared_parts(points, normalise)
     distances = weighted_jaccard_block(shares, shares)
     for i in range(len(distances)):
         distances[i, i] = 0.0

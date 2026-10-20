@@ -143,10 +143,11 @@ def density_peak_forest(
     points: Float[np.ndarray, "n_hits dim"],
     k: int = 5,
     distance: PeakDistance = "weighted_jaccard",
+    normalise: bool = True,
     block_elements: int = DISTANCE_BLOCK_ELEMENTS,
 ) -> DensityPeakForest:
-    """`points` are compared as `distance` sees them: contribution shares, or L2-normalised rows."""
-    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance))
+    """`points` are compared as `comparable_rows` makes them."""
+    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance, normalise))
     kth_distance = kth_distances(distinct, counts, k, distance, block_elements)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance, block_elements)

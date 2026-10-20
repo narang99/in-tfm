@@ -152,6 +152,11 @@ class ClusteringConfig(Section):
         description="euclidean: between the L2-normalised vectors. weighted_jaccard: 1 - sum(min) / sum(max) between "
         "each hit's share of contribution per dim, with positive and negative parts kept apart",
     )
+    normalise: bool = Field(
+        True,
+        description="false: no L2 on the clustered rows, and no L1 or L2 inside the distance, so a hit's size counts. "
+        "The Hadamard tiles in the reports are then raw too",
+    )
 
 
 class ReportConfig(Section):
