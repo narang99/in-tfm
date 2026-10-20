@@ -13,6 +13,9 @@ Report writing is split in two so the presenter can be iterated on without a mod
   presenter receives to `cluster_{id}/hits.pt`, alongside `meta.json`.
 - `render_report` builds `index.html` from those caches alone. `write_report` calls it too, so a
   re-render of a downloaded report produces the same page the pipeline did.
+  - It also caches each cluster's rendered body and the page controls.
+  - A later render can then run without a presenter, which is how a report is regrouped without the model.
+- With a default grouping, clusters are shown inside one collapsible section per group.
 """
 
 import gc
@@ -28,7 +31,7 @@ from tqdm import tqdm
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
 from .cluster_merging import merge_report_clusters
-from .cluster_units import MEAN_NAME, HitTable, cluster_dir_for, write_hit_table
+from .cluster_units import MEAN_NAME, HitTable, cluster_dir_for, load_groups, write_hit_table
 from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
@@ -40,6 +43,7 @@ from .html_report import (
     neuron_index,
     page,
 )
+from .group_report import group_nav, group_plots, group_section, groups_summary
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
 from .run_config import MergeClustersConfig
@@ -58,6 +62,8 @@ AttrFn = Callable[..., np.ndarray]
 
 
 HITS_CACHE_NAME = "hits.pt"
+BODY_CACHE_NAME = "body.html"
+PAGE_CONTROLS_CACHE_NAME = "page_controls.html"
 SAMPLE_SEED = 0
 
 
@@ -73,35 +79,70 @@ def load_hits(cluster_dir: Path) -> list[ClusterHit]:
     return [ClusterHit.model_validate(d) for d in saved]
 
 
-def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
-    """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
+class MissingRenderCacheError(FileNotFoundError):
+    pass
+
+
+def render_report(report_dir: str | Path, presenter: ClusterPresenter | None = None) -> Path:
+    """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed.
+
+    Without a presenter, the cluster bodies and page controls an earlier render cached are reused.
+    """
     report_dir = Path(report_dir)
     meta = load_report_meta(report_dir)
-    sections = [
-        _cluster_section(
-            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
+    sections = {
+        cid: cluster_section(
+            cid, position, cluster.n_hits, cluster.n_unique_images,
+            _cluster_body(cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
-    ]
+    }
+    page_controls = _page_controls(report_dir, presenter)
+    activation_plots = _activation_plot(meta) + _activation_ranges_plot(report_dir)
+    if meta.default_grouping is None:
+        index = _index_page(meta, list(sections.values()), page_controls, activation_plots, _cluster_nav(meta))
+    else:
+        groups = load_groups(report_dir)
+        grouping = meta.groupings[meta.default_grouping]
+        plots = group_plots(report_dir, grouping, groups, _displayed_hadamards(report_dir, meta))
+        summary = groups_summary(meta.default_grouping, grouping, groups, plots)
+        group_sections = [group_section(g, i, [sections[cid] for cid in g.cluster_ids]) for i, g in enumerate(groups)]
+        index = _index_page(meta, group_sections, page_controls, activation_plots + summary, group_nav(groups), len(groups))
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir)))
+    report_path.write_text(index)
     return report_path
 
 
-def _cluster_section(
-    cluster_id: int,
-    cluster: ClusterMeta,
-    position: int,
-    cluster_dir: Path,
-    presenter: ClusterPresenter,
-    hadamard_shape: HadamardShape,
-) -> str:
-    """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
-    cluster the hits on screen belong to and when that changes."""
+def _cluster_body(cluster_dir: Path, presenter: ClusterPresenter | None, hadamard_shape: HadamardShape) -> str:
+    cache = cluster_dir / BODY_CACHE_NAME
+    if presenter is None:
+        if not cache.exists():
+            raise MissingRenderCacheError(f"{cache} is missing, so this report needs a presenter to render")
+        return cache.read_text()
     hits = load_hits(cluster_dir)
-    artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
-    body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
+    body = presenter.render(hits, ClusterArtifacts(cluster_dir=cluster_dir), hadamard_shape) if hits else "<p>no hits sampled.</p>"
+    cache.write_text(body)
+    return body
+
+
+def _page_controls(report_dir: Path, presenter: ClusterPresenter | None) -> str:
+    cache = report_dir / PAGE_CONTROLS_CACHE_NAME
+    if presenter is None:
+        if not cache.exists():
+            raise MissingRenderCacheError(f"{cache} is missing, so this report needs a presenter to render")
+        return cache.read_text()
+    controls = presenter.page_controls()
+    cache.write_text(controls)
+    return controls
+
+
+def _displayed_hadamards(report_dir: Path, meta: ReportMeta) -> dict[int, np.ndarray]:
+    width = meta.hadamard_shape[0] * meta.hadamard_shape[1]
+    displayed = {}
+    for cid in meta.clusters:
+        hits = load_hits(cluster_dir_for(report_dir, cid))
+        displayed[cid] = np.stack([h.hadamard for h in hits]) if hits else np.zeros((0, width))
+    return displayed
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
@@ -128,16 +169,19 @@ def _activation_ranges_plot(report_dir: Path) -> str:
     return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
 
 
-def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str) -> str:
+def _index_page(
+    meta: ReportMeta, sections: list[str], page_controls: str, plots: str, nav: str, n_groups: int | None = None
+) -> str:
     title = f"Neuron {meta.neuron_idx}"
     body = neuron_index(
         title=title,
         threshold=meta.threshold,
         n_hits=meta.n_hits,
-        n_clusters=len(sections),
+        n_clusters=len(meta.clusters),
+        n_groups=n_groups,
         page_controls=page_controls,
-        activation_plot=_activation_plot(meta) + activation_ranges_plot,
-        cluster_nav=_cluster_nav(meta),
+        activation_plot=plots,
+        cluster_nav=nav,
         sections=sections,
     )
     return page(title, body)

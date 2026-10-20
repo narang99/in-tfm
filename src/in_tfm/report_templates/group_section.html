@@ -1,0 +1,4 @@
+<details class="group {{ accent_class }}" id="group-{{ group.id }}">
+<summary class="group-head"><span class="group-badge">Group {{ group.id }}</span><span class="group-stats">{{ group.cluster_ids|length }} {{ "cluster" if group.cluster_ids|length == 1 else "clusters" }} &middot; n={{ group.n_hits }}{% if group.n_unique_samples is not none %} &middot; {{ group.n_unique_samples }} unique samples{% endif %} &middot; activations {{ "%.3f"|format(group.activation_min) }} to {{ "%.3f"|format(group.activation_max) }}, median {{ "%.3f"|format(group.median_activation) }} &middot; lowest member cosine {{ "%.3f"|format(group.min_member_cosine) }}</span></summary>
+{{ body|safe }}
+</details>
