@@ -140,6 +140,7 @@ def write_forest_page(
     shape: HadamardShape,
     rule: RootRule,
     title: str,
+    tree_page: str | None = None,
 ) -> Path:
     out_dir = report_dir / FOREST_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -153,6 +154,7 @@ def write_forest_page(
         rule=rule,
         cuts=trees.cuts,
         n_trees=len(trees.roots),
+        tree_page=tree_page,
         decision_graph_src=f"{FOREST_DIR}/decision_graph.png",
         trees=[tree_row(t, forest, trees, hits, shape, out_dir) for t in range(len(trees.roots))],
     )

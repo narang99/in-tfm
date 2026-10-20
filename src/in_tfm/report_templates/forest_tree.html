@@ -1,0 +1,150 @@
+<h1>{{ title }}: forest tree</h1>
+<p class="meta">{{ n_distinct }} distinct points &middot; <a href="density_peaks.html">back to the forest</a> &middot; <a href="index.html">back to the report</a></p>
+<ul class="notes">
+<li>Each tree hangs from its root at the top. Row <i>n</i> holds the points <i>n</i> links below the root.</li>
+<li>A link joins a point to its nearest denser point, so density falls as you go down.</li>
+<li>Click a point to open its 4 largest children, by hits below them. Click again to close it. "+n more" opens the next 4.</li>
+<li>Under each tile: copies of this point, its activation, and the hits at and below it.</li>
+<li>Green is positive, red is negative. Each tree has its own colour scale.</li>
+<li>Drag to pan, scroll to zoom.</li>
+</ul>
+<div class="tree-controls">
+<label>Tree <select id="tree-pick"></select></label>
+<label><input type="radio" name="tree-view" value="hadamard" checked> Hadamard product</label>
+<label><input type="radio" name="tree-view" value="input"> input</label>
+<button type="button" id="tree-reset">Reset</button>
+</div>
+<div id="forest-tree" class="tree-canvas"></div>
+<script type="application/json" id="forest-tree-data">{{ data|tojson }}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById("forest-tree-data").textContent);
+  const [rows, cols] = data.shape;
+  const TILE = 56, CELL = TILE / Math.max(rows, cols), LABEL = 34, ROW = TILE + LABEL + 40, GAP = 22;
+  const CHILDREN_PER_CLICK = 4;
+
+  // children of each point, most hits below them first
+  const childrenOf = new Map();
+  data.parent.forEach((parent, point) => {
+    if (parent < 0) return;
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent).push(point);
+  });
+  for (const kids of childrenOf.values()) kids.sort((a, b) => data.subtree_hits[b] - data.subtree_hits[a]);
+  const kidsOf = point => childrenOf.get(point) || [];
+
+  // how many children each point has open
+  let open = new Map();
+  let treeId = 0;
+  let view = "hadamard";
+
+  const treeOf = new Int32Array(data.parent.length);
+  data.roots.forEach((root, tree) => { treeOf[root] = tree; });
+  // parents come before children when sorted by depth, so each point can copy its parent's tree
+  d3.range(data.parent.length).sort((a, b) => data.depth[a] - data.depth[b]).forEach(point => {
+    if (data.parent[point] >= 0) treeOf[point] = treeOf[data.parent[point]];
+  });
+
+  function colourScale() {
+    let limit = 0;
+    data[view].forEach((values, point) => {
+      if (treeOf[point] === treeId) for (const v of values) limit = Math.max(limit, Math.abs(v));
+    });
+    limit = limit || 1;
+    return d3.scaleLinear().domain([-limit, 0, limit]).range(["#FF3131", "#333333", "#39FF14"]).clamp(true);
+  }
+
+  function visibleChildren(node) {
+    if (node.more !== undefined) return null;
+    const kids = kidsOf(node.id), shown = open.get(node.id) || 0;
+    const nodes = kids.slice(0, shown).map(id => ({ id }));
+    if (shown > 0 && shown < kids.length) nodes.push({ more: node.id, hidden: kids.length - shown });
+    return nodes;
+  }
+
+  const holder = d3.select("#forest-tree");
+  const svg = holder.append("svg").attr("width", "100%").attr("height", "100%");
+  const canvas = svg.append("g");
+  const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", event => canvas.attr("transform", event.transform));
+  svg.call(zoom);
+
+  function centreOnRoot() {
+    const width = holder.node().clientWidth;
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, 30));
+  }
+
+  function toggle(node) {
+    if (node.more !== undefined) {
+      open.set(node.more, (open.get(node.more) || 0) + CHILDREN_PER_CLICK);
+    } else if (kidsOf(node.id).length) {
+      open.set(node.id, open.get(node.id) ? 0 : CHILDREN_PER_CLICK);
+    }
+    render();
+  }
+
+  function drawTile(group, values, colour) {
+    group.selectAll("rect.cell").data(values).join("rect").attr("class", "cell")
+      .attr("x", (_, i) => (i % cols) * CELL).attr("y", (_, i) => Math.floor(i / cols) * CELL)
+      .attr("width", CELL).attr("height", CELL).attr("fill", colour);
+  }
+
+  function render() {
+    const root = d3.hierarchy({ id: data.roots[treeId] }, visibleChildren);
+    d3.tree().nodeSize([TILE + GAP, ROW])(root);
+    const colour = colourScale();
+    canvas.selectAll("*").remove();
+
+    const left = d3.min(root.descendants(), d => d.x) - TILE / 2 - 70;
+    const deepest = d3.max(root.descendants(), d => d.depth);
+    canvas.append("g").selectAll("text").data(d3.range(deepest + 1)).join("text")
+      .attr("class", "tree-depth").attr("x", left).attr("y", d => d * ROW + TILE / 2)
+      .text(d => d === 0 ? "root" : `depth ${d}`);
+
+    canvas.append("g").selectAll("path").data(root.links()).join("path").attr("class", "tree-link")
+      .attr("d", link => d3.linkVertical()({
+        source: [link.source.x, link.source.y + TILE + LABEL],
+        target: [link.target.x, link.target.y],
+      }));
+
+    const nodes = canvas.append("g").selectAll("g").data(root.descendants()).join("g")
+      .attr("class", "tree-node").attr("transform", d => `translate(${d.x - TILE / 2},${d.y})`)
+      .on("click", (event, d) => toggle(d.data));
+
+    nodes.filter(d => d.data.more !== undefined).call(more => {
+      more.append("rect").attr("class", "tree-more").attr("width", TILE).attr("height", TILE).attr("rx", 6);
+      more.append("text").attr("class", "tree-label").attr("x", TILE / 2).attr("y", TILE / 2 + 4)
+        .text(d => `+${d.data.hidden} more`);
+    });
+
+    nodes.filter(d => d.data.more === undefined).each(function (d) {
+      const node = d3.select(this), point = d.data.id, kids = kidsOf(point).length;
+      node.append("title").text(
+        `point ${point} · depth ${data.depth[point]} · ${data.count[point]} copies · ` +
+        `${data.subtree_hits[point]} hits at and below · ${kids} children · act ${data.activation[point]}`
+      );
+      drawTile(node.append("g"), data[view][point], colour);
+      node.append("rect").attr("class", "tree-frame").attr("width", TILE).attr("height", TILE)
+        .classed("closed", kids > 0 && !open.get(point));
+      node.append("text").attr("class", "tree-label").attr("x", TILE / 2).attr("y", TILE + 13)
+        .text(`×${data.count[point]} · ${data.activation[point].toPrecision(3)}`);
+      node.append("text").attr("class", "tree-label muted").attr("x", TILE / 2).attr("y", TILE + 26)
+        .text(kids ? `${data.subtree_hits[point]} hits ${open.get(point) ? "▾" : "▸"}` : `${data.subtree_hits[point]} hits`);
+    });
+  }
+
+  function reset() {
+    open = new Map([[data.roots[treeId], CHILDREN_PER_CLICK]]);
+    render();
+    centreOnRoot();
+  }
+
+  const pick = d3.select("#tree-pick");
+  pick.selectAll("option").data(data.roots).join("option").attr("value", (_, i) => i)
+    .text((root, i) => `T${i} · ${data.subtree_hits[root]} hits`);
+  pick.on("change", event => { treeId = +event.target.value; reset(); });
+  d3.selectAll("input[name=tree-view]").on("change", event => { view = event.target.value; render(); });
+  d3.select("#tree-reset").on("click", reset);
+  reset();
+})();
+</script>

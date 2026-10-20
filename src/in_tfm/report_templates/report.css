@@ -72,3 +72,14 @@ img.plot { display:block; background:#fff; padding:6px; }
 .stages figcaption { color:var(--muted); font-size:0.7rem; text-align:center; margin-top:3px; }
 .pair { display:flex; gap:3px; }
 .pair img { image-rendering:pixelated; border-radius:2px; }
+.tree-controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; font-size:0.85rem; margin:12px 0; }
+.tree-canvas { width:100vw; margin-left:calc(50% - 50vw); height:78vh; border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line); background:var(--panel); cursor:grab; }
+.tree-node { cursor:pointer; }
+.tree-frame { fill:none; stroke:var(--line); }
+.tree-frame.closed { stroke:var(--fg); stroke-dasharray:3 2; }
+.tree-more { fill:var(--bg); stroke:var(--muted); stroke-dasharray:4 3; }
+.tree-link { fill:none; stroke:var(--muted); stroke-opacity:0.6; }
+.tree-label { fill:var(--fg); font-size:10px; text-anchor:middle; }
+.tree-label.muted, .tree-depth { fill:var(--muted); }
+.tree-depth { font-size:11px; text-anchor:end; }
