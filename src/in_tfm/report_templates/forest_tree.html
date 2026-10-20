@@ -4,6 +4,7 @@
 <li>Each tree hangs from its root at the top. Row <i>n</i> holds the points <i>n</i> links below the root.</li>
 <li>A link joins a point to its nearest denser point, so density falls as you go down.</li>
 <li>Click a point to open its 4 largest children, by hits below them. Click again to close it. "+n more" opens the next 4.</li>
+<li>Shift-click a point to follow its largest branch: its largest child is opened, then that child's, down to a leaf.</li>
 <li>Under each tile: copies of this point, its activation, and the hits at and below it.</li>
 <li>Green is positive, red is negative. Each tree has its own colour scale.</li>
 <li>Drag to pan, scroll to zoom.</li>
@@ -74,8 +75,16 @@
     svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, 30));
   }
 
-  function toggle(node) {
-    if (node.more !== undefined) {
+  function followLargestBranch(point) {
+    for (let kids = kidsOf(point); kids.length; point = kids[0], kids = kidsOf(point)) {
+      open.set(point, Math.max(open.get(point) || 0, 1));
+    }
+  }
+
+  function toggle(node, shift) {
+    if (shift && node.more === undefined) {
+      followLargestBranch(node.id);
+    } else if (node.more !== undefined) {
       open.set(node.more, (open.get(node.more) || 0) + CHILDREN_PER_CLICK);
     } else if (kidsOf(node.id).length) {
       open.set(node.id, open.get(node.id) ? 0 : CHILDREN_PER_CLICK);
@@ -109,7 +118,7 @@
 
     const nodes = canvas.append("g").selectAll("g").data(root.descendants()).join("g")
       .attr("class", "tree-node").attr("transform", d => `translate(${d.x - TILE / 2},${d.y})`)
-      .on("click", (event, d) => toggle(d.data));
+      .on("click", (event, d) => toggle(d.data, event.shiftKey));
 
     nodes.filter(d => d.data.more !== undefined).call(more => {
       more.append("rect").attr("class", "tree-more").attr("width", TILE).attr("height", TILE).attr("rx", 6);
