@@ -15,6 +15,7 @@ from typing import Literal
 import numpy as np
 from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
+from scipy.spatial.distance import cdist
 from sklearn.preprocessing import normalize
 
 from .clustering import contribution_shares, weighted_jaccard_block
@@ -53,21 +54,26 @@ class ForestTrees(BaseModel):
     """Links from the point up to its root."""
 
 
-def comparable_rows(points: Float[np.ndarray, "n dim"], distance: PeakDistance) -> Float[np.ndarray, "n d"]:
+def comparable_rows(
+    points: Float[np.ndarray, "n_hits dim"], distance: PeakDistance
+) -> Float[np.ndarray, "n_hits compared_dim"]:
+    """`compared_dim` is `dim` for euclidean, and `2 * dim` for weighted Jaccard, which splits each dim by sign."""
     if distance == "weighted_jaccard":
         return contribution_shares(points)
     return normalize(points, norm="l2")
 
 
 def _distance_block(
-    block: Float[np.ndarray, "b d"], rows: Float[np.ndarray, "n d"], distance: PeakDistance
-) -> Float[np.ndarray, "b n"]:
+    block: Float[np.ndarray, "block_size compared_dim"],
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    distance: PeakDistance,
+) -> Float[np.ndarray, "block_size n_distinct"]:
     if distance == "weighted_jaccard":
         return weighted_jaccard_block(block, rows)
-    return np.sqrt(np.maximum(((block[:, None, :] - rows[None]) ** 2).sum(axis=-1), 0.0))
+    return cdist(block, rows)
 
 
-def _row_blocks(rows: Float[np.ndarray, "n d"], distance: PeakDistance):
+def _row_blocks(rows: Float[np.ndarray, "n_distinct compared_dim"], distance: PeakDistance):
     """Yields (start, distances of rows[start:start + size] to every row)."""
     size = max(1, DISTANCE_BLOCK_ELEMENTS // (len(rows) * rows.shape[1]))
     for start in range(0, len(rows), size):
@@ -75,8 +81,11 @@ def _row_blocks(rows: Float[np.ndarray, "n d"], distance: PeakDistance):
 
 
 def _kth_distances(
-    rows: Float[np.ndarray, "n d"], counts: Int[np.ndarray, "n"], k: int, distance: PeakDistance
-) -> Float[np.ndarray, "n"]:
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    counts: Int[np.ndarray, "n_distinct"],
+    k: int,
+    distance: PeakDistance,
+) -> Float[np.ndarray, "n_distinct"]:
     """A point's own extra copies sit at distance 0, so a point seen more than k times has distance 0.
 
     - The k + 1 nearest always reach k copies, since the point itself is among them.
@@ -96,7 +105,9 @@ def _kth_distances(
     return kth
 
 
-def _density_ranks(kth_distance: Float[np.ndarray, "n"], counts: Int[np.ndarray, "n"]) -> Int[np.ndarray, "n"]:
+def _density_ranks(
+    kth_distance: Float[np.ndarray, "n_distinct"], counts: Int[np.ndarray, "n_distinct"]
+) -> Int[np.ndarray, "n_distinct"]:
     """Ties on distance, common at 0, go to the point with more copies."""
     sparsest_first = np.lexsort((counts, -kth_distance))
     ranks = np.empty(len(kth_distance), dtype=int)
@@ -105,8 +116,8 @@ def _density_ranks(kth_distance: Float[np.ndarray, "n"], counts: Int[np.ndarray,
 
 
 def _nearest_denser(
-    rows: Float[np.ndarray, "n d"], ranks: Int[np.ndarray, "n"], distance: PeakDistance
-) -> tuple[Int[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+    rows: Float[np.ndarray, "n_distinct compared_dim"], ranks: Int[np.ndarray, "n_distinct"], distance: PeakDistance
+) -> tuple[Int[np.ndarray, "n_distinct"], Float[np.ndarray, "n_distinct"]]:
     parent = np.full(len(rows), -1)
     delta = np.zeros(len(rows))
     for start, block in _row_blocks(rows, distance):
@@ -136,7 +147,9 @@ def density_peak_forest(
     )
 
 
-def root_mask(forest: DensityPeakForest, root_delta: float, root_density_quantile: float) -> Bool[np.ndarray, "n"]:
+def root_mask(
+    forest: DensityPeakForest, root_delta: float, root_density_quantile: float
+) -> Bool[np.ndarray, "n_distinct"]:
     """Roots are at least `root_delta` from anything denser, and in the densest `root_density_quantile` of points.
 
     - The density cut keeps out outliers: they are far from everything, but sparse.
