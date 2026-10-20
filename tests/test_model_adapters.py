@@ -15,8 +15,13 @@ N_HEADS, HEAD_DIM, HIDDEN, VOCAB, MAX_LENGTH = 2, 4, 8, 20, 6
 class FakeTokenizer:
     pad_token = "<pad>"
     eos_token = "<eos>"
+    bos_token = "<bos>"
+
+    def __init__(self) -> None:
+        self.seen: list[str] = []
 
     def __call__(self, texts, **kwargs):
+        self.seen.extend(texts)
         ids = torch.randint(0, VOCAB, (len(texts), kwargs["max_length"]))
         return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
 
@@ -78,6 +83,17 @@ def test_model_runs_on_the_source_batch(adapter):
     batch = source.to_model_batch(list(source.sample_ids()))
     with torch.no_grad():
         adapter.get_model()(**batch.kwargs)
+
+
+@pytest.mark.parametrize(("make_adapter", "expected"), [
+    (tiny_attn_only_adapter, "<bos>a"),
+    (tiny_gemma3_adapter, "a"),
+])
+def test_only_the_attn_only_model_gets_a_bos_prepended(make_adapter, expected):
+    adapter = make_adapter()
+    source = adapter.make_source(["a"])
+    source.to_model_batch(list(source.sample_ids()))
+    assert adapter.tokenizer.seen == [expected]
 
 
 def test_patching_after_nnsight_wraps_the_model_is_rejected(adapter):

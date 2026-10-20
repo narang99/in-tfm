@@ -132,9 +132,25 @@ class ClusteringConfig(Section):
         description="hadamard: input * weight row. input: the raw input at each hit, "
         "L2-normalised the same way, an ablation of the weight row",
     )
+    method: Literal["hdbscan", "density_peaks"] = Field(
+        "hdbscan",
+        description="hdbscan: dense regions split by sparse gaps, the rest is noise. density_peaks: each hit links to "
+        "its nearest denser hit, every hit lands in the tree of a root, see in_tfm.density_peaks",
+    )
     min_cluster_size: int = 10
     min_samples: int | None = Field(None, description="HDBSCAN min_samples, defaults to min_cluster_size")
+    k: int = Field(5, description="density_peaks only: a hit's density is 1 / the distance to its kth neighbour")
     selection_method: Literal["eom", "leaf"] = "leaf"
+    distance: Literal["euclidean", "weighted_jaccard"] = Field(
+        "euclidean",
+        description="euclidean: between the L2-normalised vectors. weighted_jaccard: 1 - sum(min) / sum(max) between "
+        "each hit's share of contribution per dim, with positive and negative parts kept apart",
+    )
+    normalise: bool = Field(
+        True,
+        description="false: no L2 on the clustered rows, and no L1 or L2 inside the distance, so a hit's size counts. "
+        "The Hadamard tiles in the reports are then raw too",
+    )
 
 
 class ReportConfig(Section):

@@ -12,8 +12,11 @@ from typing import Literal, Protocol
 import numpy as np
 from jaxtyping import Float, Int
 
+from .weighted_jaccard import weighted_jaccard_distances
+
 
 ClusterSelectionMethod = Literal["eom", "leaf"]
+ClusteringDistance = Literal["euclidean", "weighted_jaccard"]
 
 
 class HDBSCANBackend(Protocol):
@@ -45,11 +48,34 @@ def resolve_hdbscan_backend() -> tuple[type[HDBSCANBackend], str]:
         return CpuHDBSCAN, "hdbscan (cpu)"
 
 
+def _cluster_precomputed(
+    distances: Float[np.ndarray, "n_points n_points"],
+    min_cluster_size: int,
+    cluster_selection_method: ClusterSelectionMethod,
+    min_samples: int | None,
+) -> Int[np.ndarray, "n_points"]:
+    """sklearn's HDBSCAN, which takes a distance matrix and is safe to load beside cuml.
+
+    sklearn counts a point as its own neighbour and the `hdbscan` package does not.
+    The +1 keeps `min_samples` meaning the same as on the euclidean path."""
+    from sklearn.cluster import HDBSCAN
+
+    clusterer = HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=(min_samples or min_cluster_size) + 1,
+        cluster_selection_method=cluster_selection_method,
+        metric="precomputed",
+    )
+    return clusterer.fit_predict(distances)
+
+
 def cluster_labels(
     points: Float[np.ndarray, "n_points dim"],
     min_cluster_size: int,
     cluster_selection_method: ClusterSelectionMethod = "leaf",
     min_samples: int | None = None,
+    distance: ClusteringDistance = "euclidean",
+    normalise: bool = True,
 ) -> Int[np.ndarray, "n_points"]:
     """Cluster ids per point, with HDBSCAN's noise label (-1) left in place for callers to drop.
 
@@ -57,7 +83,15 @@ def cluster_labels(
     sends the rest to noise, while leaf keeps the finest clusters in the tree.
 
     `min_samples=None` leaves HDBSCAN's own default, which is `min_cluster_size`.
-    A smaller value makes it less strict about what counts as dense, so fewer points are noise."""
+    A smaller value makes it less strict about what counts as dense, so fewer points are noise.
+
+    `weighted_jaccard` compares where each point's contribution comes from: see `weighted_jaccard_distances`.
+    It always runs on CPU. `normalise` only reaches this path: euclidean takes `points` as they are."""
+    if distance == "weighted_jaccard":
+        print(f"[cluster] {len(points)} points x {points.shape[1]} dims, weighted jaccard, via sklearn (cpu)")
+        distances = weighted_jaccard_distances(points, normalise=normalise)
+        return _cluster_precomputed(distances, min_cluster_size, cluster_selection_method, min_samples)
+
     backend, name = resolve_hdbscan_backend()
     print(f"[cluster] {len(points)} points x {points.shape[1]} dims via {name}")
 
