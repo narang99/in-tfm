@@ -87,3 +87,13 @@ Things to review or understand for the STL-10 mini-Inception work, in the order 
 - The open question from earlier: the image-normalization contract in `sources/dicom.py` and `presenters/image.py`.
   - I passed an `ImageNormalization` Protocol and was asked whether the contract is transform and inverse-transform.
   - It was deferred and not answered.
+
+
+# distance function for clustering
+
+- Can we discretize the state of the neuron? Based on activation ranges?
+  - How do i do this? There are some 221 logits only for 9s state in the final neuron's output
+  - It's a reasonably simple curve, I should be able to show which clusters are present where
+  - I could also manually mark when something is part of a cluster and see which clusters land where. 
+  - In any case, is there a reasonable discretization of the activation? Can we come up with a reasonable distance function otherwise?
+- Score can be the intersection of the input neurons firing, but it can miss direction horribly (if the activation ranges discretization works, then its not a problem).  
