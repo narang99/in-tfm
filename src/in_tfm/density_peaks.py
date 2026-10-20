@@ -17,7 +17,7 @@ from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
-from .clustering import contribution_shares
+from .clustering import contribution_shares, weighted_jaccard_block
 
 PeakDistance = Literal["euclidean", "weighted_jaccard"]
 DISTANCE_BLOCK_ELEMENTS = 2**26
@@ -63,9 +63,7 @@ def _distance_block(
     block: Float[np.ndarray, "b d"], rows: Float[np.ndarray, "n d"], distance: PeakDistance
 ) -> Float[np.ndarray, "b n"]:
     if distance == "weighted_jaccard":
-        overlap = np.minimum(block[:, None, :], rows[None]).sum(axis=-1)
-        union = np.maximum(block[:, None, :], rows[None]).sum(axis=-1)
-        return 1.0 - overlap / np.where(union > 0, union, 1.0)
+        return weighted_jaccard_block(block, rows)
     return np.sqrt(np.maximum(((block[:, None, :] - rows[None]) ** 2).sum(axis=-1), 0.0))
 
 
