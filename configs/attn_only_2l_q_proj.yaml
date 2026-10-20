@@ -1,5 +1,5 @@
 # Run with: python scripts/run_neuron_report.py --config configs/attn_only_2l_q_proj.yaml
-# Any flag overrides the file, e.g. --clustering.min-cluster-size 10
+# Any flag overrides the file, e.g. --clustering.strategy.min-cluster-size 10
 model: self/attn-only-2l
 target: q_proj
 layer_idx: 0
@@ -10,4 +10,6 @@ text:
   n_samples: 48
   max_length: 64
 clustering:
-  min_cluster_size: 5
+  strategy:
+    method: hdbscan
+    min_cluster_size: 5

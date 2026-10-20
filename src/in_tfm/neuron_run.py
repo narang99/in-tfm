@@ -26,7 +26,7 @@ from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
-from .run_config import ClusteringConfig, Polarity, RunConfig, Target
+from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig, Target
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
 
@@ -75,20 +75,22 @@ def report_name(neuron_idx: int, polarity: Polarity) -> str:
 
 
 def density_peak_trees(
-    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, strategy: DensityPeaksConfig
 ) -> tuple[DensityPeakForest, ForestTrees]:
-    forest = density_peak_forest(hdmd, clustering.k, clustering.distance, clustering.normalise)
+    forest = density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise)
     return forest, forest_trees(forest)
 
 
 def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
-    if clustering.method == "density_peaks":
-        forest, trees = density_peak_trees(hdmd, clustering)
-        return trees.tree[forest.distinct_of_hit]
-    return cluster_labels(
-        hdmd, clustering.min_cluster_size, clustering.selection_method, clustering.min_samples, clustering.distance,
-        clustering.normalise,
-    )
+    match clustering.strategy:
+        case DensityPeaksConfig() as strategy:
+            forest, trees = density_peak_trees(hdmd, clustering, strategy)
+            return trees.tree[forest.distinct_of_hit]
+        case HdbscanConfig() as strategy:
+            return cluster_labels(
+                hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
+                clustering.normalise,
+            )
 
 
 class PreparedRun(BaseModel):
