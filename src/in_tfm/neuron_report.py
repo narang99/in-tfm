@@ -74,6 +74,10 @@ def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
     return report_dir / f"cluster_{cluster_id}"
 
 
+MIXED_HITS_PAGE = "mixed_hits.html"
+"""The sheet of hits split between clusters, linked from the index when it exists."""
+
+
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
@@ -85,7 +89,10 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    report_path.write_text(_index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir)))
+    mixed_hits_page = MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None
+    report_path.write_text(
+        _index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir), mixed_hits_page)
+    )
     return report_path
 
 
@@ -129,7 +136,9 @@ def _activation_ranges_plot(report_dir: Path) -> str:
     return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
 
 
-def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str) -> str:
+def _index_page(
+    meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str, mixed_hits_page: str | None
+) -> str:
     title = f"Neuron {meta.neuron_idx}"
     body = neuron_index(
         title=title,
@@ -140,6 +149,7 @@ def _index_page(meta: ReportMeta, sections: list[str], page_controls: str, activ
         activation_plot=_activation_plot(meta) + activation_ranges_plot,
         cluster_nav=_cluster_nav(meta),
         sections=sections,
+        mixed_hits_page=mixed_hits_page,
     )
     return page(title, body)
 
@@ -194,28 +204,34 @@ class NeuronClusterHits(BaseModel):
     def sample_cluster(
         self, cluster_id: int, max_n: int = 5, attr_fn: AttrFn = compute_attnlrp_relevance
     ) -> list[ClusterHit]:
-        idxs = sampled_hit_indices(self.labels, cluster_id, max_n)
-        model = self.model.to(self.device)
-        results: list[ClusterHit] = []
-        for i in tqdm(idxs):
-            bid, tid = self.selection.batch_idx[i], self.selection.token_idx[i]
-            sample_id = self.sample_ids[bid]
-            singleton_batch = self.source.to_model_batch([sample_id]).to(self.device)
-            relevance = attr_fn(model, singleton_batch, self.layer_getter, self.neuron_idx, tid)
-            results.append(
-                ClusterHit(
-                    sample_id=sample_id,
-                    token_idx=int(tid),
-                    relevance=relevance,
-                    model_input=singleton_batch.grad_leaf.detach().cpu(),
-                    hadamard=self.hdmds[i],
-                    display_ids=None if singleton_batch.display_ids is None else singleton_batch.display_ids[0].cpu(),
-                )
-            )
-            del singleton_batch
-            empty_cache()
-            gc.collect()
-        return results
+        return [self.cluster_hit(int(i), attr_fn) for i in tqdm(sampled_hit_indices(self.labels, cluster_id, max_n))]
+
+    def cluster_hit(self, hit: int, attr_fn: AttrFn = compute_attnlrp_relevance) -> ClusterHit:
+        """Hit `hit` of `selection`, attributed and ready for the presenter."""
+        bid, tid = self.selection.batch_idx[hit], self.selection.token_idx[hit]
+        sample_id = self.sample_ids[bid]
+        singleton_batch = self.source.to_model_batch([sample_id]).to(self.device)
+        relevance = attr_fn(self.model.to(self.device), singleton_batch, self.layer_getter, self.neuron_idx, tid)
+        result = ClusterHit(
+            sample_id=sample_id,
+            token_idx=int(tid),
+            relevance=relevance,
+            model_input=singleton_batch.grad_leaf.detach().cpu(),
+            hadamard=self.hdmds[hit],
+            display_ids=None if singleton_batch.display_ids is None else singleton_batch.display_ids[0].cpu(),
+        )
+        del singleton_batch
+        empty_cache()
+        gc.collect()
+        return result
+
+    def shown_cluster_ids(self, min_uniq_images: int) -> list[int]:
+        """Largest first, without clusters drawn from fewer than `min_uniq_images` distinct images."""
+        uniq_images = cluster_unique_image_counts(self.labels, self.selection.batch_idx)
+        return [cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images]
+
+    def cluster_mean_hadamard(self, cluster_id: int) -> Float[np.ndarray, "hidden"]:
+        return self._cluster_mean_hadamard(cluster_id).numpy()
 
     def _cluster_mean_hadamard(self, cluster_id: int) -> torch.Tensor:
         """Mean Hadamard product over every hit HDBSCAN placed in this cluster (not just the
@@ -298,10 +314,7 @@ class NeuronClusterHits(BaseModel):
 
         self._save_selection_plot(report_dir)
 
-        uniq_images = cluster_unique_image_counts(self.labels, self.selection.batch_idx)
-        cluster_ids = [
-            cid for cid in clusters_by_frequency(self.labels) if uniq_images[cid] >= min_uniq_images
-        ]
+        cluster_ids = self.shown_cluster_ids(min_uniq_images)
         meta = self._meta(cluster_ids, min_uniq_images)
         write_report_meta(report_dir, meta)
 

@@ -73,9 +73,11 @@ def neuron_index(
     activation_plot: str,
     cluster_nav: str,
     sections: Sequence[str],
+    mixed_hits_page: str | None = None,
 ) -> str:
     return render_template(
         "neuron_index.html",
+        mixed_hits_page=mixed_hits_page,
         title=title,
         threshold=threshold,
         n_hits=n_hits,

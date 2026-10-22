@@ -7,6 +7,7 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -17,7 +18,8 @@ from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
 from .cluster_membership import (
-    NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, most_probable_labels, one_hot_memberships,
+    NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, membership_entropy, most_probable_labels,
+    one_hot_memberships, probability_matrix,
 )
 from .clustering import cluster_labels
 from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
@@ -25,6 +27,7 @@ from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
@@ -169,6 +172,15 @@ def report_neuron(
         noise_activations=noise,
         device=config.device,
     )
+    max_entropy = max_entropy_of(config.clustering)
+    if max_entropy is not None:
+        with timed(f"{tag}: write mixed hits"):
+            mixed_path = write_mixed_hits_page(
+                hits, Path(config.out_dir) / report_name(neuron_idx, polarity),
+                probability_matrix(memberships),
+                membership_entropy(memberships), max_entropy, config.report.min_uniq_samples_per_cluster, run.attr_fn,
+            )
+        print(f"[{tag}] mixed hits -> {mixed_path}")
     with timed(f"{tag}: write report"):
         report_path = hits.write_report(
             config.out_dir,

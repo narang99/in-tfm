@@ -3,7 +3,7 @@ from pydantic import TypeAdapter
 
 from in_tfm.cluster_membership import (
     NOISE_LABEL, ClusterProbabilities, HitMembership, Noise, confident_labels, membership_entropy, most_probable_labels,
-    one_hot_memberships,
+    one_hot_memberships, probability_matrix,
 )
 from in_tfm.neuron_run import hit_memberships
 from in_tfm.run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig
@@ -64,3 +64,8 @@ def test_hits_too_mixed_are_left_out_and_the_rest_keep_their_cluster():
     ]
     assert confident_labels(memberships, max_entropy=0.6).tolist() == [0, NOISE_LABEL, NOISE_LABEL]
     assert confident_labels(memberships, max_entropy=None).tolist() == [0, 0, NOISE_LABEL]
+
+
+def test_the_probability_matrix_has_a_row_per_hit_and_zeros_for_noise():
+    matrix = probability_matrix([ClusterProbabilities(probabilities=np.array([0.2, 0.8])), Noise()])
+    assert matrix.tolist() == [[0.2, 0.8], [0.0, 0.0]]

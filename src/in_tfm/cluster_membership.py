@@ -62,3 +62,13 @@ def confident_labels(memberships: list[HitMembership], max_entropy: float | None
     if max_entropy is not None:
         labels[membership_entropy(memberships) >= max_entropy] = NOISE_LABEL
     return labels
+
+
+def probability_matrix(memberships: list[HitMembership]) -> Float[np.ndarray, "n_hits n_clusters"]:
+    """One row per hit, as wide as the longest probability vector. A noise row is all zeros."""
+    widths = [len(m.probabilities) for m in memberships if isinstance(m, ClusterProbabilities)]
+    matrix = np.zeros((len(memberships), max(widths, default=0)))
+    for i, m in enumerate(memberships):
+        if isinstance(m, ClusterProbabilities):
+            matrix[i, :len(m.probabilities)] = m.probabilities
+    return matrix
