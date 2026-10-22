@@ -10,12 +10,13 @@ from contextlib import contextmanager
 
 import numpy as np
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
+from .cluster_membership import HitMembership, most_probable_labels, one_hot_memberships
 from .clustering import cluster_labels
 from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
 from .device import empty_cache
@@ -81,16 +82,16 @@ def density_peak_trees(
     return forest, forest_trees(forest)
 
 
-def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
+def hit_memberships(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> list[HitMembership]:
     match clustering.strategy:
         case DensityPeaksConfig() as strategy:
             forest, trees = density_peak_trees(hdmd, clustering, strategy)
-            return trees.tree[forest.distinct_of_hit]
+            return one_hot_memberships(trees.tree[forest.distinct_of_hit])
         case HdbscanConfig() as strategy:
-            return cluster_labels(
+            return one_hot_memberships(cluster_labels(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
                 clustering.normalise,
-            )
+            ))
 
 
 class PreparedRun(BaseModel):
@@ -137,7 +138,7 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
-        labels = hit_labels(hdmd, config.clustering)
+        labels = most_probable_labels(hit_memberships(hdmd, config.clustering))
     print(f"[{tag}] {len(set(labels) - {-1})} clusters")
 
     hits = NeuronClusterHits(
