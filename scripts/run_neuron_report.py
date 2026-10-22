@@ -31,10 +31,13 @@ from datasets import load_dataset
 from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.inception_v1.adapter import InceptionV1Adapter
+from in_tfm.models.inception_v1.source import image_paths
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
 from in_tfm.models.mnist_cnn.source import first_per_class
 from in_tfm.models.rad_dino import RadDinoAdapter
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter
+from in_tfm.models.stl_inception.source import spread_indices
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources import dicom_paths
@@ -58,6 +61,8 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
                 config.stl.attribution,
                 config.stl.ig_steps,
             )
+        case ModelName.INCEPTION_V1:
+            return InceptionV1Adapter.from_pretrained(config.layer_name, config.inception.image_dir)
         case ModelName.MNIST_CNN:
             return MnistCnnAdapter.from_pretrained(
                 config.layer_name, config.mnist.dataset, config.mnist.split, config.mnist.checkpoint
@@ -68,7 +73,16 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
             )
 
 
+def load_inception_samples(config: RunConfig) -> list[str]:
+    paths = image_paths(config.inception.image_dir)
+    if config.inception.n_images is None:
+        return paths
+    return [paths[i] for i in spread_indices(len(paths), min(config.inception.n_images, len(paths)))]
+
+
 def load_samples(config: RunConfig) -> list[str] | list[Path] | list[int]:
+    if config.modality == "inception":
+        return load_inception_samples(config)
     if config.modality == "stl":
         return list(range(config.stl.n_images))
     if config.modality == "mnist":
