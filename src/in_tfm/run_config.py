@@ -157,6 +157,10 @@ class DensityPeaksConfig(Section):
         description="a tree's peak is its hits at least this dense relative to its root. Each hit's probability per "
         "tree comes from its geodesic distance to that tree's peak",
     )
+    max_entropy: float = Field(
+        0.5, gt=0,
+        description="bits. Hits whose probabilities over trees are this mixed or more are left out of the cluster report",
+    )
 
 
 ClusteringStrategy = Annotated[HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")]

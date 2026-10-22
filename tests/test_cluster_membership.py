@@ -2,7 +2,8 @@ import numpy as np
 from pydantic import TypeAdapter
 
 from in_tfm.cluster_membership import (
-    NOISE_LABEL, ClusterProbabilities, HitMembership, Noise, most_probable_labels, one_hot_memberships,
+    NOISE_LABEL, ClusterProbabilities, HitMembership, Noise, confident_labels, membership_entropy, most_probable_labels,
+    one_hot_memberships,
 )
 from in_tfm.neuron_run import hit_memberships
 from in_tfm.run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig
@@ -44,3 +45,22 @@ def test_every_strategy_returns_one_probability_vector_per_hit():
         for m in memberships:
             if isinstance(m, ClusterProbabilities):
                 assert np.isclose(m.probabilities.sum(), 1.0)
+
+
+def test_entropy_is_zero_for_one_cluster_and_one_bit_for_an_even_split():
+    memberships = [
+        ClusterProbabilities(probabilities=np.array([1.0, 0.0])),
+        ClusterProbabilities(probabilities=np.array([0.5, 0.5])),
+        Noise(),
+    ]
+    assert np.allclose(membership_entropy(memberships), [0.0, 1.0, 0.0])
+
+
+def test_hits_too_mixed_are_left_out_and_the_rest_keep_their_cluster():
+    memberships = [
+        ClusterProbabilities(probabilities=np.array([0.9, 0.1])),
+        ClusterProbabilities(probabilities=np.array([0.5, 0.5])),
+        Noise(),
+    ]
+    assert confident_labels(memberships, max_entropy=0.6).tolist() == [0, NOISE_LABEL, NOISE_LABEL]
+    assert confident_labels(memberships, max_entropy=None).tolist() == [0, 0, NOISE_LABEL]

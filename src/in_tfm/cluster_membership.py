@@ -41,3 +41,24 @@ def most_probable_labels(memberships: list[HitMembership]) -> Int[np.ndarray, "n
     return np.array(
         [NOISE_LABEL if isinstance(m, Noise) else int(np.argmax(m.probabilities)) for m in memberships], dtype=int
     )
+
+
+def membership_entropy(memberships: list[HitMembership]) -> Float[np.ndarray, "n_hits"]:
+    """In bits. 0 is one cluster only, 1 an even split between two. Noise has no clusters, so it gets 0."""
+    entropy = np.zeros(len(memberships))
+    for i, m in enumerate(memberships):
+        if isinstance(m, ClusterProbabilities):
+            p = m.probabilities[m.probabilities > 0]
+            entropy[i] = float(-(p * np.log2(p)).sum())
+    return entropy
+
+
+def confident_labels(memberships: list[HitMembership], max_entropy: float | None) -> Int[np.ndarray, "n_hits"]:
+    """The most probable cluster of each hit, with hits at or above `max_entropy` bits set to `NOISE_LABEL`.
+
+    - The report leaves `NOISE_LABEL` out, so a hit split between clusters does not blur any one of them.
+    - Without a threshold every hit keeps its most probable cluster."""
+    labels = most_probable_labels(memberships)
+    if max_entropy is not None:
+        labels[membership_entropy(memberships) >= max_entropy] = NOISE_LABEL
+    return labels

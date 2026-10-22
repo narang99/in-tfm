@@ -16,7 +16,9 @@ from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
-from .cluster_membership import ClusterProbabilities, HitMembership, most_probable_labels, one_hot_memberships
+from .cluster_membership import (
+    NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, most_probable_labels, one_hot_memberships,
+)
 from .clustering import cluster_labels
 from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
 from .device import empty_cache
@@ -95,6 +97,15 @@ def hit_memberships(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: Cluste
             ))
 
 
+def max_entropy_of(clustering: ClusteringConfig) -> float | None:
+    """Only density peaks gives soft probabilities. HDBSCAN's are one-hot, so it needs no threshold."""
+    match clustering.strategy:
+        case DensityPeaksConfig(max_entropy=max_entropy):
+            return max_entropy
+        case HdbscanConfig():
+            return None
+
+
 class PreparedRun(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -139,8 +150,10 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
-        labels = most_probable_labels(hit_memberships(hdmd, config.clustering))
-    print(f"[{tag}] {len(set(labels) - {-1})} clusters")
+        memberships = hit_memberships(hdmd, config.clustering)
+    labels = confident_labels(memberships, max_entropy_of(config.clustering))
+    mixed = int((most_probable_labels(memberships) != labels).sum())
+    print(f"[{tag}] {len(set(labels) - {NOISE_LABEL})} clusters, {mixed} of {len(labels)} hits too mixed to show")
 
     hits = NeuronClusterHits(
         model=run.module,
