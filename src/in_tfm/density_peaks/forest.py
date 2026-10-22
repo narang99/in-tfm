@@ -33,6 +33,10 @@ class DensityPeakForest(BaseModel):
     """The nearest denser point, or -1 for the densest point."""
     delta: Float[np.ndarray, "n_distinct"]
     """The distance to the parent. The densest point gets its distance to the farthest point."""
+    neighbours: Int[np.ndarray, "n_distinct n_neighbours"]
+    """The k nearest other distinct points, closest first. Fewer when there are fewer points."""
+    neighbour_distance: Float[np.ndarray, "n_distinct n_neighbours"]
+    """The distance to each of `neighbours`."""
 
 
 class RootCuts(BaseModel):

@@ -16,9 +16,9 @@ from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
-from .cluster_membership import HitMembership, most_probable_labels, one_hot_memberships
+from .cluster_membership import ClusterProbabilities, HitMembership, most_probable_labels, one_hot_memberships
 from .clustering import cluster_labels
-from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
+from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
@@ -86,7 +86,8 @@ def hit_memberships(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: Cluste
     match clustering.strategy:
         case DensityPeaksConfig() as strategy:
             forest, trees = density_peak_trees(hdmd, clustering, strategy)
-            return one_hot_memberships(trees.tree[forest.distinct_of_hit])
+            probabilities = calculate_probs(forest, trees, strategy.peak_share)
+            return [ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]]
         case HdbscanConfig() as strategy:
             return one_hot_memberships(cluster_labels(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
