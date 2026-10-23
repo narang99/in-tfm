@@ -95,7 +95,9 @@ else:
   - Reconnecting with `open_colab_browser_connection` does not help, since the kernel itself is busy.
 - Interrupting the stuck cell kills the run too, despite `nohup`.
   - The run ended in a `KeyboardInterrupt` after 25 minutes of work, and had to start over.
-- If it happens anyway, ask the user to stop the cell, then relaunch with `Popen` as above.
+- If it happens anyway, stop the cell yourself through Claude in Chrome, then relaunch with `Popen` as above.
+  - The Colab tab is open in the user's Chrome, so its stop button, or Runtime > Interrupt execution, can be clicked.
+  - Ask the user only if the browser tools fail.
 
 ## Verifying a run
 
