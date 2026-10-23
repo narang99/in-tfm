@@ -201,9 +201,21 @@ def write_buckets_json(buckets: list[Bucket], space: HitSpace, path: Path) -> No
     path.write_text(json.dumps(records))
 
 
-def confident_labels(space: HitSpace, max_entropy: float) -> Int[np.ndarray, "n_hits"]:
-    labels = space.probabilities.argmax(axis=1)
-    labels[~confident_hits(space.probabilities, max_entropy)] = NOISE_LABEL
+def clusters_without_confident_hits(probabilities: Float[np.ndarray, "n_hits n_clusters"], max_entropy: float) -> list[int]:
+    confident_clusters = set(probabilities.argmax(axis=1)[confident_hits(probabilities, max_entropy)].tolist())
+    return [c for c in range(probabilities.shape[1]) if c not in confident_clusters]
+
+
+def report_labels(probabilities: Float[np.ndarray, "n_hits n_clusters"], max_entropy: float) -> Int[np.ndarray, "n_hits"]:
+    """Each confident hit's most probable cluster, and noise for the rest.
+
+    - A cluster with no confident hit keeps every hit it is most probable for, so it still has a section to link to.
+      - The bucket report's cluster means fall back the same way, see `pair_mixed_report.cluster_means`.
+    """
+    most_probable = probabilities.argmax(axis=1)
+    labels = np.where(confident_hits(probabilities, max_entropy), most_probable, NOISE_LABEL)
+    for cluster in clusters_without_confident_hits(probabilities, max_entropy):
+        labels[most_probable == cluster] = cluster
     return labels
 
 
@@ -211,23 +223,29 @@ def space_cluster_hits(space: HitSpace, run: PreparedRun, config: RunConfig, neu
     return NeuronClusterHits(
         model=run.module, source=run.source, presenter=run.presenter, sample_ids=space.sample_ids,
         layer_getter=layer_getter_for(config), neuron_idx=neuron_idx, selection=space.hit_selection(),
-        labels=confident_labels(space, max_entropy), hdmds=space.hadamards,
+        labels=report_labels(space.probabilities, max_entropy), hdmds=space.hadamards,
         hadamard_shape=near_square_shape(space.hadamards.shape[1]), noise_activations=space.noise, device=config.device,
     )
 
 
-def cluster_bucket_notes(paged: list[Bucket], n_clusters: int) -> dict[int, str]:
-    """Html listing, for each cluster, the bucket pages it is in."""
+UNCONFIDENT_NOTE = (
+    '<p class="meta">No hit is confident for this cluster, so it shows the hits it is most probable for.</p>'
+)
+
+
+def cluster_notes(paged: list[Bucket], n_clusters: int, unconfident: list[int]) -> dict[int, str]:
+    """Html for the top of each cluster's section: the bucket pages it is in, and whether its hits are confident."""
     notes = {}
     for cluster in range(n_clusters):
         links = [
             f'<a href="../{BUCKET_REPORT}/{b.slug}.html">{b.name}</a> ({len(b.hits)})'
             for b in buckets_of_cluster(paged, cluster)
         ]
-        notes[cluster] = (
+        buckets = (
             f'<p class="meta">in buckets: {" &middot; ".join(links)}</p>' if links
             else '<p class="meta">in no bucket with a page</p>'
         )
+        notes[cluster] = buckets + (UNCONFIDENT_NOTE if cluster in unconfident else "")
     return notes
 
 
@@ -240,7 +258,9 @@ def write_cluster_report(
     )
     links = ReportLinks(
         page_links=[PageLink(text="bucket report", href=f"../{BUCKET_REPORT}/{INDEX_PAGE}"), PageLink(text="neuron", href=f"../{INDEX_PAGE}")],
-        cluster_notes=cluster_bucket_notes(paged, space.n_clusters),
+        cluster_notes=cluster_notes(
+            paged, space.n_clusters, clusters_without_confident_hits(space.probabilities, max_entropy),
+        ),
     )
     return hits.write_report(
         dirs.root, name=CLUSTER_REPORT, attr_fn=attr_fn, max_n=config.report.max_hits_per_cluster,
