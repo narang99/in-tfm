@@ -15,12 +15,14 @@ from .forest import (
     DensityPeakForest, ForestTrees, PeakDistance, RootCuts, comparable_rows, elbow, log_density, merge_copies, root_cuts,
     root_mask,
 )
+from .probabilities import calculate_probs
 from .vectorized import (
     DISTANCE_BLOCK_ELEMENTS, density_peak_forest, density_ranks, forest_trees, kth_distances, nearest_denser,
+    nearest_neighbours,
 )
 
 __all__ = [
-    "DISTANCE_BLOCK_ELEMENTS", "DensityPeakForest", "ForestTrees", "PeakDistance", "RootCuts", "comparable_rows",
-    "density_peak_forest", "density_ranks", "elbow", "forest_trees", "kth_distances", "log_density", "merge_copies",
-    "nearest_denser", "root_cuts", "root_mask",
+    "DISTANCE_BLOCK_ELEMENTS", "DensityPeakForest", "ForestTrees", "PeakDistance", "RootCuts", "calculate_probs",
+    "comparable_rows", "density_peak_forest", "density_ranks", "elbow", "forest_trees", "kth_distances", "log_density",
+    "merge_copies", "nearest_denser", "nearest_neighbours", "root_cuts", "root_mask",
 ]

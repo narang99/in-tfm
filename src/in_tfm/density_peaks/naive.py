@@ -41,6 +41,20 @@ def kth_distances(
     return np.array(kth, dtype=np.float64)
 
 
+def nearest_neighbours(
+    rows: Float[np.ndarray, "n_distinct compared_dim"], n_neighbours: int, distance: PeakDistance
+) -> tuple[Int[np.ndarray, "n_distinct n_neighbours"], Float[np.ndarray, "n_distinct n_neighbours"]]:
+    """Every other point sorted by distance, then index, and the first `n_neighbours` kept."""
+    distances = _distance_matrix(rows, distance)
+    n = max(min(n_neighbours, len(rows) - 1), 0)
+    neighbours, kept = [], []
+    for i in range(len(rows)):
+        others = sorted((j for j in range(len(rows)) if j != i), key=lambda j: (distances[i][j], j))[:n]
+        neighbours.append(others)
+        kept.append([distances[i][j] for j in others])
+    return np.array(neighbours, dtype=int).reshape(len(rows), n), np.array(kept, dtype=np.float64).reshape(len(rows), n)
+
+
 def density_ranks(
     kth_distance: Float[np.ndarray, "n_distinct"], counts: Int[np.ndarray, "n_distinct"]
 ) -> Int[np.ndarray, "n_distinct"]:
@@ -104,7 +118,8 @@ def density_peak_forest(
     kth_distance = kth_distances(distinct, counts, k, distance)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance)
+    neighbours, neighbour_distance = nearest_neighbours(distinct, k, distance)
     return DensityPeakForest(
         distinct_of_hit=distinct_of_hit, counts=counts, kth_distance=kth_distance, density_rank=ranks,
-        parent=parent, delta=delta,
+        parent=parent, delta=delta, neighbours=neighbours, neighbour_distance=neighbour_distance,
     )

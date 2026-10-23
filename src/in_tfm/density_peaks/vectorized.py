@@ -82,6 +82,30 @@ def kth_distances(
     return kth
 
 
+def nearest_neighbours(
+    rows: Float[np.ndarray, "n_distinct compared_dim"], n_neighbours: int, distance: PeakDistance, block_elements: int
+) -> tuple[Int[np.ndarray, "n_distinct n_neighbours"], Float[np.ndarray, "n_distinct n_neighbours"]]:
+    """Returns (neighbours, their distances): other distinct points, closest first, ties to the lower index.
+
+    - A tie at the edge of the kept set can still differ from `naive.py`, since `argpartition` picks one arbitrarily."""
+    n = min(n_neighbours, len(rows) - 1)
+    neighbours = np.empty((len(rows), max(n, 0)), dtype=int)
+    distances = np.empty((len(rows), max(n, 0)))
+    if n <= 0:
+        return neighbours, distances
+    for start, block in _row_blocks(rows, distance, block_elements):
+        own = np.arange(start, start + len(block))
+        # a point is never its own neighbour
+        block[np.arange(len(block)), own] = np.inf
+        nearest = np.argpartition(block, n - 1, axis=1)[:, :n]
+        nearest_distance = np.take_along_axis(block, nearest, axis=1)
+        # lexsort sorts by its last key first: distance, then index
+        closest_first = np.lexsort((nearest, nearest_distance), axis=1)
+        neighbours[own] = np.take_along_axis(nearest, closest_first, axis=1)
+        distances[own] = np.take_along_axis(nearest_distance, closest_first, axis=1)
+    return neighbours, distances
+
+
 def density_ranks(
     kth_distance: Float[np.ndarray, "n_distinct"], counts: Int[np.ndarray, "n_distinct"]
 ) -> Int[np.ndarray, "n_distinct"]:
@@ -156,7 +180,8 @@ def density_peak_forest(
     kth_distance = kth_distances(distinct, counts, k, distance, block_elements)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance, block_elements)
+    neighbours, neighbour_distance = nearest_neighbours(distinct, k, distance, block_elements)
     return DensityPeakForest(
         distinct_of_hit=distinct_of_hit, counts=counts, kth_distance=kth_distance, density_rank=ranks,
-        parent=parent, delta=delta,
+        parent=parent, delta=delta, neighbours=neighbours, neighbour_distance=neighbour_distance,
     )

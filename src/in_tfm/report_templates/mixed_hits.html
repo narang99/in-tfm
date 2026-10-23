@@ -1,0 +1,21 @@
+<h1>{{ title }}</h1>
+<p class="meta">{{ n_mixed }} of {{ n_hits }} hits have entropy of {{ min_entropy }} bits or more over the clusters, so the report leaves them out &middot; <a href="index.html">back to the report</a></p>
+<ul class="notes">
+<li>Each row is one of those hits: up to {{ per_bin }} from each of {{ bins }} entropy bins, least mixed first.</li>
+<li>The hit is drawn as in the report. Then each cluster the report shows, as its mean Hadamard over the hits it keeps.</li>
+<li>A cluster fades toward grey the less likely the hit is to belong to it. The most likely one is outlined. The number is the probability.</li>
+</ul>
+<div style="overflow-x:auto">
+<table style="border-collapse:collapse">
+<tr><th style="text-align:left">hit</th>{% for c in clusters %}<th style="font-weight:normal;font-size:0.8rem;padding:0 6px"><a href="index.html#cluster-{{ c.cluster_id }}">{{ c.cluster_id }}</a></th>{% endfor %}</tr>
+<tr><td style="font-size:0.75rem;color:var(--muted)">cluster means</td>{% for c in clusters %}<td style="padding:4px 6px;text-align:center"><img src="{{ c.src }}" alt="cluster {{ c.cluster_id }} mean Hadamard"></td>{% endfor %}</tr>
+{% for row in rows %}
+<tr style="border-top:1px solid #ccc">
+<td style="padding:6px 10px 6px 0;vertical-align:top">{{ row.hit_html|safe }}<div style="font-size:0.75rem;color:var(--muted)">entropy {{ "%.2f"|format(row.entropy) }} bits</div></td>
+{% for cell in row.cells %}
+<td style="padding:4px 6px;text-align:center;vertical-align:top"><div style="display:inline-block;padding:2px;{% if cell.likely %}outline:2px solid #2a78d6;{% endif %}"><img src="{{ cell.src }}" alt="cluster mean, faded by probability"></div><div style="font-size:0.75rem">{{ cell.probability }}</div></td>
+{% endfor %}
+</tr>
+{% endfor %}
+</table>
+</div>

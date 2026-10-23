@@ -7,21 +7,27 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from nnsight import NNsight
 from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
+from .cluster_membership import (
+    NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, membership_entropy, most_probable_labels,
+    one_hot_memberships, probability_matrix,
+)
 from .clustering import cluster_labels
-from .density_peaks import DensityPeakForest, ForestTrees, density_peak_forest, forest_trees
+from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
@@ -81,16 +87,26 @@ def density_peak_trees(
     return forest, forest_trees(forest)
 
 
-def hit_labels(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Int[np.ndarray, "n_hits"]:
+def hit_memberships(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> list[HitMembership]:
     match clustering.strategy:
         case DensityPeaksConfig() as strategy:
             forest, trees = density_peak_trees(hdmd, clustering, strategy)
-            return trees.tree[forest.distinct_of_hit]
+            probabilities = calculate_probs(forest, trees, strategy.peak_share)
+            return [ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]]
         case HdbscanConfig() as strategy:
-            return cluster_labels(
+            return one_hot_memberships(cluster_labels(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
                 clustering.normalise,
-            )
+            ))
+
+
+def max_entropy_of(clustering: ClusteringConfig) -> float | None:
+    """Only density peaks gives soft probabilities. HDBSCAN's are one-hot, so it needs no threshold."""
+    match clustering.strategy:
+        case DensityPeaksConfig(max_entropy=max_entropy):
+            return max_entropy
+        case HdbscanConfig():
+            return None
 
 
 class PreparedRun(BaseModel):
@@ -137,8 +153,10 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
-        labels = hit_labels(hdmd, config.clustering)
-    print(f"[{tag}] {len(set(labels) - {-1})} clusters")
+        memberships = hit_memberships(hdmd, config.clustering)
+    labels = confident_labels(memberships, max_entropy_of(config.clustering))
+    mixed = int((most_probable_labels(memberships) != labels).sum())
+    print(f"[{tag}] {len(set(labels) - {NOISE_LABEL})} clusters, {mixed} of {len(labels)} hits too mixed to show")
 
     hits = NeuronClusterHits(
         model=run.module,
@@ -154,6 +172,15 @@ def report_neuron(
         noise_activations=noise,
         device=config.device,
     )
+    max_entropy = max_entropy_of(config.clustering)
+    if max_entropy is not None:
+        with timed(f"{tag}: write mixed hits"):
+            mixed_path = write_mixed_hits_page(
+                hits, Path(config.out_dir) / report_name(neuron_idx, polarity),
+                probability_matrix(memberships),
+                membership_entropy(memberships), max_entropy, config.report.min_uniq_samples_per_cluster, run.attr_fn,
+            )
+        print(f"[{tag}] mixed hits -> {mixed_path}")
     with timed(f"{tag}: write report"):
         report_path = hits.write_report(
             config.out_dir,

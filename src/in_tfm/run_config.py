@@ -152,6 +152,15 @@ class DensityPeaksConfig(Section):
 
     method: Literal["density_peaks"] = "density_peaks"
     k: int = Field(5, description="a hit's density is 1 / the distance to its kth neighbour")
+    peak_share: float = Field(
+        0.8, gt=0, le=1,
+        description="a tree's peak is its hits at least this dense relative to its root. Each hit's probability per "
+        "tree comes from its geodesic distance to that tree's peak",
+    )
+    max_entropy: float = Field(
+        0.5, gt=0,
+        description="bits. Hits whose probabilities over trees are this mixed or more are left out of the cluster report",
+    )
 
 
 ClusteringStrategy = Annotated[HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")]

@@ -165,3 +165,27 @@ def test_default_trees_use_the_elbows_and_keep_them():
     forest = density_peak_forest(points_with_copies(np.random.default_rng(5)), k=4)
     assert forest_trees(forest).cuts == root_cuts(forest)
 
+
+
+@pytest.mark.parametrize("distance", DISTANCES)
+@pytest.mark.parametrize("block_elements", BLOCK_ELEMENTS)
+def test_nearest_neighbours_match_naive(distance, block_elements):
+    rows, _ = merged(points_with_copies(np.random.default_rng(7)), distance)
+    neighbours, distances = vectorized.nearest_neighbours(rows, 4, distance, block_elements)
+    naive_neighbours, naive_distances = naive.nearest_neighbours(rows, 4, distance)
+    assert np.array_equal(neighbours, naive_neighbours)
+    assert np.allclose(distances, naive_distances)
+
+
+def test_nearest_neighbours_are_capped_by_the_number_of_other_points():
+    rows = np.array([[0.0, 1.0], [1.0, 0.0]])
+    assert vectorized.nearest_neighbours(rows, 5, "euclidean", 2**26)[0].tolist() == [[1], [0]]
+    assert naive.nearest_neighbours(rows, 5, "euclidean")[0].tolist() == [[1], [0]]
+
+
+def test_whole_forest_neighbours_match_naive():
+    points = points_with_copies(np.random.default_rng(8))
+    forest = vectorized.density_peak_forest(points, k=4, block_elements=10)
+    naive_forest = naive.density_peak_forest(points, k=4)
+    assert np.array_equal(forest.neighbours, naive_forest.neighbours)
+    assert np.allclose(forest.neighbour_distance, naive_forest.neighbour_distance)

@@ -11,6 +11,9 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 - `vectorized.py` is the implementation callers use.
   - `__init__.py` exposes it, so `from in_tfm.density_peaks import ...` gets the vectorized functions.
 - `naive.py` mirrors it.
+- `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
+  - It builds on the forest's stored neighbours.
+  - It has its own naive and vectorized split. See its AGENTS.md.
 - The distance itself comes from `in_tfm.weighted_jaccard`, which has its own naive and vectorized split.
 
 ## Naive and vectorized mirrors
