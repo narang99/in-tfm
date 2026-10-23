@@ -10,7 +10,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from jaxtyping import Bool, Float, Int
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from .density_peaks import DensityPeakForest, ForestTrees
 from .hit_selection import HitSelection
@@ -21,21 +23,34 @@ from .sources import SampleId
 HADAMARDS = "hadamards.npy"
 HITS = "hits.npz"
 SELECTION = "selection.json"
+PICK_ARRAYS = "pick_arrays.npz"
 SORTED_MAGNITUDES = "sorted_magnitudes.npy"
 NOISE = "noise.npy"
 DISTANCES = "distances.npy"
 FOREST = "forest.npz"
 TREES = "trees.npz"
 PROBABILITIES = "probabilities.npy"
-SPACE_FILES = (HADAMARDS, HITS, SELECTION, SORTED_MAGNITUDES, NOISE, DISTANCES, FOREST, TREES, PROBABILITIES)
+SPACE_FILES = (HADAMARDS, HITS, SELECTION, PICK_ARRAYS, SORTED_MAGNITUDES, NOISE, DISTANCES, FOREST, TREES, PROBABILITIES)
 
 
 class SelectionRecord(BaseModel):
-    """What the elbow or bucket plot needs from the selection, beside the hit positions in `hits.npz`."""
+    """What the elbow or bucket plot needs from the selection, beside the hit positions in `hits.npz`.
+
+    - A bucketed pick holds numpy arrays, which JSON cannot, so those go to `pick_arrays.npz`.
+    """
 
     polarity: Polarity
     n_candidates: int
-    pick: Pick
+    pick_fields: dict[str, Any]
+    """The pick without its arrays."""
+
+
+def pick_arrays(pick: Pick) -> dict[str, np.ndarray]:
+    return {name: value for name, value in vars(pick).items() if isinstance(value, np.ndarray)}
+
+
+def load_pick(record: SelectionRecord, arrays: dict[str, np.ndarray]) -> Pick:
+    return TypeAdapter(Pick).validate_python({**record.pick_fields, **arrays})
 
 
 class HitSpace(BaseModel):
@@ -47,6 +62,7 @@ class HitSpace(BaseModel):
     activations: Float[np.ndarray, "n_hits"]
     sample_ids: list[SampleId]
     selection: SelectionRecord
+    pick: Pick
     sorted_magnitudes: Float[np.ndarray, "n_pos"]
     noise: Float[np.ndarray, "n_noise"]
     """Activations at random valid positions, hits or not, for the activation range plot."""
@@ -63,7 +79,7 @@ class HitSpace(BaseModel):
         return HitSelection(
             polarity=self.selection.polarity, batch_idx=self.batch_idx, token_idx=self.token_idx,
             activations=self.activations, n_candidates=self.selection.n_candidates,
-            sorted_magnitudes=torch.from_numpy(self.sorted_magnitudes), pick=self.selection.pick,
+            sorted_magnitudes=torch.from_numpy(self.sorted_magnitudes), pick=self.pick,
         )
 
 
@@ -88,8 +104,13 @@ def save_hits(
         space_dir / HITS, batch_idx=selection.batch_idx, token_idx=selection.token_idx,
         activations=selection.activations, sample_ids=np.array(sample_ids),
     )
-    record = SelectionRecord(polarity=selection.polarity, n_candidates=selection.n_candidates, pick=selection.pick)
+    arrays = pick_arrays(selection.pick)
+    record = SelectionRecord(
+        polarity=selection.polarity, n_candidates=selection.n_candidates,
+        pick_fields=selection.pick.model_dump(exclude=set(arrays)),
+    )
     (space_dir / SELECTION).write_text(record.model_dump_json())
+    np.savez(space_dir / PICK_ARRAYS, **arrays)
     np.save(space_dir / SORTED_MAGNITUDES, selection.sorted_magnitudes.numpy())
     np.save(space_dir / NOISE, noise)
 
@@ -114,10 +135,12 @@ def save_forest(
 def load_space(space_dir: Path) -> HitSpace:
     hits, forest, trees = np.load(space_dir / HITS), np.load(space_dir / FOREST), np.load(space_dir / TREES)
     distinct_of_hit = forest["distinct_of_hit"]
+    selection = SelectionRecord.model_validate_json((space_dir / SELECTION).read_text())
+    arrays = dict(np.load(space_dir / PICK_ARRAYS))
     return HitSpace(
         hadamards=np.load(space_dir / HADAMARDS), batch_idx=hits["batch_idx"], token_idx=hits["token_idx"],
         activations=hits["activations"], sample_ids=hits["sample_ids"].tolist(),
-        selection=SelectionRecord.model_validate_json((space_dir / SELECTION).read_text()),
+        selection=selection, pick=load_pick(selection, arrays),
         sorted_magnitudes=np.load(space_dir / SORTED_MAGNITUDES), noise=np.load(space_dir / NOISE),
         probabilities=np.load(space_dir / PROBABILITIES)[distinct_of_hit], distinct_of_hit=distinct_of_hit,
         roots=trees["roots"],
