@@ -1,17 +1,11 @@
-"""A probability per tree for each point, from how far it is from each tree's peak along the kNN graph.
-
-- Distance runs along the kNN graph, so it follows a tree's shape and pays for crossing sparse ground.
-  - A straight distance to a tree's centre treats the tree as a ball, and its probabilities come out flat.
-- A tree's peak is its points nearly as dense as its root, so a slightly odd root does not decide the distances alone.
-- Probabilities are a softmax of −distance / τ over trees, with τ one typical step: the median nearest-neighbour distance.
-"""
+"""The implementation callers use. `naive.py` computes the same things one point at a time."""
 
 import numpy as np
 import scipy.sparse as sp
 from jaxtyping import Float, Int
 from scipy.sparse.csgraph import dijkstra
 
-from .forest import DensityPeakForest, ForestTrees
+from ..forest import DensityPeakForest, ForestTrees
 
 
 def calculate_probs(

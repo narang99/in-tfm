@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from in_tfm.density_peaks import DensityPeakForest, ForestTrees, RootCuts, calculate_probs, density_peak_forest, forest_trees
-from in_tfm.density_peaks.probabilities import geodesic_distances, knn_graph, peak_cores, softmax_over_trees
+from in_tfm.density_peaks.probabilities import (
+    geodesic_distances, knn_graph, naive, peak_cores, softmax_over_trees, vectorized,
+)
 
 
 def line_forest() -> tuple[DensityPeakForest, ForestTrees]:
@@ -66,3 +68,69 @@ def test_a_point_out_of_reach_of_every_peak_keeps_its_own_tree(peak_share):
     probabilities = calculate_probs(isolated, trees, peak_share)
     assert np.allclose(probabilities.sum(axis=1), 1)
     assert np.array_equal(probabilities.argmax(axis=1), trees.tree)
+
+
+def blob_forest(seed: int) -> tuple[DensityPeakForest, ForestTrees]:
+    """Three loose blobs of signed points with a few exact copies, so copies merge.
+
+    The delta cut gives 4 trees, with 7 to 13 points spread across them, so every step has real work."""
+    rng = np.random.default_rng(seed)
+    centres = rng.normal(scale=3.0, size=(3, 5))
+    points = np.vstack([c + rng.normal(size=(15, 5)) for c in centres])
+    points = np.vstack([points, points[:4]])
+    forest = density_peak_forest(points, k=4)
+    return forest, forest_trees(forest, RootCuts(rho=float("-inf"), delta=0.5))
+
+
+def dense(graph: naive.Graph) -> np.ndarray:
+    matrix = np.zeros((len(graph), len(graph)))
+    for point, edges in enumerate(graph):
+        for other, length in edges.items():
+            matrix[point, other] = length
+    return matrix
+
+
+def forests() -> list[tuple[DensityPeakForest, ForestTrees]]:
+    line, line_trees = line_forest()
+    cut = line.model_copy(update={"neighbour_distance": np.full((5, 1), np.inf)})
+    return [blob_forest(0), blob_forest(1), (line, line_trees), (cut, line_trees)]
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+@pytest.mark.parametrize("peak_share", [0.5, 0.8, 1.0])
+def test_peak_cores_match_the_naive_loop(forest, trees, peak_share):
+    expected = naive.peak_cores(forest, trees, peak_share)
+    assert [c.tolist() for c in vectorized.peak_cores(forest, trees, peak_share)] == [c.tolist() for c in expected]
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+def test_knn_graph_matches_the_naive_loop(forest, trees):
+    assert np.array_equal(vectorized.knn_graph(forest).toarray(), dense(naive.knn_graph(forest)))
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+def test_geodesic_distances_match_the_naive_dijkstra(forest, trees):
+    cores = naive.peak_cores(forest, trees, 0.8)
+    expected = naive.geodesic_distances(naive.knn_graph(forest), cores)
+    assert np.allclose(vectorized.geodesic_distances(vectorized.knn_graph(forest), cores), expected)
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+def test_step_length_matches_the_naive_loop(forest, trees):
+    assert vectorized.step_length(forest) == naive.step_length(forest)
+
+
+def test_softmax_matches_the_naive_loop():
+    rng = np.random.default_rng(2)
+    distances = rng.uniform(0, 5, size=(30, 4))
+    distances[3, 1] = np.inf
+    distances[7] = np.inf
+    distances[9] += 1000.0
+    assert np.allclose(vectorized.softmax_over_trees(distances, 0.3), naive.softmax_over_trees(distances, 0.3))
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+@pytest.mark.parametrize("peak_share", [0.5, 0.8, 1.0])
+def test_probabilities_match_the_naive_loop(forest, trees, peak_share):
+    expected = naive.calculate_probs(forest, trees, peak_share)
+    assert np.allclose(vectorized.calculate_probs(forest, trees, peak_share), expected)
