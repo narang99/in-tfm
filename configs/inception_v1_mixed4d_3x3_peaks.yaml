@@ -10,6 +10,8 @@ batch_size: 16
 out_dir: reports/space_mixed4d_3x3
 inception:
   n_images: 2000
+hits:
+  method: bucketed  # as configs/inception_v1_mixed4e_bucketed.yaml, assuming nothing about the elbow
 clustering:
   "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
   distance: weighted_jaccard
