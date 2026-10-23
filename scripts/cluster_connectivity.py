@@ -5,7 +5,8 @@
 
 - Outliers are the hits with no mutual neighbour: i and j are linked only if each is in the other's k nearest.
 - Two clusters are directly connected if some mutual edge has a hit of each at its ends.
-- A hit's cluster is its density-peak tree, either for every hit, or only for the confident ones (entropy below the cut).
+- A hit's cluster is its most probable tree, as in the report, for every hit or only for the confident ones (entropy below the cut).
+  - It is not the forest tree: the geodesic probabilities put 5218 of 14240 hits in another tree than the one they grew in.
 """
 
 import argparse
@@ -35,15 +36,13 @@ def mutual_edges(neighbours: Int[np.ndarray, "n k"]) -> Int[np.ndarray, "n_edges
     return np.stack([mutual.row[keep], mutual.col[keep]], axis=1)
 
 
-def hit_trees(space: Path) -> Int[np.ndarray, "n"]:
-    forest, trees = np.load(space / "forest.npz"), np.load(space / "trees.npz")
-    return trees["tree"][forest["distinct_of_hit"]]
-
-
-def hit_entropy_bits(space: Path) -> Float[np.ndarray, "n"]:
+def hit_probabilities(space: Path) -> Float[np.ndarray, "n n_trees"]:
     forest, probabilities = np.load(space / "forest.npz"), np.load(space / "probabilities.npy")
-    p = probabilities[forest["distinct_of_hit"]]
-    return -(p * np.log2(np.where(p > 0, p, 1.0))).sum(axis=1)
+    return probabilities[forest["distinct_of_hit"]]
+
+
+def entropy_bits(probabilities: Float[np.ndarray, "n n_trees"]) -> Float[np.ndarray, "n"]:
+    return -(probabilities * np.log2(np.where(probabilities > 0, probabilities, 1.0))).sum(axis=1)
 
 
 def cluster_pair_edges(edges: Int[np.ndarray, "n_edges 2"], labels: Int[np.ndarray, "n"], n_clusters: int) -> Int[np.ndarray, "c c"]:
@@ -75,19 +74,20 @@ def summarise(name: str, k: int, edges: Int[np.ndarray, "n_edges 2"], labels: In
     return {"sizes": sizes, "pair_edges": pair_edges}
 
 
-def report_k(space: Path, k: int, distances: Float[np.ndarray, "n n"], trees: Int[np.ndarray, "n"],
+def report_k(space: Path, k: int, distances: Float[np.ndarray, "n n"], most_probable: Int[np.ndarray, "n"],
              confident: Bool[np.ndarray, "n"], min_size: int) -> None:
+    n_hits = len(most_probable)
     edges = mutual_edges(nearest_neighbours(distances, k))
-    degree = np.bincount(edges.ravel(), minlength=len(trees))
+    degree = np.bincount(edges.ravel(), minlength=n_hits)
     outliers = degree == 0
-    print(f"\n=== k={k}: {len(edges)} mutual edges, {int(outliers.sum())} of {len(trees)} hits have none (outliers) ===")
+    print(f"\n=== k={k}: {len(edges)} mutual edges, {int(outliers.sum())} of {n_hits} hits have none (outliers) ===")
     _, hit_component = connected_components(
-        csr_matrix((np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])), shape=(len(trees),) * 2), directed=False
+        csr_matrix((np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])), shape=(n_hits,) * 2), directed=False
     )
     sizes = np.bincount(hit_component[~outliers])
     print(f"  hit-level components: {int((sizes > 0).sum())}, largest {np.sort(sizes)[::-1][:5].tolist()}")
     results = {}
-    for name, labels in {"all hits by tree": trees, "confident hits only": np.where(confident, trees, UNLABELLED)}.items():
+    for name, labels in {"all hits": most_probable, "confident hits only": np.where(confident, most_probable, UNLABELLED)}.items():
         results[name] = summarise(name, k, edges, labels, min_size)
     np.savez(space / f"connectivity_k{k}.npz", edges=edges, outliers=outliers, hit_component=hit_component,
              **{f"{name.replace(' ', '_')}__{key}": value for name, r in results.items() for key, value in r.items()})
@@ -101,11 +101,12 @@ def main() -> None:
     args = parser.parse_args()
 
     distances = np.load(args.space / "distances.npy")
-    trees = hit_trees(args.space)
-    confident = hit_entropy_bits(args.space) < MAX_ENTROPY_BITS
-    print(f"{len(trees)} hits, {int(confident.sum())} confident (entropy < {MAX_ENTROPY_BITS} bits), {trees.max() + 1} trees")
+    probabilities = hit_probabilities(args.space)
+    labels = probabilities.argmax(axis=1)
+    confident = entropy_bits(probabilities) < MAX_ENTROPY_BITS
+    print(f"{len(labels)} hits, {int(confident.sum())} confident (entropy < {MAX_ENTROPY_BITS} bits), {probabilities.shape[1]} trees")
     for k in args.ks:
-        report_k(args.space, k, distances, trees, confident, args.min_size)
+        report_k(args.space, k, distances, labels, confident, args.min_size)
 
 
 if __name__ == "__main__":
