@@ -32,9 +32,10 @@ class ModelName(StrEnum):
     STL_INCEPTION = "self/stl-inception"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
+    INCEPTION_V1 = "lucent/inception-v1"
 
 
-Modality = Literal["text", "image", "stl", "mnist"]
+Modality = Literal["text", "image", "stl", "mnist", "inception"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
@@ -43,6 +44,7 @@ MODALITY: dict[ModelName, Modality] = {
     ModelName.STL_INCEPTION: "stl",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
+    ModelName.INCEPTION_V1: "inception",
 }
 
 
@@ -62,6 +64,7 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.STL_INCEPTION: {Target.CONV},
     ModelName.MNIST_CNN: {Target.CONV, Target.LINEAR},
     ModelName.MNIST_CNN_SMALL: {Target.CONV, Target.LINEAR},
+    ModelName.INCEPTION_V1: {Target.CONV},
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
@@ -108,6 +111,15 @@ class MnistDataConfig(Section):
     split: Literal["train", "test"] = "test"
     images_per_class: int = Field(100, description="the first n images of each digit in the split")
     checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
+
+
+class InceptionDataConfig(Section):
+    image_dir: Path = Field(
+        Path("data/inception_pool"), description="one folder per class holding jpgs, see scripts/prepare_inception_images.py"
+    )
+    n_images: int | None = Field(
+        None, description="evenly spread over the sorted images, so every class is in it. All of them if unset"
+    )
 
 
 class HitSelectionConfig(Section):
@@ -225,6 +237,7 @@ class RunConfig(BaseSettings):
     image: ImageDataConfig = ImageDataConfig()
     stl: StlDataConfig = StlDataConfig()
     mnist: MnistDataConfig = MnistDataConfig()
+    inception: InceptionDataConfig = InceptionDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
@@ -258,7 +271,7 @@ class RunConfig(BaseSettings):
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "image", "stl", "mnist"} - {self.modality}
+        others = {"text", "image", "stl", "mnist", "inception"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self

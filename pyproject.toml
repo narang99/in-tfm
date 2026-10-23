@@ -57,7 +57,15 @@ in-tfm = "in_tfm:main"
 viz = [
     "circuitsvis>=1.43.3",
 ]
+# The PyPI release pins kornia<=0.4.1, which does not install on a current python.
+# The `dev` branch (see tool.uv.sources) lifts the pin, so this extra needs uv, not pip.
+inception = [
+    "torch-lucent",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+torch-lucent = { git = "https://github.com/greentfrapp/lucent", rev = "dev" }

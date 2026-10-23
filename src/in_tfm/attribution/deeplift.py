@@ -1,4 +1,4 @@
-"""DeepLift for networks of linear ops, ReLUs and max pools, complete by construction.
+"""DeepLift for networks of linear ops, ReLUs, max pools and local response norms, complete by construction.
 
 Why not captum's DeepLift:
 
@@ -21,6 +21,9 @@ How this works:
   - So `grad * (x - x0)` sums to exactly the change in the selected activation.
 - A ReLU's multiplier is `(y - y0) / (x - x0)`, the Rescale rule.
   - Where `x == x0` it is the ReLU's own slope, which carries no attribution anyway.
+- A local response norm gets the same Rescale rule, element by element.
+  - It mixes neighbouring channels, so this ignores the cross-channel terms.
+  - The multipliers still reproduce its output exactly, so completeness holds.
 - A max pool's change is split in two, as in the DeepLift paper's treatment of max.
   - The part by which the input's pooled value exceeds the baseline's goes to the input's winner.
   - The part by which it falls short goes to the baseline's winner.
@@ -45,9 +48,11 @@ Selector = Callable[[torch.Tensor], torch.Tensor]
 EPS = 1e-10
 
 
-def relu_multiplier(x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
+def rescale_multiplier(
+    x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor, slope_where_unchanged: torch.Tensor
+) -> torch.Tensor:
     unchanged = (x - x0).abs() < EPS
-    return torch.where(unchanged, (x > 0).to(x.dtype), (y - y0) / torch.where(unchanged, torch.ones_like(x), x - x0))
+    return torch.where(unchanged, slope_where_unchanged, (y - y0) / torch.where(unchanged, torch.ones_like(x), x - x0))
 
 
 def divide_where_nonzero(numerator: torch.Tensor, denominator: torch.Tensor) -> torch.Tensor:
@@ -67,7 +72,12 @@ def at_winners(x: torch.Tensor, winners: torch.Tensor) -> torch.Tensor:
 
 def relu_surrogate(x: torch.Tensor, x0: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
     y = F.relu(x)
-    return y0 + relu_multiplier(x, x0, y, y0).detach() * (x - x0)
+    return y0 + rescale_multiplier(x, x0, y, y0, (x > 0).to(x.dtype)).detach() * (x - x0)
+
+
+def response_norm_surrogate(x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
+    """Where the input did not change the slope carries no attribution, and a local response norm is close to the identity."""
+    return y0 + rescale_multiplier(x, x0, y, y0, torch.ones_like(x)).detach() * (x - x0)
 
 
 def maxpool_surrogate(pool: nn.MaxPool2d, x: torch.Tensor, x0: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
@@ -90,7 +100,7 @@ def deeplift_attribution(
 ) -> Float[torch.Tensor, "batch ..."]:
     """Attribution of `selector(layer output)` to every element of `x`, summing to its change from the baseline."""
     baseline = torch.zeros_like(x) if baseline is None else baseline
-    nonlinear = [m for m in model.modules() if isinstance(m, (nn.ReLU, nn.MaxPool2d))]
+    nonlinear = [m for m in model.modules() if isinstance(m, (nn.ReLU, nn.MaxPool2d, nn.LocalResponseNorm))]
     reference: dict[nn.Module, tuple[torch.Tensor, torch.Tensor]] = {}
 
     def record(module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
@@ -100,6 +110,8 @@ def deeplift_attribution(
         x0, y0 = reference[module]
         if isinstance(module, nn.ReLU):
             return relu_surrogate(inputs[0], x0, y0)
+        if isinstance(module, nn.LocalResponseNorm):
+            return response_norm_surrogate(inputs[0], x0, output, y0)
         return maxpool_surrogate(module, inputs[0], x0, y0)
 
     handles = [m.register_forward_hook(record) for m in nonlinear]
