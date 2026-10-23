@@ -8,6 +8,7 @@
 <li>Buckets with fewer than {{ min_hits }} hits have no page.</li>
 </ul>
 <img src="{{ base_src }}" alt="map of the sampled hits" style="max-width:100%;height:auto">
+<p class="meta"><a href="{{ huge_base_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>
 {% for n, pages in groups %}
 <h3 style="margin:14px 0 4px">{{ n }} cluster{{ "s" if n > 1 }}</h3>
 <table style="border-collapse:collapse">

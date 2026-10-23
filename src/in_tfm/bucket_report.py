@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .attribution import compute_attnlrp_relevance
 from .bucket_graph import SampleMap
-from .bucket_map_image import draw_base, draw_bucket
+from .bucket_map_image import HUGE_CANVAS, NORMAL_CANVAS, draw_base, draw_bucket
 from .hit_buckets import Bucket
 from .html_report import page, render_template
 from .mixed_hits_report import Cell, cells, tile_url
@@ -31,6 +31,7 @@ SHOWN_CLUSTERS = 3
 MIN_SHOWN_PROBABILITY = 0.05
 INDEX_PAGE = "index.html"
 BASE_MAP = "base_map.png"
+HUGE_SUFFIX = "_huge"
 
 
 class HitCard(BaseModel):
@@ -46,6 +47,7 @@ class BucketPage(BaseModel):
     n_starred: int
     page: str
     map_src: str
+    huge_map_src: str
     cluster_tiles: list[tuple[int, str]]
     cards: list[HitCard]
 
@@ -83,7 +85,7 @@ def numbered_hits(
 
 
 def write_bucket_page(
-    bucket: Bucket, sample: SampleMap, base: Image.Image, hits: NeuronClusterHits, report_dir: Path,
+    bucket: Bucket, sample: SampleMap, bases: tuple[Image.Image, Image.Image], hits: NeuronClusterHits, report_dir: Path,
     tiles: dict[int, Image.Image], probabilities: Float[np.ndarray, "n_hits n_clusters"], attr_fn: AttrFn,
     card_cache: dict[int, HitCard],
 ) -> BucketPage | None:
@@ -97,13 +99,12 @@ def write_bucket_page(
             card_cache[hit] = render_hit_card(hits, hit, report_dir, tiles, probabilities, attr_fn)
 
     slug = bucket_slug(bucket.name)
-    map_path = report_dir / "maps" / f"{slug}.png"
-    draw_bucket(
-        base, sample.points, [node_of_hit[int(h)] for h in starred_hits], [node_of_hit[h] for h in numbered]
-    ).save(map_path)
+    for base, suffix in zip(bases, ("", HUGE_SUFFIX)):
+        starred_nodes, numbered_nodes = [node_of_hit[int(h)] for h in starred_hits], [node_of_hit[h] for h in numbered]
+        draw_bucket(base, sample.points, starred_nodes, numbered_nodes).save(report_dir / "maps" / f"{slug}{suffix}.png")
     result = BucketPage(
         name=bucket.name, n_clusters=len(bucket.clusters), n_hits=len(bucket.hits), n_starred=len(starred_hits),
-        page=f"{slug}.html", map_src=f"maps/{slug}.png",
+        page=f"{slug}.html", map_src=f"maps/{slug}.png", huge_map_src=f"maps/{slug}{HUGE_SUFFIX}.png",
         cluster_tiles=[(c, tile_url(tiles[c], report_dir / "bucket_tiles", f"cluster{c}.png")) for c in bucket.clusters],
         cards=[card_cache[h] for h in numbered],
     )
@@ -117,7 +118,7 @@ def write_index(pages: list[BucketPage], hits: NeuronClusterHits, report_dir: Pa
     groups = [(n, [p for p in pages if p.n_clusters == n]) for n in sizes]
     title = f"Neuron {hits.neuron_idx}: buckets of hits by the clusters that carry them"
     body = render_template(
-        "bucket_index.html", title=title, groups=groups, base_src=BASE_MAP, n_sampled=n_sampled, min_hits=min_hits,
+        "bucket_index.html", title=title, groups=groups, base_src=BASE_MAP, huge_base_src=f"base_map{HUGE_SUFFIX}.png", n_sampled=n_sampled, min_hits=min_hits,
     )
     path = report_dir / INDEX_PAGE
     path.write_text(page(title, body))
@@ -135,14 +136,18 @@ def write_bucket_report(
     means = cluster_means(hits.hdmds, probabilities.argmax(axis=1), confident, cluster_ids)
     tiles = dict(zip(cluster_ids, render_hadamard_tiles([m.reshape(hits.hadamard_shape) for m in means])))
 
-    base = draw_base(sample.points, sample.labels, sample.peak_nodes)
-    base.save(report_dir / BASE_MAP)
+    bases = (
+        draw_base(sample.points, sample.labels, sample.peak_nodes, NORMAL_CANVAS),
+        draw_base(sample.points, sample.labels, sample.peak_nodes, HUGE_CANVAS),
+    )
+    bases[0].save(report_dir / BASE_MAP)
+    bases[1].save(report_dir / f"base_map{HUGE_SUFFIX}.png")
     card_cache: dict[int, HitCard] = {}
     pages = []
     for bucket in buckets:
         if len(bucket.hits) < min_hits:
             continue
-        written = write_bucket_page(bucket, sample, base, hits, report_dir, tiles, probabilities, attr_fn, card_cache)
+        written = write_bucket_page(bucket, sample, bases, hits, report_dir, tiles, probabilities, attr_fn, card_cache)
         if written is not None:
             pages.append(written)
     return write_index(pages, hits, report_dir, len(sample.hits), min_hits)

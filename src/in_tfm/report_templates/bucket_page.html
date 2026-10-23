@@ -9,6 +9,7 @@
 {% for cluster, src in b.cluster_tiles %}<img src="{{ src }}" alt="cluster {{ cluster }} mean Hadamard"> cluster {{ cluster }}&nbsp;&nbsp;{% endfor %}
 </div>
 <img src="{{ b.map_src }}" alt="map of the sampled hits with this bucket starred" style="max-width:100%;height:auto">
+<p class="meta"><a href="{{ b.huge_map_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>
 <div style="overflow-x:auto">
 <table style="border-collapse:collapse">
 {% for card in b.cards %}
