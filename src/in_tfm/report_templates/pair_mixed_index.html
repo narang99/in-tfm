@@ -1,0 +1,18 @@
+<h1>{{ title }}</h1>
+<p class="meta">{{ entries|length }} pairs of clusters, out of {{ n_hits }} hits</p>
+<ul class="notes">
+<li>A hit belongs to the pair of its two most probable clusters, when the second has a probability of {{ min_second }} or more.</li>
+<li>Pairs with fewer than {{ min_pair_hits }} such hits are left out.</li>
+<li>Each pair has its own page, split by the hit's entropy over every cluster.</li>
+</ul>
+<table style="border-collapse:collapse">
+<tr><th style="text-align:left;padding-right:12px">pair</th><th style="text-align:right;padding-right:12px">hits</th><th style="text-align:left">entropy bins (hits)</th><th></th></tr>
+{% for e in entries %}
+<tr style="border-top:1px solid #ccc">
+<td style="padding:4px 12px 4px 0"><a href="{{ e.page }}">clusters {{ e.first }} and {{ e.second }}</a></td>
+<td style="text-align:right;padding-right:12px">{{ e.n_hits }}</td>
+<td style="font-size:0.85rem;padding-right:12px">{% for b in e.bins %}{{ b.label }}: {{ b.n_in_bin }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</td>
+<td><img src="{{ e.first_src }}" alt="cluster {{ e.first }} mean"> <img src="{{ e.second_src }}" alt="cluster {{ e.second }} mean"></td>
+</tr>
+{% endfor %}
+</table>

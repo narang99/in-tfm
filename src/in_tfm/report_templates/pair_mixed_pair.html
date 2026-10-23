@@ -1,0 +1,27 @@
+<h1>{{ title }}</h1>
+<p class="meta">{{ s.n_hits }} hits &middot; <a href="index.html">back to all pairs</a></p>
+<ul class="notes">
+<li>Each bin shows up to {{ per_bin }} hits, from mostly cluster {{ s.second }} to mostly cluster {{ s.first }}.</li>
+<li>A card is the hit, then the two clusters' mean Hadamards.
+  <ul><li>A cluster fades toward grey the less likely the hit is to belong to it, and the most likely one is outlined.</li></ul></li>
+</ul>
+<div style="margin:8px 0">
+<img src="{{ s.first_src }}" alt="cluster {{ s.first }} mean Hadamard"> cluster {{ s.first }}
+&nbsp;&nbsp;<img src="{{ s.second_src }}" alt="cluster {{ s.second }} mean Hadamard"> cluster {{ s.second }}
+</div>
+{% for b in s.bins %}
+<h3 style="margin:14px 0 4px">entropy {{ b.label }} &middot; {{ b.cards|length }} of {{ b.n_in_bin }} hits</h3>
+<div style="overflow-x:auto">
+<table style="border-collapse:collapse">
+<tr><th style="text-align:left">hit</th><th style="font-weight:normal;font-size:0.8rem">{{ s.first }}</th><th style="font-weight:normal;font-size:0.8rem">{{ s.second }}</th></tr>
+{% for card in b.cards %}
+<tr style="border-top:1px solid #ccc">
+<td style="padding:6px 10px 6px 0;vertical-align:top">{{ card.hit_html|safe }}<div style="font-size:0.75rem;color:var(--muted)">entropy {{ "%.2f"|format(card.entropy) }} bits</div></td>
+{% for cell in card.cells %}
+<td style="padding:4px 6px;text-align:center;vertical-align:top"><div style="display:inline-block;padding:2px;{% if cell.likely %}outline:2px solid #2a78d6;{% endif %}"><img src="{{ cell.src }}" alt="cluster mean, faded by probability"></div><div style="font-size:0.75rem">{{ cell.probability }}</div></td>
+{% endfor %}
+</tr>
+{% endfor %}
+</table>
+</div>
+{% endfor %}

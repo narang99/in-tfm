@@ -201,6 +201,10 @@ and swap the +cu128 build for a generic wheel.
 
 **cuml is preinstalled** (26.02.000) - no RAPIDS install needed, GPU clustering is free.
 
+- Use cuml for DBSCAN, HDBSCAN and the other sklearn clustering functions on Colab.
+  - It makes sweeps, such as DBSCAN over many eps values, much faster to iterate on.
+  - Say which backend produced a number, since cuml and CPU hdbscan disagree on diffuse clusters.
+
 **Parity, 8 dicoms / neuron 90 / max-hits 4, both running the sorted-glob fix:**
 
 |  | Mac (MPS) | T4 |

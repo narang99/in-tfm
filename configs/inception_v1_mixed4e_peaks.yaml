@@ -1,0 +1,20 @@
+# Run with: uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4e_peaks.yaml
+# mixed4e:55 with the density-peak forest, and the hits too mixed between trees on their own sheet.
+# Try both hit selections: --hits.method elbow, or --hits.method bucketed.
+model: lucent/inception-v1
+target: conv
+layer_name: mixed4e_1x1_pre_relu_conv
+neurons: [55]
+batch_size: 16
+out_dir: reports/inception_peaks
+inception:
+  n_images: 2000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5
