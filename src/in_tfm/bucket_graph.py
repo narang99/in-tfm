@@ -15,12 +15,8 @@ from pydantic import BaseModel, ConfigDict
 
 from .hit_buckets import Bucket
 from .pair_mixed_report import spread_by_share
+from .run_config import BucketMapConfig
 
-NEIGHBOUR_COUNTS = (6, 10, 15, 25)
-"""Tried in order until the sample is one connected graph, so a separate island is never drawn at random."""
-PEAK_PULL = 3.0
-"""Weight of a pull toward a peak, times the hit's probability for that cluster. Neighbour links weigh `1 - distance`, at most 1."""
-MIN_PULL_PROBABILITY = 0.1
 LAYOUT_ITERATIONS = 300
 LAYOUT_SEED = 0
 
@@ -31,14 +27,11 @@ def peak_hits(distinct_of_hit: Int[np.ndarray, "n_hits"], roots: Int[np.ndarray,
 
 
 def sample_hits(
-    buckets: list[Bucket], probabilities: Float[np.ndarray, "n_hits n_clusters"], peaks: list[int],
-    min_hits: int, per_bucket: int,
+    paged: list[Bucket], probabilities: Float[np.ndarray, "n_hits n_clusters"], peaks: list[int], per_bucket: int,
 ) -> Int[np.ndarray, "n_sampled"]:
     """Hits of each bucket at evenly spaced ranks of its leading cluster's probability, so a pair runs from one side to the other."""
     sampled = set(peaks)
-    for bucket in buckets:
-        if len(bucket.hits) < min_hits:
-            continue
+    for bucket in paged:
         hits = np.array(bucket.hits)
         picked = spread_by_share(hits, probabilities[hits, bucket.clusters[0]], per_bucket)
         sampled.update(picked.tolist())
@@ -58,9 +51,11 @@ def neighbour_graph(distances: Float[np.ndarray, "m m"], k: int) -> nx.Graph:
     return graph
 
 
-def connected_neighbour_graph(distances: Float[np.ndarray, "m m"]) -> tuple[nx.Graph, int]:
-    """The graph with the fewest neighbours that is one component, or the densest tried if none is."""
-    for k in NEIGHBOUR_COUNTS:
+def connected_neighbour_graph(distances: Float[np.ndarray, "m m"], neighbour_counts: list[int]) -> tuple[nx.Graph, int]:
+    """The graph with the fewest neighbours that is one component, or the densest tried if none is.
+
+    - A separate island would otherwise be placed at random, which reads as distance that is not there."""
+    for k in neighbour_counts:
         graph = neighbour_graph(distances, min(k, len(distances) - 1))
         if nx.is_connected(graph):
             return graph, k
@@ -68,14 +63,14 @@ def connected_neighbour_graph(distances: Float[np.ndarray, "m m"]) -> tuple[nx.G
 
 
 def link_to_peaks(
-    graph: nx.Graph, probabilities: Float[np.ndarray, "m n_clusters"], peak_nodes: list[int]
+    graph: nx.Graph, probabilities: Float[np.ndarray, "m n_clusters"], peak_nodes: list[int], config: BucketMapConfig,
 ) -> None:
     """`peak_nodes[c]` is the node of cluster c's peak. Links add to an existing edge between the same two nodes."""
-    for node, cluster in zip(*np.nonzero(probabilities >= MIN_PULL_PROBABILITY)):
+    for node, cluster in zip(*np.nonzero(probabilities >= config.min_pull_probability)):
         peak = peak_nodes[cluster]
         if peak == node:
             continue
-        pull = PEAK_PULL * probabilities[node, cluster]
+        pull = config.peak_pull * probabilities[node, cluster]
         graph.add_edge(int(node), peak, weight=pull + (graph[node][peak]["weight"] if graph.has_edge(node, peak) else 0.0))
 
 
@@ -99,13 +94,13 @@ class SampleMap(BaseModel):
 
 def sample_map(
     distances: Float[np.ndarray, "n n"], probabilities: Float[np.ndarray, "n n_clusters"], sample: Int[np.ndarray, "m"],
-    peaks: list[int],
+    peaks: list[int], config: BucketMapConfig,
 ) -> SampleMap:
-    graph, neighbours = connected_neighbour_graph(distances[np.ix_(sample, sample)])
+    graph, neighbours = connected_neighbour_graph(distances[np.ix_(sample, sample)], config.neighbour_counts)
     node_of_hit = {int(hit): node for node, hit in enumerate(sample)}
     peak_nodes = {cluster: node_of_hit[peak] for cluster, peak in enumerate(peaks)}
     sampled_probabilities = probabilities[sample]
-    link_to_peaks(graph, sampled_probabilities, [peak_nodes[c] for c in range(len(peaks))])
+    link_to_peaks(graph, sampled_probabilities, [peak_nodes[c] for c in range(len(peaks))], config)
     return SampleMap(
         hits=sample, points=layout(graph), labels=sampled_probabilities.argmax(axis=1), peak_nodes=peak_nodes,
         neighbours=neighbours,

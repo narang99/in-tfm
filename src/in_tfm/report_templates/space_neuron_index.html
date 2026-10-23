@@ -1,0 +1,14 @@
+<h1>{{ title }}</h1>
+<p class="meta">{{ m.collection.model }} &middot; {{ m.collection.layer_name or m.collection.layer_idx }} &middot; {{ m.polarity }} tail &middot; <a href="../index.html">all neurons of the run</a></p>
+<ul>
+<li><a href="{{ clusters }}/index.html">Cluster report</a>: each cluster's sampled hits and mean Hadamard.
+  <ul><li><a href="{{ clusters }}/mixed_hits.html">Hits split between clusters</a>, which the cluster report leaves out.</li></ul></li>
+<li><a href="{{ buckets }}/index.html">Bucket report</a>: the map of sampled hits, and a page per bucket of hits that share clusters.</li>
+<li><a href="manifest.json">manifest.json</a>: the config, versions and timings of this run.</li>
+</ul>
+<table style="border-collapse:collapse">
+{% for name, value in m.counts.items() %}
+<tr><td style="padding:2px 12px 2px 0">{{ name.replace("_", " ") }}</td><td style="text-align:right">{{ value }}</td></tr>
+{% endfor %}
+</table>
+<p class="meta">{{ "reused a saved space" if m.space_reused else "collected a new space" }} &middot; device {{ m.device }} &middot; commit {{ (m.git_commit or "unknown")[:9] }} &middot; written {{ m.written_at }}</p>

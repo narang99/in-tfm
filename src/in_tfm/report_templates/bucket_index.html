@@ -1,24 +1,25 @@
 <h1>{{ title }}</h1>
+<p class="meta"><a href="{{ cluster_report }}">cluster report</a> &middot; <a href="../index.html">neuron</a></p>
 <ul class="notes">
 <li>The map is {{ n_sampled }} sampled hits, coloured by their most probable cluster, with each cluster's peak numbered.
-  <ul><li>Hits link to their nearest neighbours and are pulled toward the peaks they have a probability for, so a split hit sits between its clusters.</li></ul></li>
-<li>A bucket of one cluster holds the hits where that cluster has at least 0.9, 0.8 or 0.7, so the tiers overlap.</li>
-<li>A bucket of several clusters holds the hits that need exactly those clusters to reach 0.85 of their probability.
+  <ul><li>Hits link to their nearest neighbours and are pulled toward the peaks they have a probability for, so a split hit sits between its clusters.</li>
+  <li>Click a peak to open that cluster in the cluster report.</li></ul></li>
+<li>A bucket of one cluster holds the hits where that cluster has at least {{ buckets.cluster_tiers|join(', ') }}, so the tiers overlap.</li>
+<li>A bucket of several clusters holds the hits that need exactly those clusters to reach {{ buckets.set_mass }} of their probability.
   <ul><li>A hit is placed by the smallest such set, so these buckets do not overlap.</li></ul></li>
-<li>Buckets with fewer than {{ min_hits }} hits have no page.</li>
+<li>Buckets with fewer than {{ buckets.min_hits }} hits have no page.</li>
 </ul>
-<img src="{{ base_src }}" alt="map of the sampled hits" style="max-width:100%;height:auto">
-<p class="meta"><a href="{{ huge_base_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>
+{% with map_src=base_src, huge_map_src=huge_base_src, map_alt="map of the sampled hits" %}{% include "bucket_map.html" %}{% endwith %}
 {% for n, pages in groups %}
 <h3 style="margin:14px 0 4px">{{ n }} cluster{{ "s" if n > 1 }}</h3>
 <table style="border-collapse:collapse">
-<tr><th style="text-align:left;padding-right:12px">bucket</th><th style="text-align:right;padding-right:12px">hits</th><th style="text-align:right;padding-right:12px">on the map</th><th></th></tr>
+<tr><th style="text-align:left;padding-right:12px">bucket</th><th style="text-align:right;padding-right:12px">hits</th><th style="text-align:right;padding-right:12px">on the map</th><th style="text-align:left">clusters</th></tr>
 {% for p in pages %}
 <tr style="border-top:1px solid #ccc">
 <td style="padding:4px 12px 4px 0"><a href="{{ p.page }}">{{ p.name }}</a></td>
 <td style="text-align:right;padding-right:12px">{{ p.n_hits }}</td>
 <td style="text-align:right;padding-right:12px">{{ p.n_starred }}</td>
-<td>{% for cluster, src in p.cluster_tiles %}<img src="{{ src }}" alt="cluster {{ cluster }} mean" height="40"> {% endfor %}</td>
+<td>{% for t in p.cluster_tiles %}<a href="{{ t.href }}" title="cluster {{ t.cluster_id }}"><img src="{{ t.src }}" alt="cluster {{ t.cluster_id }} mean" height="40"></a> {% endfor %}</td>
 </tr>
 {% endfor %}
 </table>

@@ -222,6 +222,39 @@ class ReportConfig(Section):
     min_uniq_samples_per_cluster: int = 2
 
 
+class BucketsConfig(Section):
+    """See in_tfm.hit_buckets for how a hit lands in a bucket."""
+
+    set_mass: float = Field(
+        0.85, gt=0, le=1, description="a set bucket holds the hits whose top clusters need exactly that set to reach this"
+    )
+    cluster_tiers: list[float] = Field(
+        [0.9, 0.8, 0.7], description="a cluster bucket per tier, holding the hits with at least this for the cluster"
+    )
+    min_hits: int = Field(10, description="buckets with fewer hits get no page and are not sampled for the map")
+
+
+class BucketMapConfig(Section):
+    """See in_tfm.bucket_graph for how the sample is laid out."""
+
+    sampled_per_bucket: int = Field(8, description="hits taken from each paged bucket for the map")
+    numbered_per_bucket: int = Field(6, description="of the bucket's hits on the map, how many get a card")
+    peak_pull: float = Field(
+        3.0, description="weight of a hit's link to a cluster peak, times its probability. Neighbour links weigh at most 1"
+    )
+    min_pull_probability: float = Field(0.1, description="a hit is pulled only toward clusters with at least this")
+    neighbour_counts: list[int] = Field(
+        [6, 10, 15, 25], description="tried in order until the sample is one connected graph"
+    )
+
+
+class SpaceReportConfig(Section):
+    """The reports built from one saved hit space. Only density-peak clustering gives the probabilities they read."""
+
+    buckets: BucketsConfig = BucketsConfig()
+    map: BucketMapConfig = BucketMapConfig()
+
+
 class RunConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True)
 
@@ -250,6 +283,7 @@ class RunConfig(BaseSettings):
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
+    space: SpaceReportConfig = SpaceReportConfig()
 
     @classmethod
     def settings_customise_sources(

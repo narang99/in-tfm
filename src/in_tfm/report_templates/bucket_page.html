@@ -1,23 +1,24 @@
 <h1>{{ title }}</h1>
-<p class="meta">{{ b.n_hits }} hits in the bucket &middot; {{ b.n_starred }} on the map &middot; <a href="index.html">back to all buckets</a></p>
+<p class="meta">{{ b.n_hits }} hits in the bucket &middot; {{ b.n_starred }} on the map &middot; <a href="index.html">all buckets</a> &middot; <a href="{{ cluster_report }}">cluster report</a> &middot; <a href="../index.html">neuron</a></p>
 <ul class="notes">
-<li>Stars are the bucket's hits in the sample, and the numbers match the cards below.</li>
+<li>Stars are the bucket's hits in the sample, and the numbers match the cards below.
+  <ul><li>Click a numbered star to jump to its card, or a cluster's peak to open that cluster.</li></ul></li>
 <li>A card is the hit, then the mean Hadamards of its most probable clusters.
   <ul><li>A cluster fades toward grey the less likely the hit is to belong to it, and the most likely one is outlined.</li></ul></li>
 </ul>
 <div style="margin:8px 0">
-{% for cluster, src in b.cluster_tiles %}<img src="{{ src }}" alt="cluster {{ cluster }} mean Hadamard"> cluster {{ cluster }}&nbsp;&nbsp;{% endfor %}
+{% for t in b.cluster_tiles %}<a href="{{ t.href }}"><img src="{{ t.src }}" alt="cluster {{ t.cluster_id }} mean Hadamard"> cluster {{ t.cluster_id }}</a>&nbsp;&nbsp;{% endfor %}
 </div>
-<img src="{{ b.map_src }}" alt="map of the sampled hits with this bucket starred" style="max-width:100%;height:auto">
-<p class="meta"><a href="{{ b.huge_map_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>
+{% with map_src=b.map_src, huge_map_src=b.huge_map_src, marks=b.marks, map_alt="map of the sampled hits with this bucket starred" %}{% include "bucket_map.html" %}{% endwith %}
 <div style="overflow-x:auto">
 <table style="border-collapse:collapse">
 {% for card in b.cards %}
-<tr style="border-top:1px solid #ccc">
+<tr id="card-{{ loop.index }}" style="border-top:1px solid #ccc">
 <td style="padding:6px 10px;vertical-align:top;font-weight:bold">{{ loop.index }}</td>
 <td style="padding:6px 10px 6px 0;vertical-align:top">{{ card.hit_html|safe }}</td>
 {% for cell in card.cells %}
-<td style="padding:4px 6px;text-align:center;vertical-align:top"><div style="display:inline-block;padding:2px;{% if cell.likely %}outline:2px solid #2a78d6;{% endif %}"><img src="{{ cell.src }}" alt="cluster mean, faded by probability"></div><div style="font-size:0.75rem">cluster {{ card.cluster_ids[loop.index0] }}: {{ cell.probability }}</div></td>
+{% set t = card.clusters[loop.index0] %}
+<td style="padding:4px 6px;text-align:center;vertical-align:top"><a href="{{ t.href }}"><div style="display:inline-block;padding:2px;{% if cell.likely %}outline:2px solid #2a78d6;{% endif %}"><img src="{{ cell.src }}" alt="cluster {{ t.cluster_id }} mean, faded by probability"></div><div style="font-size:0.75rem">cluster {{ t.cluster_id }}: {{ cell.probability }}</div></a></td>
 {% endfor %}
 </tr>
 {% endfor %}

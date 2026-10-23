@@ -1,12 +1,14 @@
-# Run with: uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4e_peaks.yaml
-# mixed4e:55 with the density-peak forest, and the hits too mixed between trees on their own sheet.
-# Try both hit selections: --hits.method elbow, or --hits.method bucketed.
+# mixed4e:55 with the density-peak forest.
+# The cluster report and the bucket report, linked to each other:
+#   uv run --extra inception python scripts/space_reports.py --config configs/inception_v1_mixed4e_peaks.yaml
+# The older single cluster report, which clusters again on its own:
+#   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4e_peaks.yaml
 model: lucent/inception-v1
 target: conv
 layer_name: mixed4e_1x1_pre_relu_conv
 neurons: [55]
 batch_size: 16
-out_dir: reports/inception_peaks
+out_dir: reports/space_mixed4e
 inception:
   n_images: 2000
 clustering:
