@@ -1,0 +1,24 @@
+<h1>{{ title }}</h1>
+<p class="meta">{{ b.n_hits }} hits in the bucket &middot; {{ b.n_starred }} on the map &middot; <a href="index.html">back to all buckets</a></p>
+<ul class="notes">
+<li>Stars are the bucket's hits in the sample, and the numbers match the cards below.</li>
+<li>A card is the hit, then the mean Hadamards of its most probable clusters.
+  <ul><li>A cluster fades toward grey the less likely the hit is to belong to it, and the most likely one is outlined.</li></ul></li>
+</ul>
+<div style="margin:8px 0">
+{% for cluster, src in b.cluster_tiles %}<img src="{{ src }}" alt="cluster {{ cluster }} mean Hadamard"> cluster {{ cluster }}&nbsp;&nbsp;{% endfor %}
+</div>
+<img src="{{ b.map_src }}" alt="map of the sampled hits with this bucket starred" style="max-width:100%;height:auto">
+<div style="overflow-x:auto">
+<table style="border-collapse:collapse">
+{% for card in b.cards %}
+<tr style="border-top:1px solid #ccc">
+<td style="padding:6px 10px;vertical-align:top;font-weight:bold">{{ loop.index }}</td>
+<td style="padding:6px 10px 6px 0;vertical-align:top">{{ card.hit_html|safe }}</td>
+{% for cell in card.cells %}
+<td style="padding:4px 6px;text-align:center;vertical-align:top"><div style="display:inline-block;padding:2px;{% if cell.likely %}outline:2px solid #2a78d6;{% endif %}"><img src="{{ cell.src }}" alt="cluster mean, faded by probability"></div><div style="font-size:0.75rem">cluster {{ card.cluster_ids[loop.index0] }}: {{ cell.probability }}</div></td>
+{% endfor %}
+</tr>
+{% endfor %}
+</table>
+</div>
