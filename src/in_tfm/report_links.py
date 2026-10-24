@@ -2,6 +2,7 @@
 
 - The reports promise that every cluster named is a link to that cluster, so a run checks it rather than trusting it.
 - Only local references are checked. A page's own `#anchor` must be an `id` on that page.
+- An anchor of `key=value` pairs is state for the page's script, such as a filter, so only its file is checked.
 """
 
 import re
@@ -35,7 +36,7 @@ def lands(page: Path, reference: str, ids_of_page: dict[Path, set[str]]) -> bool
     target = (page.parent / path).resolve() if path else page.resolve()
     if not target.exists():
         return False
-    if not anchor:
+    if not anchor or "=" in anchor:
         return True
     if target not in ids_of_page:
         ids_of_page[target] = set(ELEMENT_ID.findall(target.read_text()))

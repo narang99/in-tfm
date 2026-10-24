@@ -59,6 +59,10 @@ class TextSource:
             display_ids=encoded["input_ids"],
         )
 
+    def display_ids(self, ids: Sequence[SampleId]) -> torch.Tensor:
+        """The token ids of each sample, in the same `max_length` columns the capture used."""
+        return self._encode(ids)["input_ids"]
+
     def _embed_device(self) -> torch.device:
         return next(self.embed.parameters()).device
 

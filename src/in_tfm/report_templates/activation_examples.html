@@ -1,0 +1,25 @@
+<h1>{{ title }}</h1>
+<p class="meta"><a href="index.html">neuron</a> &middot; <a href="{{ cluster_report }}">cluster report</a> &middot; {{ n_samples }} samples &middot; {{ n_hits }} hits, all stored</p>
+<ul class="notes">
+<li>Choose the {{ group }} and a minimum probability: a sample shows if at least one of its hits reaches it.
+  <ul><li>With "any {{ group }}", a hit counts by its most probable {{ group }}.</li></ul></li>
+<li>Colour by activation shades every token by the neuron's activation, red for the peak and blue for negative.
+  <ul><li>Colour by probability shades only the hits, by their probability for the chosen {{ group }}.</li></ul></li>
+<li>A hit is underlined in the colour of its most probable {{ group }}{% if group == "cluster" %}, and clicking it opens that cluster{% endif %}. Hits that pass the filter are boxed.</li>
+<li>The filters are kept in the address, so a link reopens the same view.</li>
+</ul>
+<div id="ex-controls" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:10px 0;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:2;border-bottom:1px solid var(--line)">
+<label>{{ group }} <select id="ex-cluster"></select></label>
+<label>min probability <input id="ex-min" type="range" min="0.05" max="1" step="0.05"> <span id="ex-min-value"></span></label>
+<label>sort <select id="ex-sort"><option value="prob">by probability</option><option value="activation">by peak activation</option></select></label>
+<label>colour <select id="ex-colour"><option value="activation">by activation</option><option value="probability">by probability</option></select></label>
+<span id="ex-count" class="meta"></span>
+<span id="ex-legend" style="display:inline-flex;gap:2px;align-items:center"></span>
+</div>
+<div id="ex-list"></div>
+<button id="ex-more" type="button" style="margin:12px 0;padding:6px 14px">show more</button>
+<script src="{{ data_src }}"></script>
+<script>
+window.GROUP_WORD = {{ group|tojson }};
+{% include "activation_examples.js" %}
+</script>
