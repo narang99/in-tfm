@@ -5,7 +5,7 @@
 model: google/gemma-3-270m
 target: down_proj
 layer_idx: 16
-neurons: [86, 141, 317, 499]
+neurons: [86, 141, 317]  # 499 was dropped to fit one Colab session, see the commit
 batch_size: 16
 out_dir: reports/space_gemma3_l16
 text:
