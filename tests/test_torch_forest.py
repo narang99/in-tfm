@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from in_tfm.density_peaks import torch_forest, vectorized
+from in_tfm.density_peaks.forest import comparable_rows
 from in_tfm.weighted_jaccard import weighted_jaccard_distances
 
 DISTANCES = ["euclidean", "weighted_jaccard"]
@@ -60,7 +61,26 @@ def test_pairwise_distances_match_numpy(normalise):
     points = np.random.default_rng(3).normal(size=(25, 6))
     expected = weighted_jaccard_distances(points, normalise=normalise)
     result = torch_forest.pairwise_distances(points, "weighted_jaccard", normalise, "cpu", block_elements=7 * 25)
-    assert np.allclose(result, expected)
+    assert result.dtype == np.float32
+    assert np.abs(result - expected).max() <= torch_forest.float32_error_bound(torch.zeros(1, 6), "weighted_jaccard")
+
+
+@pytest.mark.parametrize("distance", DISTANCES)
+def test_torch_forest_with_wide_candidate_sets_matches_numpy(distance, monkeypatch):
+    """A huge error bound makes most points candidates, so the exact step decides nearly everything."""
+    monkeypatch.setattr(torch_forest, "float32_error_bound", lambda rows, distance: 10.0)
+    points = points_with_copies(np.random.default_rng(4))
+    expected = vectorized.density_peak_forest(points, k=4, distance=distance)
+    forest = torch_forest.density_peak_forest(points, k=4, distance=distance, device="cpu", block_elements=7 * 33)
+    assert_same_forest(forest, expected)
+
+
+@pytest.mark.parametrize("distance", DISTANCES)
+def test_float32_distances_are_within_the_bound(distance):
+    points = np.random.default_rng(5).normal(size=(40, 300)) * np.random.default_rng(6).exponential(size=(40, 1))
+    rows = torch_forest.TorchRows(comparable_rows(points, distance, normalise=False), distance, "cpu")
+    exact = rows.exact_rows(torch.arange(len(rows)))
+    assert (rows.fast_block(0, len(rows)).double() - exact).abs().max() <= rows.error_bound
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a GPU")

@@ -13,8 +13,12 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 - `naive.py` mirrors it.
 - `torch_forest.py` builds the same forest with torch, for a GPU.
   - The pipeline uses it when the run's device is CUDA. See `neuron_run.forest_device`.
-  - It stays in float64, so it matches `vectorized.py` up to summation order.
+  - Float32 distances pick candidates, and float64 distances decide among them.
+    - A proven bound on the float32 error sets how wide the candidates are, so it matches `vectorized.py` up to summation order.
+  - On CUDA the float32 distances come from the Triton kernel in `triton_distance.py`.
+    - `torch.cdist` with p=1 rereads both rows for every pair, which took hours on 20,000 hits.
   - `tests/test_torch_forest.py` checks it against `vectorized.py` on torch's CPU device.
+    - The Triton kernel only runs on CUDA, so `scripts/bench_forest.py` checks its error against the bound on Colab.
   - A change to the forest's rules changes it too, in the same commit.
 - `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
   - It builds on the forest's stored neighbours.

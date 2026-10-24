@@ -14,6 +14,7 @@ import numpy as np
 import torch
 
 from in_tfm.density_peaks import calculate_probs, forest_trees, torch_forest
+from in_tfm.density_peaks.forest import comparable_rows, merge_copies
 from in_tfm.hit_space import FOREST, HADAMARDS, PROBABILITIES, TREES
 
 
@@ -26,6 +27,15 @@ def timed(label: str, work):
         torch.cuda.synchronize()
     print(f"[{label}] {time.perf_counter() - start:.1f}s", flush=True)
     return result
+
+
+def check_float32_kernel(hadamards: np.ndarray, normalise: bool, device: str, n_rows: int = 512) -> None:
+    """The fast kernel's worst error on a sample of rows, which must stay under the bound the forest relies on."""
+    distinct, _, _ = merge_copies(comparable_rows(hadamards[:n_rows].astype(np.float64), "weighted_jaccard", normalise))
+    rows = torch_forest.TorchRows(distinct, "weighted_jaccard", device)
+    error = (rows.fast_block(0, len(rows)).double() - rows.exact_rows(torch.arange(len(rows), device=device))).abs()
+    print(f"float32 kernel: max error {error.max().item():.2e}, bound {rows.error_bound:.2e}", flush=True)
+    assert error.max().item() <= rows.error_bound
 
 
 def compare_with_saved(space: Path, forest, trees, probabilities) -> None:
@@ -58,6 +68,7 @@ def main() -> None:
 
     hadamards = np.load(args.space / HADAMARDS)
     print(f"{hadamards.shape[0]} hits of {hadamards.shape[1]} dims on {args.device}", flush=True)
+    check_float32_kernel(hadamards, args.normalise, args.device)
     if not args.skip_distance_matrix:
         timed("distance matrix", lambda: torch_forest.pairwise_distances(hadamards, "weighted_jaccard", args.normalise, args.device))
     forest = timed("forest", lambda: torch_forest.density_peak_forest(
