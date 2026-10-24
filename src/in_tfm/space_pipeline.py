@@ -9,6 +9,8 @@ Each neuron gets `<out_dir>/neuron_<idx>/`:
   - Its labels are each confident hit's most probable cluster, the same clusters the bucket report names.
   - Every cluster is shown, even one drawn from a single sample, so every link from the bucket report lands.
 - `buckets/` is the bucket report: the map of sampled hits, a page per bucket and the cards.
+- `examples.html` shows every token of every sample for a text neuron, filtered by cluster. See in_tfm.activation_view.
+  - It reads a token grid saved beside the space, which a reused space gets from one scan.
 - `density/` is a map per density level, on the bucket report's layout. See in_tfm.density_levels.
 - `index.html` links the reports, and `manifest.json` records the config, versions, counts and timings.
 
@@ -31,6 +33,9 @@ from pydantic import BaseModel
 from scipy.spatial.distance import cdist
 
 from .activation_ranges import sample_noise
+from .activation_view import (
+    EXAMPLES_PAGE, TokenGrid, cluster_options, load_token_grid, save_token_grid, token_grid_saved, write_examples_page,
+)
 from .bucket_graph import SampleMap, peak_hits, sample_hits, sample_map
 from .bucket_report import BucketReportInputs, write_bucket_report
 from .cluster_membership import NOISE_LABEL
@@ -53,6 +58,7 @@ from .neuron_run import (
     PreparedRun, clustered_rows, density_peak_trees, layer_getter_for, polarities_for, report_name, timed,
 )
 from .run_config import ClusteringConfig, DensityPeaksConfig, Polarity, RunConfig
+from .sources.text import TextSource
 from .weighted_jaccard import weighted_jaccard_distances
 
 ScanOnce = Callable[["StageTimer"], ScanResult]
@@ -241,8 +247,13 @@ UNCONFIDENT_NOTE = (
 )
 
 
-def cluster_notes(paged: list[Bucket], n_clusters: int, unconfident: list[int]) -> dict[int, str]:
-    """Html for the top of each cluster's section: the bucket pages it is in, and whether its hits are confident."""
+def examples_note(cluster: int) -> str:
+    return f'<p class="meta"><a href="../{EXAMPLES_PAGE}#cluster={cluster}">every token of its hits\' samples</a></p>'
+
+
+def cluster_notes(paged: list[Bucket], n_clusters: int, unconfident: list[int], has_examples: bool = False) -> dict[int, str]:
+    """Html for the top of each cluster's section: the bucket pages it is in, whether its hits are confident,
+    and a link to its samples on the token page when there is one."""
     notes = {}
     for cluster in range(n_clusters):
         links = [
@@ -253,13 +264,15 @@ def cluster_notes(paged: list[Bucket], n_clusters: int, unconfident: list[int]) 
             f'<p class="meta">in buckets: {" &middot; ".join(links)}</p>' if links
             else '<p class="meta">in no bucket with a page</p>'
         )
-        notes[cluster] = buckets + (UNCONFIDENT_NOTE if cluster in unconfident else "")
+        notes[cluster] = (
+            buckets + (examples_note(cluster) if has_examples else "") + (UNCONFIDENT_NOTE if cluster in unconfident else "")
+        )
     return notes
 
 
 def write_cluster_report(
     hits: NeuronClusterHits, space: HitSpace, paged: list[Bucket], dirs: NeuronDirs, config: RunConfig,
-    max_entropy: float, attr_fn: AttrFn,
+    max_entropy: float, attr_fn: AttrFn, has_examples: bool,
 ) -> Path:
     write_mixed_hits_page(
         hits, dirs.clusters, space.probabilities, entropy_bits(space.probabilities), max_entropy, MIN_UNIQ_SAMPLES, attr_fn,
@@ -267,7 +280,7 @@ def write_cluster_report(
     links = ReportLinks(
         page_links=[PageLink(text="bucket report", href=f"../{BUCKET_REPORT}/{INDEX_PAGE}"), PageLink(text="neuron", href=f"../{INDEX_PAGE}")],
         cluster_notes=cluster_notes(
-            paged, space.n_clusters, clusters_without_confident_hits(space.probabilities, max_entropy),
+            paged, space.n_clusters, clusters_without_confident_hits(space.probabilities, max_entropy), has_examples,
         ),
     )
     return hits.write_report(
@@ -297,6 +310,33 @@ def write_space_bucket_report(
     return mapped
 
 
+def scanned_token_grid(run: PreparedRun, scan: ScanResult, neuron_idx: int, sample_ids: list[str]) -> TokenGrid:
+    if list(scan.sample_ids) != sample_ids:
+        raise ValueError("the scan's samples differ from the space's, so its hit positions would not line up")
+    return TokenGrid(
+        activations=scan.neuron_column(neuron_idx)[..., 0].numpy(), valid=scan.valid_mask.numpy(),
+        display_ids=run.source.display_ids(scan.sample_ids).numpy(),
+    )
+
+
+def write_space_examples_page(
+    space: HitSpace, dirs: NeuronDirs, run: PreparedRun, scan_once: ScanOnce, neuron_idx: int, timer: StageTimer,
+) -> Path | None:
+    """Text only. A space without a saved token grid gets one from the run's scan, which runs once for all neurons."""
+    if not isinstance(run.source, TextSource):
+        return None
+    if not token_grid_saved(dirs.space):
+        save_token_grid(scanned_token_grid(run, scan_once(timer), neuron_idx, space.sample_ids), dirs.space)
+    grid = load_token_grid(dirs.space)
+    tokenizer = run.source.tokenizer
+    with timer.stage("token page"):
+        return write_examples_page(
+            dirs.root, neuron_idx, space.sample_ids, [tokenizer.convert_ids_to_tokens(row.tolist()) for row in grid.display_ids],
+            grid.activations, grid.valid, space.batch_idx, space.token_idx, space.probabilities,
+            cluster_options(space.probabilities, f"{CLUSTER_REPORT}/{INDEX_PAGE}"), f"{CLUSTER_REPORT}/{INDEX_PAGE}",
+        )
+
+
 def write_space_density_report(
     space: HitSpace, mapped: SampleMap, dirs: NeuronDirs, config: RunConfig, neuron_idx: int, timer: StageTimer,
 ) -> Path:
@@ -323,7 +363,7 @@ def write_neuron_index(dirs: NeuronDirs, manifest: Manifest) -> Path:
     title = f"Neuron {manifest.neuron_idx}"
     body = render_template(
         "space_neuron_index.html", title=title, m=manifest, clusters=CLUSTER_REPORT, buckets=BUCKET_REPORT,
-        density=DENSITY_REPORT,
+        density=DENSITY_REPORT, examples=EXAMPLES_PAGE if (dirs.root / EXAMPLES_PAGE).exists() else None,
     )
     path = dirs.root / INDEX_PAGE
     path.write_text(page(title, body))
@@ -362,8 +402,9 @@ def report_neuron_space(
           f"{len(buckets)} buckets, {len(paged)} with a page")
 
     hits = space_cluster_hits(space, run, config, neuron_idx, strategy.max_entropy)
+    examples = write_space_examples_page(space, dirs, run, scan_once, neuron_idx, timer)
     with timer.stage("cluster report"):
-        write_cluster_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn)
+        write_cluster_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn, examples is not None)
     mapped = write_space_bucket_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn, timer)
     n_sampled = len(mapped.hits)
     print(f"density report -> {write_space_density_report(space, mapped, dirs, config, neuron_idx, timer)}")
