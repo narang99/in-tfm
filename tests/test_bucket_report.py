@@ -1,0 +1,29 @@
+import numpy as np
+
+from in_tfm.bucket_map_image import HUGE_CANVAS, NORMAL_CANVAS, draw_base, draw_bucket
+from in_tfm.bucket_report import MIN_SHOWN_PROBABILITY, SHOWN_CLUSTERS, bucket_slug, shown_clusters
+
+
+def test_a_slug_is_a_file_safe_name_and_tiers_stay_distinct():
+    assert bucket_slug("clusters 0 + 4") == "clusters_0_4"
+    assert bucket_slug("cluster 0 >= 0.9") != bucket_slug("cluster 0 >= 0.8")
+
+
+def test_the_shown_clusters_are_the_most_probable_above_the_minimum():
+    probabilities = np.array([0.5, 0.3, 0.1, 0.04, 0.03, 0.03])
+    assert shown_clusters(probabilities) == [0, 1, 2]
+    assert len(shown_clusters(np.full(10, 0.1))) == SHOWN_CLUSTERS
+
+
+def test_the_most_probable_cluster_is_always_shown():
+    probabilities = np.full(40, 1 / 40)
+    assert probabilities.max() < MIN_SHOWN_PROBABILITY
+    assert len(shown_clusters(probabilities)) == 1
+
+
+def test_the_huge_map_is_the_same_picture_at_four_times_the_size():
+    points = np.array([[0.0, 0.0], [1.0, 1.0], [0.5, 0.2]])
+    labels, peaks = np.array([0, 1, 0]), {0: 0, 1: 1}
+    normal, huge = draw_base(points, labels, peaks, NORMAL_CANVAS), draw_base(points, labels, peaks, HUGE_CANVAS)
+    assert (normal.width, huge.width) == (NORMAL_CANVAS, HUGE_CANVAS)
+    assert draw_bucket(huge, points, [2], [2]).size == huge.size
