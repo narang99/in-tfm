@@ -251,11 +251,21 @@ class BucketMapConfig(Section):
     )
 
 
+class DensityLevelsConfig(Section):
+    """See in_tfm.density_levels for how the groups at each level are found."""
+
+    share_step: float = Field(
+        0.05, gt=0, le=1, description="each level keeps this much more of the hits, densest first, up to all of them"
+    )
+    min_group_hits: int = Field(20, description="smaller groups are drawn grey and left out of the level's table")
+
+
 class SpaceReportConfig(Section):
     """The reports built from one saved hit space. Only density-peak clustering gives the probabilities they read."""
 
     buckets: BucketsConfig = BucketsConfig()
     map: BucketMapConfig = BucketMapConfig()
+    density: DensityLevelsConfig = DensityLevelsConfig()
 
 
 class RunConfig(BaseSettings):

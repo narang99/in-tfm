@@ -9,7 +9,8 @@ Each neuron gets `<out_dir>/neuron_<idx>/`:
   - Its labels are each confident hit's most probable cluster, the same clusters the bucket report names.
   - Every cluster is shown, even one drawn from a single sample, so every link from the bucket report lands.
 - `buckets/` is the bucket report: the map of sampled hits, a page per bucket and the cards.
-- `index.html` links the two reports, and `manifest.json` records the config, versions, counts and timings.
+- `density/` is a map per density level, on the bucket report's layout. See in_tfm.density_levels.
+- `index.html` links the reports, and `manifest.json` records the config, versions, counts and timings.
 
 The run ends by checking that every link and image of every page under `out_dir` lands, and fails if one does not.
 """
@@ -30,16 +31,18 @@ from pydantic import BaseModel
 from scipy.spatial.distance import cdist
 
 from .activation_ranges import sample_noise
-from .bucket_graph import peak_hits, sample_hits, sample_map
+from .bucket_graph import SampleMap, peak_hits, sample_hits, sample_map
 from .bucket_report import BucketReportInputs, write_bucket_report
 from .cluster_membership import NOISE_LABEL
+from .density_levels import density_levels
+from .density_report import write_density_report
 from .density_peaks import calculate_probs, comparable_rows
 from .hadamard import near_square_shape
 from .hit_buckets import Bucket, all_buckets, buckets_of_cluster, paged_buckets
 from .hit_selection import select_hits
 from .hit_space import (
-    HitSpace, confident_hits, entropy_bits, load_distances, load_space, save_distances, save_forest, save_hits,
-    space_is_complete,
+    HitSpace, confident_hits, entropy_bits, load_density_graph, load_distances, load_space, save_distances, save_forest,
+    save_hits, space_is_complete,
 )
 from .html_report import PageLink, page, render_template
 from .mixed_hits_report import write_mixed_hits_page
@@ -59,6 +62,7 @@ MANIFEST = "manifest.json"
 BUCKETS_JSON = "buckets.json"
 CLUSTER_REPORT = "clusters"
 BUCKET_REPORT = "buckets"
+DENSITY_REPORT = "density"
 INDEX_PAGE = "index.html"
 MIN_UNIQ_SAMPLES = 1
 """The cluster report keeps every cluster, so a link to any cluster has a section to land on."""
@@ -108,6 +112,10 @@ class NeuronDirs(BaseModel):
     @property
     def buckets(self) -> Path:
         return self.root / BUCKET_REPORT
+
+    @property
+    def density(self) -> Path:
+        return self.root / DENSITY_REPORT
 
 
 class StageTimer(BaseModel):
@@ -271,8 +279,8 @@ def write_cluster_report(
 def write_space_bucket_report(
     hits: NeuronClusterHits, space: HitSpace, paged: list[Bucket], dirs: NeuronDirs, config: RunConfig,
     max_entropy: float, attr_fn: AttrFn, timer: StageTimer,
-) -> tuple[Path, int]:
-    """Returns the index and how many hits are on the map."""
+) -> SampleMap:
+    """Returns the map, which the density report draws on too."""
     peaks = peak_hits(space.distinct_of_hit, space.roots)
     sample = sample_hits(paged, space.probabilities, peaks, config.space.map.sampled_per_bucket)
     with timer.stage("layout"):
@@ -285,7 +293,19 @@ def write_space_bucket_report(
     )
     with timer.stage("bucket pages"):
         index = write_bucket_report(inputs, paged, config.space.buckets)
-    return index, len(sample)
+    print(f"bucket report -> {index}")
+    return mapped
+
+
+def write_space_density_report(
+    space: HitSpace, mapped: SampleMap, dirs: NeuronDirs, config: RunConfig, neuron_idx: int, timer: StageTimer,
+) -> Path:
+    settings = config.space.density
+    with timer.stage("density levels"):
+        levels = density_levels(load_density_graph(dirs.space), space.probabilities, settings.share_step, settings.min_group_hits)
+        return write_density_report(
+            levels, mapped, settings, neuron_idx, f"../{CLUSTER_REPORT}/{INDEX_PAGE}", dirs.density,
+        )
 
 
 def git_commit() -> str | None:
@@ -301,7 +321,10 @@ def package_versions() -> dict[str, str]:
 
 def write_neuron_index(dirs: NeuronDirs, manifest: Manifest) -> Path:
     title = f"Neuron {manifest.neuron_idx}"
-    body = render_template("space_neuron_index.html", title=title, m=manifest, clusters=CLUSTER_REPORT, buckets=BUCKET_REPORT)
+    body = render_template(
+        "space_neuron_index.html", title=title, m=manifest, clusters=CLUSTER_REPORT, buckets=BUCKET_REPORT,
+        density=DENSITY_REPORT,
+    )
     path = dirs.root / INDEX_PAGE
     path.write_text(page(title, body))
     return path
@@ -341,7 +364,9 @@ def report_neuron_space(
     hits = space_cluster_hits(space, run, config, neuron_idx, strategy.max_entropy)
     with timer.stage("cluster report"):
         write_cluster_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn)
-    _, n_sampled = write_space_bucket_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn, timer)
+    mapped = write_space_bucket_report(hits, space, paged, dirs, config, strategy.max_entropy, run.attr_fn, timer)
+    n_sampled = len(mapped.hits)
+    print(f"density report -> {write_space_density_report(space, mapped, dirs, config, neuron_idx, timer)}")
 
     confident = confident_hits(space.probabilities, strategy.max_entropy)
     manifest = Manifest(

@@ -4,4 +4,4 @@
 <a href="{{ m.href }}" title="{{ m.title }}" aria-label="{{ m.title }}" style="position:absolute;left:{{ '%.3f'|format(m.left) }}%;top:{{ '%.3f'|format(m.top) }}%;width:{{ m.size }}%;height:{{ m.size }}%;transform:translate(-50%,-50%);border-radius:50%"></a>
 {% endfor %}
 </div>
-<p class="meta"><a href="{{ huge_map_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>
+{% if huge_map_src is defined %}<p class="meta"><a href="{{ huge_map_src }}" target="_blank">The same map at 4x size</a>, to zoom into a crowded corner.</p>{% endif %}

@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
+from .density_levels import DensityGraph
 from .density_peaks import DensityPeakForest, ForestTrees
 from .hit_selection import HitSelection
 from .hit_selection.picks import Pick
@@ -144,6 +145,14 @@ def load_space(space_dir: Path) -> HitSpace:
         sorted_magnitudes=np.load(space_dir / SORTED_MAGNITUDES), noise=np.load(space_dir / NOISE),
         probabilities=np.load(space_dir / PROBABILITIES)[distinct_of_hit], distinct_of_hit=distinct_of_hit,
         roots=trees["roots"],
+    )
+
+
+def load_density_graph(space_dir: Path) -> DensityGraph:
+    forest = np.load(space_dir / FOREST)
+    return DensityGraph(
+        kth_distance=forest["kth_distance"], counts=forest["counts"], neighbours=forest["neighbours"],
+        distinct_of_hit=forest["distinct_of_hit"],
     )
 
 
