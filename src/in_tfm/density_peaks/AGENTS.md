@@ -11,6 +11,11 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 - `vectorized.py` is the implementation callers use.
   - `__init__.py` exposes it, so `from in_tfm.density_peaks import ...` gets the vectorized functions.
 - `naive.py` mirrors it.
+- `torch_forest.py` builds the same forest with torch, for a GPU.
+  - The pipeline uses it when the run's device is CUDA. See `neuron_run.forest_device`.
+  - It stays in float64, so it matches `vectorized.py` up to summation order.
+  - `tests/test_torch_forest.py` checks it against `vectorized.py` on torch's CPU device.
+  - A change to the forest's rules changes it too, in the same commit.
 - `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
   - It builds on the forest's stored neighbours.
   - It has its own naive and vectorized split. See its AGENTS.md.

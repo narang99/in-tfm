@@ -50,11 +50,16 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--normalise", action="store_true")
     parser.add_argument("--peak-share", type=float, default=0.8)
+    parser.add_argument(
+        "--skip-distance-matrix", action="store_true",
+        help="the full matrix is n x n float64 in host memory, which another job on the machine may need",
+    )
     args = parser.parse_args()
 
     hadamards = np.load(args.space / HADAMARDS)
     print(f"{hadamards.shape[0]} hits of {hadamards.shape[1]} dims on {args.device}", flush=True)
-    timed("distance matrix", lambda: torch_forest.pairwise_distances(hadamards, "weighted_jaccard", args.normalise, args.device))
+    if not args.skip_distance_matrix:
+        timed("distance matrix", lambda: torch_forest.pairwise_distances(hadamards, "weighted_jaccard", args.normalise, args.device))
     forest = timed("forest", lambda: torch_forest.density_peak_forest(
         hadamards, args.k, "weighted_jaccard", args.normalise, args.device,
     ))
