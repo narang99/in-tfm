@@ -1,0 +1,25 @@
+# Gemma 3 270M layer 3 (early) MLP neurons, as configs/gemma3_l11_down_proj_peaks.yaml but with 10000 hits per neuron.
+# The neurons were picked at random from the 640 outputs of down_proj.
+# 10000 hits, not 20000: distance and forest time grow with the square of the hit count, and Colab's T4 has 2 CPUs.
+#   uv run python scripts/run_neuron_report.py --config configs/gemma3_l3_down_proj_peaks.yaml
+model: google/gemma-3-270m
+target: down_proj
+layer_idx: 3
+neurons: [133, 163, 189, 320]
+batch_size: 16
+out_dir: reports/gemma3_l3
+text:
+  n_samples: 2000
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 10000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5

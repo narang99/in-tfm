@@ -1,0 +1,23 @@
+# mixed4d_3x3:89 and :240 with the density-peak forest, as configs/inception_v1_mixed4e_peaks.yaml does for mixed4e:55.
+# The conv is 3x3 over the 144 bottleneck channels, so a hit's Hadamard has 144 * 9 = 1296 dims.
+# Both neurons share one scan.
+#   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4d_3x3_peaks.yaml
+model: lucent/inception-v1
+target: conv
+layer_name: mixed4d_3x3_pre_relu_conv
+neurons: [89, 240]
+batch_size: 16
+out_dir: reports/mixed4d_3x3
+inception:
+  n_images: 2000
+hits:
+  method: bucketed  # as configs/inception_v1_mixed4e_bucketed.yaml, assuming nothing about the elbow
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5

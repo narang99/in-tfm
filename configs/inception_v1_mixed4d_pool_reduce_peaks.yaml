@@ -1,0 +1,22 @@
+# mixed4d_pool_reduce:29 with the density-peak forest, as configs/inception_v1_mixed4e_peaks.yaml does for mixed4e:55.
+# The conv reads the 3x3 max pool of mixed4c, so a hit's Hadamard is over the 512 pooled channels.
+#   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4d_pool_reduce_peaks.yaml
+model: lucent/inception-v1
+target: conv
+layer_name: mixed4d_pool_reduce_pre_relu_conv
+neurons: [29]
+batch_size: 16
+out_dir: reports/mixed4d_pool_reduce
+inception:
+  n_images: 2000
+hits:
+  method: bucketed  # as configs/inception_v1_mixed4e_bucketed.yaml, assuming nothing about the elbow
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5

@@ -68,7 +68,8 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
-Polarity = Literal["positive", "negative"]
+Polarity = Literal["positive", "negative", "signed"]
+"""`signed` takes hits from both tails into one space."""
 
 
 class Section(BaseModel):
@@ -134,7 +135,9 @@ class HitSelectionConfig(Section):
         100, description="bucketed only: buckets with fewer positions than this are merged with their neighbour"
     )
     bucket_floor_fraction: float = Field(
-        0.0, description="bucketed only: lowest bucket starts at this fraction of the max activation"
+        0.0,
+        description="bucketed only: lowest bucket starts at this fraction of the max activation. "
+        "With signed polarity, hits need a magnitude above this fraction of the largest magnitude",
     )
 
 
@@ -235,8 +238,10 @@ class RunConfig(BaseSettings):
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
     neuron_end: int = Field(90, description="inclusive")
-    polarity: Literal["positive", "negative", "both"] = Field(
-        "positive", description="which tail of the activation distribution counts as a hit"
+    polarity: Literal["positive", "negative", "both", "signed"] = Field(
+        "positive",
+        description="which tail of the activation distribution counts as a hit. "
+        "both: each tail in its own space. signed: both tails sampled and clustered together, bucketed only",
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")

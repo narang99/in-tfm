@@ -50,12 +50,12 @@ def activations_section(curve: SelectionCurve | None, ranges: ActivationRanges |
                 f"A random sample of {len(ranges.noise):,} positions, hits or not, signed. "
                 "Counts are on a log scale. The shaded tail is past the threshold."
             ),
-            body_html=embed(noise_histogram_figure(np.asarray(ranges.noise), curve.threshold, curve.negative), "50vh"),
+            body_html=embed(noise_histogram_figure(np.asarray(ranges.noise), curve), "50vh"),
         ))
     return PageSection(
         key="activations",
         title="Activations and the threshold",
-        lede_html=(
+        lede_html=signed_lede(curve) if curve.signed else (
             f"{curve.n_positive:,} positions fire in this tail. Sorted low to high, most sit in a long flat stretch "
             f"and a few shoot up at the end. Hits are the positions at or past <b>{curve.threshold:.4g}</b>."
         ),
@@ -64,6 +64,13 @@ def activations_section(curve: SelectionCurve | None, ranges: ActivationRanges |
             term="Hit",
             text="A position where the neuron fires past the threshold. Only hits are clustered.",
         )],
+    )
+
+
+def signed_lede(curve: SelectionCurve) -> str:
+    return (
+        f"Both tails are hits. The curve is all {curve.n_positive:,} positions, sorted from the most negative to the "
+        f"most positive. Hits are the positions whose magnitude is at or past <b>{curve.threshold:.4g}</b>."
     )
 
 
@@ -94,16 +101,23 @@ def add_bucket_edges(fig: go.Figure, curve: SelectionCurve) -> None:
         fig.add_vline(x=position, line=dict(color=MARK, dash="dash", width=1), annotation_text=f"{edge:.3g}")
 
 
-def noise_histogram_figure(noise: np.ndarray, threshold: float, negative: bool) -> go.Figure:
+def noise_histogram_figure(noise: np.ndarray, curve: SelectionCurve) -> go.Figure:
     fig = go.Figure(go.Histogram(x=noise, nbinsx=120, marker_color=MUTED))
-    cut = -threshold if negative else threshold
-    tail_end = min(float(noise.min()), cut) if negative else max(float(noise.max()), cut)
-    fig.add_vrect(x0=min(cut, tail_end), x1=max(cut, tail_end), fillcolor=MARK, opacity=0.12, line_width=0)
-    fig.add_vline(x=cut, line=dict(color=MARK, dash="dash"), annotation_text="threshold")
+    for cut in hit_cuts(curve):
+        tail_end = min(float(noise.min()), cut) if cut < 0 else max(float(noise.max()), cut)
+        fig.add_vrect(x0=min(cut, tail_end), x1=max(cut, tail_end), fillcolor=MARK, opacity=0.12, line_width=0)
+        fig.add_vline(x=cut, line=dict(color=MARK, dash="dash"), annotation_text="threshold")
     fig.update_yaxes(type="log", title="positions (log scale)")
     fig.update_xaxes(title="activation")
     fig.update_layout(showlegend=False)
     return fig
+
+
+def hit_cuts(curve: SelectionCurve) -> list[float]:
+    """Where the hit tails start on a signed axis: one cut per tail."""
+    if curve.signed:
+        return [-curve.threshold, curve.threshold]
+    return [-curve.threshold if curve.negative else curve.threshold]
 
 
 def cluster_ranges_section(ranges: ActivationRanges | None, cluster_ids: list[int]) -> PageSection | None:

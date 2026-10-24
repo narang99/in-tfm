@@ -6,6 +6,7 @@ from in_tfm.density_peaks import calculate_probs, density_peak_forest, forest_tr
 from in_tfm.hit_selection import ElbowPick, HitSelection
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
 from in_tfm.report_page.data import touching_counts
+from in_tfm.report_page.sections import hit_cuts
 from in_tfm.report_page import (
     load_page_data,
     forest_data, load_forest_data, load_selection_curve, page_parts, save_forest_data, save_selection_curve,
@@ -45,7 +46,14 @@ def test_a_long_curve_is_thinned_but_keeps_its_tail(tmp_path):
     curve = load_selection_curve(tmp_path)
     assert len(curve.index) < 10_000
     assert curve.index[-1] == 9_999 and curve.index[-4000] == 6_000
-    assert curve.elbow_idx == 9_000 and curve.bucket_edges is None and not curve.negative
+    assert curve.elbow_idx == 9_000 and curve.bucket_edges is None and not curve.negative and not curve.signed
+
+
+def test_a_signed_curve_round_trips_and_cuts_both_tails(tmp_path):
+    selection = a_selection().model_copy(update={"polarity": "signed"})
+    save_selection_curve(tmp_path, selection_curve(selection))
+    curve = load_selection_curve(tmp_path)
+    assert curve.signed and hit_cuts(curve) == [-curve.threshold, curve.threshold]
 
 
 def test_forest_data_round_trips_and_cuts_root_links(tmp_path):

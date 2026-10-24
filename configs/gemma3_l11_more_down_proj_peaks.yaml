@@ -1,0 +1,25 @@
+# Gemma 3 270M layer 11 (mid) MLP neurons beside 332, as configs/gemma3_l11_down_proj_peaks.yaml but with 10000 hits.
+# The neurons were picked at random from the 640 outputs of down_proj. 332 has its own config, at 20000 hits.
+# Same out_dir as 332, so the run index lists all four.
+#   uv run python scripts/run_neuron_report.py --config configs/gemma3_l11_more_down_proj_peaks.yaml
+model: google/gemma-3-270m
+target: down_proj
+layer_idx: 11
+neurons: [53, 98]  # 168 was dropped to fit one Colab session, see the commit
+batch_size: 16
+out_dir: reports/gemma3_l11
+text:
+  n_samples: 2000
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 10000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5

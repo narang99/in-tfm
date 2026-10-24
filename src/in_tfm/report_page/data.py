@@ -32,6 +32,8 @@ class SelectionCurve(BaseModel):
     """As a magnitude, so it sits on the curve whatever the polarity."""
     negative: bool
     """The hits are the negative tail, so a signed axis puts them below -threshold."""
+    signed: bool = False
+    """The hits are both tails, so the curve holds every value and the threshold is a magnitude floor."""
     elbow_idx: int | None
     bucket_edges: Float[np.ndarray, "n_edges"] | None
 
@@ -52,6 +54,7 @@ def selection_curve(selection: HitSelection) -> SelectionCurve:
         n_positive=len(magnitudes),
         threshold=pick.threshold,
         negative=selection.polarity == "negative",
+        signed=selection.polarity == "signed",
         elbow_idx=pick.elbow_idx if isinstance(pick, ElbowPick) else None,
         bucket_edges=pick.bucket_edges if isinstance(pick, BucketedPick) else None,
     )
@@ -65,7 +68,7 @@ def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
         optional["bucket_edges"] = curve.bucket_edges
     np.savez(
         report_dir / SELECTION_DATA, index=curve.index, magnitude=curve.magnitude, n_positive=curve.n_positive,
-        threshold=curve.threshold, negative=curve.negative, **optional,
+        threshold=curve.threshold, negative=curve.negative, signed=curve.signed, **optional,
     )
 
 
@@ -80,6 +83,7 @@ def load_selection_curve(report_dir: Path) -> SelectionCurve | None:
         n_positive=int(data["n_positive"]),
         threshold=float(data["threshold"]),
         negative=bool(data["negative"]),
+        signed=bool(data["signed"]) if "signed" in data else False,
         elbow_idx=int(data["elbow_idx"]) if "elbow_idx" in data else None,
         bucket_edges=data["bucket_edges"] if "bucket_edges" in data else None,
     )
