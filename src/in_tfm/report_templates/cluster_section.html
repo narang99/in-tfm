@@ -1,6 +1,7 @@
 <section class="cluster {{ accent_class }}" id="cluster-{{ cluster_id }}">
 <header class="cluster-head"><span class="cluster-badge">Cluster {{ cluster_id }}</span><span class="cluster-stats">n={{ n_hits }} &middot; {{ n_unique_images }} unique samples</span></header>
 <div class="cluster-body">
+{{ notes_html|safe }}
 {{ body|safe }}
 </div>
 </section>

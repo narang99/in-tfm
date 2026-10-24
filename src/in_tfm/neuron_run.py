@@ -77,7 +77,8 @@ def clustered_rows(
 
 def report_name(neuron_idx: int, polarity: Polarity) -> str:
     """Positive keeps the historical `neuron_{idx}` so existing reports are not renamed."""
-    return f"neuron_{neuron_idx}" if polarity == "positive" else f"neuron_{neuron_idx}_neg"
+    suffixes = {"positive": "", "negative": "_neg", "signed": "_signed"}
+    return f"neuron_{neuron_idx}{suffixes[polarity]}"
 
 
 def density_peak_trees(

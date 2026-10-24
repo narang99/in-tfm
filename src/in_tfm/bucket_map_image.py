@@ -71,6 +71,29 @@ def draw_base(
     return image
 
 
+def draw_groups(
+    points: Float[np.ndarray, "m 2"], dot_colours: list[tuple[int, int, int]], draw_order: Int[np.ndarray, "m"],
+    spheres: dict[int, int], canvas: int,
+) -> Image.Image:
+    """Nodes are drawn in `draw_order`, so later ones sit on top.
+
+    `spheres` maps a group number to the node where it is drawn as a numbered disc, in that group's colour."""
+    canvas_points = to_canvas(points, canvas)
+    dot, peak = scaled(DOT_RADIUS, canvas), scaled(PEAK_RADIUS, canvas)
+    image = Image.new("RGB", (canvas, canvas), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    for node in draw_order:
+        x, y = canvas_points[node]
+        draw.ellipse([x - dot, y - dot, x + dot, y + dot], fill=dot_colours[node])
+    for number, node in spheres.items():
+        x, y = canvas_points[node]
+        draw.ellipse([x - peak, y - peak, x + peak, y + peak],
+                     fill=cluster_colour(number), outline=(0, 0, 0), width=scaled(2, canvas))
+        draw.text((x, y), str(number), fill=(0, 0, 0), font=font(canvas), anchor="mm",
+                  stroke_width=scaled(2, canvas), stroke_fill=(255, 255, 255))
+    return image
+
+
 def draw_bucket(
     base: Image.Image, points: Float[np.ndarray, "m 2"], starred: list[int], numbered: list[int],
 ) -> Image.Image:

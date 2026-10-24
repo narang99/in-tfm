@@ -28,6 +28,11 @@ class ClusterLink(BaseModel):
     accent_class: str
 
 
+class PageLink(BaseModel):
+    text: str
+    href: str
+
+
 def accent_class(position: int) -> str:
     return f"accent-{position % len(ACCENTS)}"
 
@@ -48,7 +53,7 @@ def details(summary: str, body: str, start_open: bool = False) -> str:
 
 
 def cluster_section(
-    cluster_id: int, position: int, n_hits: int, n_unique_images: int, body: str
+    cluster_id: int, position: int, n_hits: int, n_unique_images: int, body: str, notes_html: str = ""
 ) -> str:
     return render_template(
         "cluster_section.html",
@@ -57,6 +62,7 @@ def cluster_section(
         n_hits=n_hits,
         n_unique_images=n_unique_images,
         body=body,
+        notes_html=notes_html,
     )
 
 
@@ -74,10 +80,12 @@ def neuron_index(
     cluster_nav: str,
     sections: Sequence[str],
     mixed_hits_page: str | None = None,
+    page_links: Sequence[PageLink] = (),
 ) -> str:
     return render_template(
         "neuron_index.html",
         mixed_hits_page=mixed_hits_page,
+        page_links=page_links,
         title=title,
         threshold=threshold,
         n_hits=n_hits,

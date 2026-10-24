@@ -12,6 +12,11 @@ Names used below:
 - A raw bucket is one of the `n_buckets` equal-width slices.
 - A group is one or more neighbouring raw buckets after merging. Group 0 is the lowest.
 - A candidate is a value above the floor. `candidate_idx` arrays index into the candidates, not into all values.
+
+Signed sampling takes both tails at once.
+- A candidate is a value whose magnitude is above the floor.
+- The buckets span from the lowest candidate to the highest, so each tail gets buckets in proportion to its range.
+- The buckets around zero hold nothing when the floor is above zero, and merge into a neighbour.
 """
 
 import numpy as np
@@ -26,7 +31,7 @@ from ..picks import BucketedPick, PickedPositions
 
 class BucketLayout(BaseModel):
     raw_edges: list[float]
-    """`n_buckets + 1` edges, from the floor to the max."""
+    """`n_buckets + 1` edges, from the floor to the max. Signed sampling starts them at the lowest candidate."""
     groups: list[list[int]]
     """The raw buckets in each group, lowest group first."""
 
@@ -54,8 +59,8 @@ class BucketedSample(BaseModel):
     """None when no value is above the floor."""
 
 
-def equal_width_edges(values: Float[np.ndarray, "n"], n_buckets: int, floor: float) -> list[float]:
-    return np.linspace(floor, values.max(), n_buckets + 1).tolist()
+def equal_width_edges(values: Float[np.ndarray, "n"], n_buckets: int, lowest_edge: float) -> list[float]:
+    return np.linspace(lowest_edge, values.max(), n_buckets + 1).tolist()
 
 
 def raw_bucket_of_each_value(values: Float[np.ndarray, "n"], raw_edges: list[float]) -> Int[np.ndarray, "n"]:
@@ -95,9 +100,9 @@ def merge_small_buckets(sizes: list[int], min_size: int) -> list[list[int]]:
 
 
 def plan_buckets(
-    candidate_values: Float[np.ndarray, "n"], n_buckets: int, floor: float, min_bucket_size: int
+    candidate_values: Float[np.ndarray, "n"], n_buckets: int, lowest_edge: float, min_bucket_size: int
 ) -> BucketLayout:
-    raw_edges = equal_width_edges(candidate_values, n_buckets, floor)
+    raw_edges = equal_width_edges(candidate_values, n_buckets, lowest_edge)
     sizes = count_per_bucket(raw_bucket_of_each_value(candidate_values, raw_edges), n_buckets)
     return BucketLayout(raw_edges=raw_edges, groups=merge_small_buckets(sizes, min_bucket_size))
 
@@ -143,12 +148,14 @@ def bucketed_sample(
     floor: float,
     min_bucket_size: int,
     rng: np.random.Generator,
+    signed: bool = False,
 ) -> BucketedSample:
-    candidate_value_idx = np.flatnonzero(values > floor)
+    candidate_value_idx = np.flatnonzero((np.abs(values) if signed else values) > floor)
     if len(candidate_value_idx) == 0:
         return BucketedSample(kept_value_idx=candidate_value_idx, group_of_kept=candidate_value_idx, n_candidates=0, layout=None)
     candidate_values = values[candidate_value_idx]
-    layout = plan_buckets(candidate_values, n_buckets, floor, min_bucket_size)
+    lowest_edge = float(candidate_values.min()) if signed else floor
+    layout = plan_buckets(candidate_values, n_buckets, lowest_edge, min_bucket_size)
     group_of_candidate = group_of_each_value(candidate_values, layout)
     quotas = bucket_quotas(count_per_bucket(group_of_candidate, len(layout.groups)), budget)
     kept_candidate_idx = sample_each_group(group_of_candidate, quotas, rng)
@@ -179,11 +186,14 @@ def bucketed_hits(
     scan: ScanResult,
     hits: HitSelectionConfig,
     seed: int,
+    signed: bool = False,
 ) -> tuple[PickedPositions, BucketedPick]:
-    floor = hits.bucket_floor_fraction * sorted_magnitudes[-1].item()
+    """With `signed`, `sorted_magnitudes` holds every valid value, negatives first."""
+    largest = max(-sorted_magnitudes[0].item(), sorted_magnitudes[-1].item()) if signed else sorted_magnitudes[-1].item()
+    floor = hits.bucket_floor_fraction * largest
     values, batch_idx, token_idx = valid_values_and_positions(column, scan.valid_mask)
     sample = bucketed_sample(
-        values, hits.n_buckets, hits.max_hits, floor, hits.min_bucket_size, np.random.default_rng(seed)
+        values, hits.n_buckets, hits.max_hits, floor, hits.min_bucket_size, np.random.default_rng(seed), signed
     )
     if sample.layout is None:
         raise ValueError(f"no activation above the bucket floor {floor:.4f}, lower bucket_floor_fraction")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Which clusters touch each other, read from the arrays `collect_hit_space.py` saved.
+"""Which clusters touch each other, read from a space `space_reports.py` saved.
 
-    python scripts/cluster_connectivity.py /content/runs/mixed4e_55/space --ks 5 10 20
+    python scripts/cluster_connectivity.py reports/space_mixed4e/neuron_55/space --ks 5 10 20
 
 - Outliers are the hits with no mutual neighbour: i and j are linked only if each is in the other's k nearest.
 - Two clusters are directly connected if some mutual edge has a hit of each at its ends.
@@ -16,6 +16,8 @@ import numpy as np
 from jaxtyping import Bool, Float, Int
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components
+
+from in_tfm.hit_space import entropy_bits, load_space
 
 MAX_ENTROPY_BITS = 0.5
 UNLABELLED = -1
@@ -34,15 +36,6 @@ def mutual_edges(neighbours: Int[np.ndarray, "n k"]) -> Int[np.ndarray, "n_edges
     mutual = directed.multiply(directed.T).tocoo()
     keep = mutual.row < mutual.col
     return np.stack([mutual.row[keep], mutual.col[keep]], axis=1)
-
-
-def hit_probabilities(space: Path) -> Float[np.ndarray, "n n_trees"]:
-    forest, probabilities = np.load(space / "forest.npz"), np.load(space / "probabilities.npy")
-    return probabilities[forest["distinct_of_hit"]]
-
-
-def entropy_bits(probabilities: Float[np.ndarray, "n n_trees"]) -> Float[np.ndarray, "n"]:
-    return -(probabilities * np.log2(np.where(probabilities > 0, probabilities, 1.0))).sum(axis=1)
 
 
 def cluster_pair_edges(edges: Int[np.ndarray, "n_edges 2"], labels: Int[np.ndarray, "n"], n_clusters: int) -> Int[np.ndarray, "c c"]:
@@ -101,7 +94,7 @@ def main() -> None:
     args = parser.parse_args()
 
     distances = np.load(args.space / "distances.npy")
-    probabilities = hit_probabilities(args.space)
+    probabilities = load_space(args.space).probabilities
     labels = probabilities.argmax(axis=1)
     confident = entropy_bits(probabilities) < MAX_ENTROPY_BITS
     print(f"{len(labels)} hits, {int(confident.sum())} confident (entropy < {MAX_ENTROPY_BITS} bits), {probabilities.shape[1]} trees")

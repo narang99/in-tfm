@@ -52,6 +52,21 @@ def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
     assert (first.batch_idx == again.batch_idx).all() and (first.token_idx == again.token_idx).all()
 
 
+def test_signed_selection_takes_both_tails_beyond_the_magnitude_floor(scan):
+    hits = HitSelectionConfig(method="bucketed", max_hits=200, bucket_floor_fraction=0.3)
+    selection = select_hits(scan, 7, "signed", hits, seed=0)
+    values = values_at(scan, selection)
+    assert (values > 0).any() and (values < 0).any()
+    assert (np.abs(values) > selection.threshold).all()
+    assert selection.pick.bucket_edges[0] < 0 < selection.pick.bucket_edges[-1]
+    assert selection.token_idx.max() < 40
+
+
+def test_signed_selection_refuses_an_elbow(scan):
+    with pytest.raises(ValueError, match="bucketed"):
+        select_hits(scan, 7, "signed", HitSelectionConfig(method="elbow"), seed=0)
+
+
 def test_bucketed_selection_labels_every_kept_hit(scan):
     selection = select_hits(scan, 7, "positive", HitSelectionConfig(method="bucketed", max_hits=60), seed=0)
     assert isinstance(selection.pick, BucketedPick)

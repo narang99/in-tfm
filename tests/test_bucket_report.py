@@ -1,12 +1,8 @@
 import numpy as np
 
+from in_tfm.bucket_graph import SampleMap
 from in_tfm.bucket_map_image import HUGE_CANVAS, NORMAL_CANVAS, draw_base, draw_bucket
-from in_tfm.bucket_report import MIN_SHOWN_PROBABILITY, SHOWN_CLUSTERS, bucket_slug, shown_clusters
-
-
-def test_a_slug_is_a_file_safe_name_and_tiers_stay_distinct():
-    assert bucket_slug("clusters 0 + 4") == "clusters_0_4"
-    assert bucket_slug("cluster 0 >= 0.9") != bucket_slug("cluster 0 >= 0.8")
+from in_tfm.bucket_report import MIN_SHOWN_PROBABILITY, SHOWN_CLUSTERS, card_marks, map_fractions, shown_clusters
 
 
 def test_the_shown_clusters_are_the_most_probable_above_the_minimum():
@@ -27,3 +23,18 @@ def test_the_huge_map_is_the_same_picture_at_four_times_the_size():
     normal, huge = draw_base(points, labels, peaks, NORMAL_CANVAS), draw_base(points, labels, peaks, HUGE_CANVAS)
     assert (normal.width, huge.width) == (NORMAL_CANVAS, HUGE_CANVAS)
     assert draw_bucket(huge, points, [2], [2]).size == huge.size
+
+
+def test_a_mark_sits_where_its_node_is_drawn_in_percent_of_the_map():
+    points = np.array([[0.0, 0.0], [1.0, 1.0], [0.5, 0.5]])
+    at = map_fractions(points)
+    assert np.allclose(at[2], [50, 50])
+    assert 0 < at[0, 0] < at[1, 0] < 100
+
+
+def test_numbered_stars_link_to_their_cards_in_order():
+    sample = SampleMap(
+        hits=np.arange(3), points=np.array([[0.0, 0.0], [1.0, 1.0], [0.5, 0.5]]), labels=np.zeros(3, dtype=int),
+        peak_nodes={0: 0}, neighbours=6,
+    )
+    assert [m.href for m in card_marks(sample, [2, 1])] == ["#card-1", "#card-2"]

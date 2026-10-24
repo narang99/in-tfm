@@ -68,7 +68,8 @@ SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
 }
 """The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
 
-Polarity = Literal["positive", "negative"]
+Polarity = Literal["positive", "negative", "signed"]
+"""`signed` takes hits from both tails into one space."""
 
 
 class Section(BaseModel):
@@ -134,7 +135,9 @@ class HitSelectionConfig(Section):
         100, description="bucketed only: buckets with fewer positions than this are merged with their neighbour"
     )
     bucket_floor_fraction: float = Field(
-        0.0, description="bucketed only: lowest bucket starts at this fraction of the max activation"
+        0.0,
+        description="bucketed only: lowest bucket starts at this fraction of the max activation. "
+        "With signed polarity, hits need a magnitude above this fraction of the largest magnitude",
     )
 
 
@@ -222,6 +225,49 @@ class ReportConfig(Section):
     min_uniq_samples_per_cluster: int = 2
 
 
+class BucketsConfig(Section):
+    """See in_tfm.hit_buckets for how a hit lands in a bucket."""
+
+    set_mass: float = Field(
+        0.85, gt=0, le=1, description="a set bucket holds the hits whose top clusters need exactly that set to reach this"
+    )
+    cluster_tiers: list[float] = Field(
+        [0.9, 0.8, 0.7], description="a cluster bucket per tier, holding the hits with at least this for the cluster"
+    )
+    min_hits: int = Field(10, description="buckets with fewer hits get no page and are not sampled for the map")
+
+
+class BucketMapConfig(Section):
+    """See in_tfm.bucket_graph for how the sample is laid out."""
+
+    sampled_per_bucket: int = Field(8, description="hits taken from each paged bucket for the map")
+    numbered_per_bucket: int = Field(6, description="of the bucket's hits on the map, how many get a card")
+    peak_pull: float = Field(
+        3.0, description="weight of a hit's link to a cluster peak, times its probability. Neighbour links weigh at most 1"
+    )
+    min_pull_probability: float = Field(0.1, description="a hit is pulled only toward clusters with at least this")
+    neighbour_counts: list[int] = Field(
+        [6, 10, 15, 25], description="tried in order until the sample is one connected graph"
+    )
+
+
+class DensityLevelsConfig(Section):
+    """See in_tfm.density_levels for how the groups at each level are found."""
+
+    share_step: float = Field(
+        0.05, gt=0, le=1, description="each level keeps this much more of the hits, densest first, up to all of them"
+    )
+    min_group_hits: int = Field(20, description="smaller groups are drawn grey and left out of the level's table")
+
+
+class SpaceReportConfig(Section):
+    """The reports built from one saved hit space. Only density-peak clustering gives the probabilities they read."""
+
+    buckets: BucketsConfig = BucketsConfig()
+    map: BucketMapConfig = BucketMapConfig()
+    density: DensityLevelsConfig = DensityLevelsConfig()
+
+
 class RunConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True)
 
@@ -235,8 +281,10 @@ class RunConfig(BaseSettings):
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
     neuron_end: int = Field(90, description="inclusive")
-    polarity: Literal["positive", "negative", "both"] = Field(
-        "positive", description="which tail of the activation distribution counts as a hit"
+    polarity: Literal["positive", "negative", "both", "signed"] = Field(
+        "positive",
+        description="which tail of the activation distribution counts as a hit. "
+        "both: each tail in its own space. signed: both tails sampled and clustered together, bucketed only",
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
@@ -250,6 +298,7 @@ class RunConfig(BaseSettings):
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
+    space: SpaceReportConfig = SpaceReportConfig()
 
     @classmethod
     def settings_customise_sources(

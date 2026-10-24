@@ -1,0 +1,22 @@
+# mixed4e:55 as configs/inception_v1_mixed4e_peaks.yaml, but with bucketed hits instead of the elbow.
+# Equal shares come from equal-width activation buckets down to any positive activation, so no cutoff is assumed.
+#   uv run --extra inception python scripts/space_reports.py --config configs/inception_v1_mixed4e_bucketed.yaml
+model: lucent/inception-v1
+target: conv
+layer_name: mixed4e_1x1_pre_relu_conv
+neurons: [55]
+batch_size: 16
+out_dir: reports/space_mixed4e_bucketed
+inception:
+  n_images: 2000
+hits:
+  method: bucketed
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    k: 5
+    peak_share: 0.8
+    max_entropy: 0.5

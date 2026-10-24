@@ -31,6 +31,7 @@ from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
     ClusterLink,
+    PageLink,
     accent_class,
     cluster_nav,
     cluster_section,
@@ -78,20 +79,32 @@ MIXED_HITS_PAGE = "mixed_hits.html"
 """The sheet of hits split between clusters, linked from the index when it exists."""
 
 
-def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
+class ReportLinks(BaseModel):
+    """Links to pages outside the report, which a report built alone does not have."""
+
+    page_links: list[PageLink] = []
+    cluster_notes: dict[int, str] = {}
+    """Html shown at the top of a cluster's section, by cluster id."""
+
+
+def render_report(report_dir: str | Path, presenter: ClusterPresenter, links: ReportLinks = ReportLinks()) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
     meta = load_report_meta(report_dir)
     sections = [
         _cluster_section(
-            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
+            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape,
+            links.cluster_notes.get(cid, ""),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
     mixed_hits_page = MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None
     report_path.write_text(
-        _index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir), mixed_hits_page)
+        _index_page(
+            meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir), mixed_hits_page,
+            links.page_links,
+        )
     )
     return report_path
 
@@ -103,13 +116,14 @@ def _cluster_section(
     cluster_dir: Path,
     presenter: ClusterPresenter,
     hadamard_shape: HadamardShape,
+    notes_html: str,
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
     hits = load_hits(cluster_dir)
     artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
     body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
+    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body, notes_html)
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
@@ -137,7 +151,8 @@ def _activation_ranges_plot(report_dir: Path) -> str:
 
 
 def _index_page(
-    meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str, mixed_hits_page: str | None
+    meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str, mixed_hits_page: str | None,
+    page_links: list[PageLink],
 ) -> str:
     title = f"Neuron {meta.neuron_idx}"
     body = neuron_index(
@@ -150,6 +165,7 @@ def _index_page(
         cluster_nav=_cluster_nav(meta),
         sections=sections,
         mixed_hits_page=mixed_hits_page,
+        page_links=page_links,
     )
     return page(title, body)
 
@@ -298,6 +314,7 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn = compute_attnlrp_relevance,
         max_n: int = 5,
         min_uniq_images: int = 2,
+        links: ReportLinks = ReportLinks(),
     ) -> Path:
         """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
@@ -321,4 +338,4 @@ class NeuronClusterHits(BaseModel):
         self._write_activation_ranges(report_dir, cluster_ids)
         for cid in cluster_ids:
             self._cache_cluster(cid, report_dir, attr_fn, max_n)
-        return render_report(report_dir, self.presenter)
+        return render_report(report_dir, self.presenter, links)

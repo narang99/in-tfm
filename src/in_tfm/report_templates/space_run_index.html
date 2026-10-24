@@ -1,0 +1,13 @@
+<h1>{{ title }}</h1>
+<table style="border-collapse:collapse">
+<tr><th style="text-align:left;padding-right:12px">neuron</th><th style="text-align:right;padding-right:12px">hits</th><th style="text-align:right;padding-right:12px">clusters</th><th style="text-align:right;padding-right:12px">paged buckets</th><th style="text-align:left">reports</th></tr>
+{% for label, name, m in entries %}
+<tr style="border-top:1px solid #ccc">
+<td style="padding:4px 12px 4px 0"><a href="{{ name }}/index.html">{{ label }}</a></td>
+<td style="text-align:right;padding-right:12px">{{ m.counts.hits }}</td>
+<td style="text-align:right;padding-right:12px">{{ m.counts.clusters }}</td>
+<td style="text-align:right;padding-right:12px">{{ m.counts.paged_buckets }}</td>
+<td><a href="{{ name }}/clusters/index.html">clusters</a> &middot; <a href="{{ name }}/buckets/index.html">buckets</a></td>
+</tr>
+{% endfor %}
+</table>

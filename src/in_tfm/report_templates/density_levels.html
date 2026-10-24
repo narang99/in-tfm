@@ -1,0 +1,28 @@
+<h1>{{ title }}</h1>
+<p class="meta"><a href="{{ cluster_report }}">cluster report</a> &middot; <a href="../buckets/index.html">bucket report</a> &middot; <a href="../index.html">neuron</a></p>
+<ul class="notes">
+<li>Each level keeps the densest hits, up to a share of all {{ n_hits }}: {{ (settings.share_step * 100)|round|int }}% more at each level.
+  <ul><li>Density is the forest's: how close a hit's nearest neighbours are.</li></ul></li>
+<li>A group is a connected part of the forest's nearest-neighbour graph, among the hits kept at that level.
+  <ul><li>When two groups meet, the merged group keeps the number of the one that appeared first, at a higher density.</li>
+  <li>A number so means the same group at every level, until it joins an older one.</li></ul></li>
+<li>Groups under {{ settings.min_group_hits }} hits are grey and not listed.</li>
+<li>Every map uses the bucket report's layout of {{ n_sampled }} sampled hits, so a hit stays in place across levels.
+  <ul><li>Hits not yet kept are faint. Each group is a sphere at its densest hit on the map, linking to its row.</li></ul></li>
+</ul>
+<p>{% for v in views %}<a href="#{{ v.anchor }}">{{ (v.level.share * 100)|round|int }}%</a>{{ " &middot; "|safe if not loop.last }}{% endfor %}</p>
+{% for v in views %}
+<h2 id="{{ v.anchor }}" style="margin-top:28px">Densest {{ (v.level.share * 100)|round|int }}%: {{ v.level.n_hits }} hits, {{ v.level.groups|length }} group{{ "s" if v.level.groups|length != 1 }}</h2>
+<p class="meta">{{ v.n_on_map }} of the kept hits are on the map{% if not loop.first %} &middot; <a href="#{{ views[loop.index0 - 1].anchor }}">denser level</a>{% endif %}{% if not loop.last %} &middot; <a href="#{{ views[loop.index0 + 1].anchor }}">sparser level</a>{% endif %}</p>
+{% with map_src=v.map_src, marks=v.marks, map_alt="map of the sampled hits by their group at this level" %}{% include "bucket_map.html" %}{% endwith %}
+<table style="border-collapse:collapse;margin-top:8px">
+<tr><th style="text-align:left;padding-right:12px">group</th><th style="text-align:right;padding-right:12px">hits</th><th style="text-align:left">clusters, by the hits whose most probable cluster it is</th></tr>
+{% for g in v.level.groups %}
+<tr id="{{ group_anchor(v.anchor, g.number) }}" style="border-top:1px solid #ccc">
+<td style="padding:4px 12px 4px 0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ colour_of(g.number) }};vertical-align:middle"></span> {{ g.number }}</td>
+<td style="text-align:right;padding-right:12px">{{ g.n_hits }}</td>
+<td>{% for c, n in g.clusters %}<a href="{{ cluster_report }}#cluster-{{ c }}">cluster {{ c }}</a> ({{ n }}){{ ", " if not loop.last }}{% endfor %}</td>
+</tr>
+{% endfor %}
+</table>
+{% endfor %}
