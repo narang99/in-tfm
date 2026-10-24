@@ -41,7 +41,7 @@ from .bucket_report import BucketReportInputs, write_bucket_report
 from .cluster_membership import NOISE_LABEL
 from .density_levels import density_levels
 from .density_report import write_density_report
-from .density_peaks import calculate_probs, comparable_rows
+from .density_peaks import calculate_probs, comparable_rows, torch_forest
 from .hadamard import near_square_shape
 from .hit_buckets import Bucket, all_buckets, buckets_of_cluster, paged_buckets
 from .hit_selection import select_hits
@@ -55,7 +55,7 @@ from .neuron_capture import ScanResult, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits, ReportLinks
 from .report_links import check_links
 from .neuron_run import (
-    PreparedRun, clustered_rows, density_peak_trees, layer_getter_for, polarities_for, report_name, timed,
+    PreparedRun, clustered_rows, density_peak_trees, forest_device, layer_getter_for, polarities_for, report_name, timed,
 )
 from .run_config import ClusteringConfig, DensityPeaksConfig, Polarity, RunConfig
 from .sources.text import TextSource
@@ -170,8 +170,14 @@ def space_to_reuse(space_dir: Path, wanted: CollectionSettings) -> bool:
     return True
 
 
-def hit_distances(hadamards: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> Float[np.ndarray, "n_hits n_hits"]:
-    """The same distance the forest grows on, between every pair of hits rather than distinct points."""
+def hit_distances(
+    hadamards: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
+) -> Float[np.ndarray, "n_hits n_hits"]:
+    """The same distance the forest grows on, between every pair of hits rather than distinct points.
+
+    `device` computes it with torch there. See `neuron_run.forest_device`."""
+    if device is not None:
+        return torch_forest.pairwise_distances(hadamards, clustering.distance, clustering.normalise, device)
     if clustering.distance == "weighted_jaccard":
         return weighted_jaccard_distances(hadamards.astype(np.float64), normalise=clustering.normalise)
     rows = comparable_rows(hadamards.astype(np.float64), clustering.distance, clustering.normalise)
@@ -195,11 +201,12 @@ def collect_space(
     hadamards = clustered_rows(gathered.inputs[merged.index_maps[0]], weight, neuron_idx, config.clustering)
     save_hits(hadamards, selection, scan.sample_ids, sample_noise(scan, neuron_idx, config.seed), space_dir)
 
+    device = forest_device(config.device)
     with timer.stage("distance matrix"):
-        save_distances(hit_distances(hadamards, config.clustering), space_dir)
+        save_distances(hit_distances(hadamards, config.clustering, device), space_dir)
     strategy = density_peaks_of(config.clustering)
     with timer.stage("forest and probabilities"):
-        forest, trees = density_peak_trees(hadamards, config.clustering, strategy)
+        forest, trees = density_peak_trees(hadamards, config.clustering, strategy, device)
         save_forest(forest, trees, calculate_probs(forest, trees, strategy.peak_share), space_dir)
     (space_dir / COLLECTED).write_text(collection_settings(config, neuron_idx, polarity).model_dump_json(indent=2))
 

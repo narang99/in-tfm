@@ -22,7 +22,7 @@ from .cluster_membership import (
     one_hot_memberships, probability_matrix,
 )
 from .clustering import cluster_labels
-from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
+from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees, torch_forest
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
@@ -81,10 +81,20 @@ def report_name(neuron_idx: int, polarity: Polarity) -> str:
     return f"neuron_{neuron_idx}{suffixes[polarity]}"
 
 
+def forest_device(device: str) -> str | None:
+    """The torch forest needs float64, which only CUDA does quickly. MPS has no float64, so it and the CPU use numpy."""
+    return device if device.startswith("cuda") else None
+
+
 def density_peak_trees(
-    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, strategy: DensityPeaksConfig
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, strategy: DensityPeaksConfig,
+    device: str | None = None,
 ) -> tuple[DensityPeakForest, ForestTrees]:
-    forest = density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise)
+    """`device` runs the forest with torch there. See `forest_device`."""
+    if device is None:
+        forest = density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise)
+    else:
+        forest = torch_forest.density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise, device)
     return forest, forest_trees(forest)
 
 
