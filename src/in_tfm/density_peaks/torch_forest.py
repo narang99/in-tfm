@@ -25,9 +25,13 @@ class TorchRows:
     """Distinct rows on the device, with what every block of distances needs."""
 
     def __init__(self, rows: Float[np.ndarray, "n compared_dim"], distance: PeakDistance, device: str):
-        self.rows = torch.from_numpy(np.ascontiguousarray(rows, dtype=np.float64)).to(device)
-        self.sums = self.rows.sum(dim=1)
+        rows_t = torch.from_numpy(np.ascontiguousarray(rows, dtype=np.float64)).to(device)
         self.distance = distance
+        if distance == "weighted_jaccard":
+            self.sums = rows_t.sum(dim=1)
+            self.rows = signed_rows(rows_t)
+        else:
+            self.rows = rows_t
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -43,6 +47,16 @@ class TorchRows:
         size = max(1, block_elements // len(self))
         for start in range(0, len(self), size):
             yield start, self.block(start, min(start + size, len(self)))
+
+
+def signed_rows(parts: Float[torch.Tensor, "n two_dim"]) -> Float[torch.Tensor, "n dim"]:
+    """Each dim's positive part minus its negative part, half as wide as the parts.
+
+    - A dim has at most one nonzero part, so |a+ - b+| + |a- - b-| is |a - b|, with a and b the signed values.
+      - Check the cases: both parts on one side, or one part on each side, give the same sum either way.
+    - The L1 distance between parts so equals the L1 distance between signed rows, at half the cost."""
+    half = parts.shape[1] // 2
+    return parts[:, :half] - parts[:, half:]
 
 
 def weighted_jaccard_from_l1(
