@@ -67,7 +67,7 @@ if alive:
 else:
     log = open("/content/run.log", "w")
     proc = subprocess.Popen(
-        "MPLBACKEND=Agg python scripts/space_reports.py --config <yaml>; echo EXIT $?",
+        "MPLBACKEND=Agg PYTHONUNBUFFERED=1 python scripts/space_reports.py --config <yaml>; echo EXIT $?",
         shell=True, cwd="/content/in-tfm", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
         start_new_session=True,
     )
@@ -84,6 +84,13 @@ else:
 ```
 
 - `tr '\r' '\n'` turns tqdm's carriage returns into lines, so the stage lines can be grepped.
+- Set `PYTHONUNBUFFERED=1` in the run's environment.
+  - Python buffers stdout to a file, so stage lines otherwise show up many minutes late.
+  - Until then, judge progress by the files the run has written.
+- To wait for a run from another script, wait for its `EXIT` line in the log, not for its pid.
+  - A run started with `Popen` is a child of the kernel, so once it exits it stays a zombie until the kernel reaps it.
+  - `kill -0` succeeds on a zombie, so `while kill -0 $pid` never ends.
+  - On 2026-10-24 that stalled a chain of runs until an unrelated `subprocess.run` in the notebook happened to reap it.
 
 ### Never `!cmd &`, even with `nohup`
 
