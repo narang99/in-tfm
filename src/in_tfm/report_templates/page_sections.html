@@ -1,0 +1,15 @@
+{% for section in sections %}
+<section class="page-section" id="{{ section.key }}">
+<h2><span class="step">{{ loop.index }}</span>{{ section.title }}</h2>
+<p class="lede">{{ section.lede_html|safe }}</p>
+{% if section.panes|length > 1 %}
+<div class="tabs">{% for pane in section.panes %}<button data-g="{{ section.key }}" data-n="{{ loop.index0 }}" class="{{ 'on' if loop.first }}" onclick="showTab('{{ section.key }}', '{{ loop.index0 }}')">{{ pane.name }}</button>{% endfor %}</div>
+{% endif %}
+{% for pane in section.panes %}
+<div data-g="{{ section.key }}" data-n="{{ loop.index0 }}" class="tabpane{{ ' on' if loop.first }}">
+{% if pane.intro %}<p class="lede">{{ pane.intro|safe }}</p>{% endif %}
+{{ pane.body_html|safe }}
+</div>
+{% endfor %}
+</section>
+{% endfor %}

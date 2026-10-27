@@ -60,3 +60,22 @@ details > img { display:block; margin-top:8px; }
 img.elbow { max-width:420px; }
 details { margin-top:10px; }
 details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
+.stats { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 8px; }
+.stat { border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:8px 14px; min-width:96px; }
+.stat b { display:block; font-size:1.25rem; }
+.stat span { color:var(--muted); font-size:0.75rem; }
+.guide dl { margin:8px 0 0; font-size:0.85rem; }
+.guide dt { font-weight:600; margin-top:8px; }
+.guide dd { margin:2px 0 0 0; color:var(--muted); }
+.step-ref { font-weight:400; color:var(--muted); font-size:0.75rem; margin-left:6px; }
+.page-section { margin:40px 0; }
+.page-section h2, h2.clusters-head { font-size:1.15rem; margin:0 0 6px; display:flex; align-items:center; gap:10px; }
+.step { display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
+  border-radius:50%; background:var(--fg); color:var(--bg); font-size:0.85rem; }
+.lede { color:var(--muted); font-size:0.9rem; margin:0 0 10px; }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px; }
+.tabs button { cursor:pointer; font:inherit; font-size:0.8rem; padding:3px 12px; border-radius:6px;
+  border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+.tabs button.on { background:var(--fg); color:var(--bg); }
+.tabpane { display:none; }
+.tabpane.on { display:block; }

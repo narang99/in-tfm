@@ -39,8 +39,9 @@ def render_template(template: str, **context: object) -> str:
 SINK_TOGGLE = render_template("sink_toggle.html")
 
 
-def page(title: str, body: str) -> str:
-    return render_template("page.html", title=title, body=body, accents=ACCENTS)
+def page(title: str, body: str, plotly_js: str | None = None) -> str:
+    """`plotly_js` loads plotly.js and the tab script, for a page with charts."""
+    return render_template("page.html", title=title, body=body, accents=ACCENTS, plotly_js=plotly_js)
 
 
 def details(summary: str, body: str, start_open: bool = False) -> str:
@@ -74,6 +75,9 @@ def neuron_index(
     cluster_nav: str,
     sections: Sequence[str],
     mixed_hits_page: str | None = None,
+    header_html: str = "",
+    page_sections_html: str = "",
+    clusters_step: int = 1,
 ) -> str:
     return render_template(
         "neuron_index.html",
@@ -86,4 +90,7 @@ def neuron_index(
         activation_plot=activation_plot,
         cluster_nav=cluster_nav,
         sections="\n".join(sections),
+        header_html=header_html,
+        page_sections_html=page_sections_html,
+        clusters_step=clusters_step,
     )

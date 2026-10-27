@@ -32,6 +32,7 @@ from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
+from .report_page import ForestData, forest_data
 from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig, Target
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
@@ -97,19 +98,34 @@ def density_peak_trees(
     return forest, forest_trees(forest)
 
 
-def hit_memberships(
+class Clustered(BaseModel):
+    memberships: list[HitMembership]
+    forest: ForestData | None = None
+    """Only density peaks builds a forest. The report page draws it."""
+
+
+def cluster_hits(
     hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
-) -> list[HitMembership]:
+) -> Clustered:
     match clustering.strategy:
         case DensityPeaksConfig() as strategy:
             forest, trees = density_peak_trees(hdmd, clustering, strategy, device)
             probabilities = calculate_probs(forest, trees, strategy.peak_share)
-            return [ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]]
+            return Clustered(
+                memberships=[ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]],
+                forest=forest_data(forest, trees, probabilities),
+            )
         case HdbscanConfig() as strategy:
-            return one_hot_memberships(cluster_labels(
+            return Clustered(memberships=one_hot_memberships(cluster_labels(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
                 clustering.normalise,
-            ))
+            )))
+
+
+def hit_memberships(
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
+) -> list[HitMembership]:
+    return cluster_hits(hdmd, clustering, device).memberships
 
 
 def max_entropy_of(clustering: ClusteringConfig) -> float | None:
@@ -165,7 +181,8 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
-        memberships = hit_memberships(hdmd, config.clustering, forest_device(config.device))
+        clustered = cluster_hits(hdmd, config.clustering, forest_device(config.device))
+    memberships = clustered.memberships
     labels = confident_labels(memberships, max_entropy_of(config.clustering))
     mixed = int((most_probable_labels(memberships) != labels).sum())
     print(f"[{tag}] {len(set(labels) - {NOISE_LABEL})} clusters, {mixed} of {len(labels)} hits too mixed to show")
@@ -200,6 +217,7 @@ def report_neuron(
             attr_fn=run.attr_fn,
             max_n=config.report.max_hits_per_cluster,
             min_uniq_images=config.report.min_uniq_samples_per_cluster,
+            forest=clustered.forest,
         )
     print(f"[{tag}] report -> {report_path}")
 

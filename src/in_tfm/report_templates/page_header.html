@@ -1,0 +1,12 @@
+<div class="stats">{% for tile in stats %}<div class="stat"><b>{{ tile.value }}</b><span>{{ tile.name }}</span></div>{% endfor %}</div>
+{% if guide %}
+<details class="guide">
+<summary>How to read this report</summary>
+<dl>
+{% for step, title, entry in guide %}
+<dt>{{ entry.term }} <span class="step-ref">step {{ step }}: {{ title }}</span></dt>
+<dd>{{ entry.text }}</dd>
+{% endfor %}
+</dl>
+</details>
+{% endif %}
