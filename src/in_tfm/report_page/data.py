@@ -10,8 +10,9 @@ import numpy as np
 from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
-from ..density_peaks import DensityPeakForest, ForestTrees, log_density
+from ..density_peaks import DensityPeakForest, ForestTrees, PeakDistance, log_density
 from ..hit_selection import BucketedPick, ElbowPick, HitSelection
+from .up_close import up_close_layout
 
 SELECTION_DATA = "selection.npz"
 FOREST_DATA = "forest.npz"
@@ -104,6 +105,10 @@ class ForestData(BaseModel):
     probabilities: Float[np.ndarray, "n_distinct n_trees"]
     neighbours: Int[np.ndarray, "n_distinct n_neighbours"]
     distinct_of_hit: Int[np.ndarray, "n_hits"]
+    up_close_points: Int[np.ndarray, "n_shown"] = np.zeros(0, dtype=int)
+    """The "Forest up close" slice. Empty when no rows were given to lay it out."""
+    up_close_xy: Float[np.ndarray, "n_shown 2"] = np.zeros((0, 2))
+    up_close_per_tree: int = 0
 
     @property
     def n_trees(self) -> int:
@@ -113,13 +118,45 @@ class ForestData(BaseModel):
     def most_probable(self) -> Int[np.ndarray, "n_distinct"]:
         return self.probabilities.argmax(axis=1)
 
+    @property
+    def hits_per_tree(self) -> Int[np.ndarray, "n_trees"]:
+        return np.bincount(self.tree, weights=self.counts, minlength=self.n_trees).astype(int)
+
+
+def touching_counts(data: ForestData) -> Int[np.ndarray, "n_trees n_trees"]:
+    """Mutual nearest-neighbour pairs between points, counted by each point's most probable tree.
+
+    - A pair is mutual when each point is among the other's stored neighbours.
+    - The diagonal counts pairs inside one tree, so it says how self-contained the tree is."""
+    n = len(data.neighbours)
+    own = np.repeat(np.arange(n), data.neighbours.shape[1])
+    other = data.neighbours.ravel()
+    edges = set(zip(own.tolist(), other.tolist()))
+    mutual = np.array([(a, b) for a, b in edges if a < b and (b, a) in edges], dtype=int).reshape(-1, 2)
+    counts = np.zeros((data.n_trees, data.n_trees), dtype=int)
+    cluster = data.most_probable
+    np.add.at(counts, (cluster[mutual[:, 0]], cluster[mutual[:, 1]]), 1)
+    np.add.at(counts, (cluster[mutual[:, 1]], cluster[mutual[:, 0]]), 1)
+    counts[np.diag_indices(data.n_trees)] //= 2
+    return counts
+
 
 def forest_data(
-    forest: DensityPeakForest, trees: ForestTrees, probabilities: Float[np.ndarray, "n_distinct n_trees"]
+    forest: DensityPeakForest,
+    trees: ForestTrees,
+    probabilities: Float[np.ndarray, "n_distinct n_trees"],
+    hit_rows: Float[np.ndarray, "n_hits dim"] | None = None,
+    distance: PeakDistance = "weighted_jaccard",
 ) -> ForestData:
+    """`hit_rows` are `comparable_rows` of the hits. With them, the up-close slice is laid out."""
     rho = log_density(forest.kth_distance)
     parent_in_tree = forest.parent.copy()
     parent_in_tree[trees.roots] = -1
+    up_close = {}
+    if hit_rows is not None:
+        _, first_hit = np.unique(forest.distinct_of_hit, return_index=True)
+        layout = up_close_layout(hit_rows[first_hit], trees.tree, parent_in_tree, distance)
+        up_close = dict(up_close_points=layout.points, up_close_xy=layout.xy, up_close_per_tree=layout.per_tree)
     return ForestData(
         rho=rho,
         delta=forest.delta,
@@ -134,6 +171,7 @@ def forest_data(
         probabilities=probabilities.astype(np.float32),
         neighbours=forest.neighbours,
         distinct_of_hit=forest.distinct_of_hit,
+        **up_close,
     )
 
 
@@ -146,6 +184,8 @@ def load_forest_data(report_dir: Path) -> ForestData | None:
     if not path.exists():
         return None
     arrays = np.load(path)
+    scalars = {"cut_rho": float, "cut_delta": float, "up_close_per_tree": int}
     return ForestData(**{
-        name: float(arrays[name]) if name.startswith("cut_") else arrays[name] for name in ForestData.model_fields
+        name: scalars[name](arrays[name]) if name in scalars else arrays[name]
+        for name in ForestData.model_fields if name in arrays
     })

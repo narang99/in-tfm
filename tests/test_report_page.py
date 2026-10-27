@@ -5,6 +5,7 @@ from in_tfm.activation_ranges import ActivationRanges, write_activation_ranges
 from in_tfm.density_peaks import calculate_probs, density_peak_forest, forest_trees
 from in_tfm.hit_selection import ElbowPick, HitSelection
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
+from in_tfm.report_page.data import touching_counts
 from in_tfm.report_page import (
     forest_data, load_forest_data, load_selection_curve, page_parts, save_forest_data, save_selection_curve,
     selection_curve,
@@ -64,3 +65,23 @@ def test_the_page_numbers_only_the_sections_it_has_data_for(tmp_path):
     assert parts.n_sections == 2 and parts.has_charts
     assert "Plotly.newPlot" in parts.sections_html
     assert "positions in the tail" in parts.header_html
+
+
+def test_a_forest_report_gets_four_forest_tabs_and_an_up_close_slice(tmp_path):
+    points = two_blobs()
+    forest = density_peak_forest(points, k=5, distance="euclidean")
+    trees = forest_trees(forest)
+    data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), points, "euclidean")
+    assert len(data.up_close_points) > 0 and data.up_close_xy.shape == (len(data.up_close_points), 2)
+    assert set(data.roots) <= set(data.up_close_points), "every sampled path ends at its root"
+    save_forest_data(tmp_path, data)
+    parts = page_parts(tmp_path, a_meta())
+    for tab in ["Decision graph", "Peak separation", "Forest up close", "Forest landscape"]:
+        assert tab in parts.sections_html
+    assert 'data-plot="forest-up-close"' in parts.sections_html
+
+
+def test_touching_counts_are_symmetric_and_mostly_inside_each_blob():
+    counts = touching_counts(a_forest())
+    assert (counts == counts.T).all()
+    assert counts.trace() > 0 and counts[0, 1] == 0, "the blobs are far apart, so no mutual neighbours cross"

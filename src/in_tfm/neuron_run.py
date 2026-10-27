@@ -22,7 +22,9 @@ from .cluster_membership import (
     one_hot_memberships, probability_matrix,
 )
 from .clustering import cluster_labels
-from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees, torch_forest
+from .density_peaks import (
+    DensityPeakForest, ForestTrees, calculate_probs, comparable_rows, density_peak_forest, forest_trees, torch_forest,
+)
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
@@ -113,7 +115,11 @@ def cluster_hits(
             probabilities = calculate_probs(forest, trees, strategy.peak_share)
             return Clustered(
                 memberships=[ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]],
-                forest=forest_data(forest, trees, probabilities),
+                forest=forest_data(
+                    forest, trees, probabilities,
+                    comparable_rows(hdmd.astype(np.float64), clustering.distance, clustering.normalise),
+                    clustering.distance,
+                ),
             )
         case HdbscanConfig() as strategy:
             return Clustered(memberships=one_hot_memberships(cluster_labels(

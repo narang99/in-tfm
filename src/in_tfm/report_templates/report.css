@@ -79,3 +79,8 @@ details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
 .tabs button.on { background:var(--fg); color:var(--bg); }
 .tabpane { display:none; }
 .tabpane.on { display:block; }
+.picker { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+.picker button { cursor:pointer; font:inherit; font-size:0.75rem; padding:1px 8px; border-radius:999px;
+  border:1px solid var(--line); background:var(--bg); color:var(--muted); }
+.picker .pick { border-color:var(--c); }
+.picker .pick.on { background:var(--c); color:#fff; }
