@@ -126,3 +126,25 @@ def test_a_hit_split_between_two_clusters_sits_on_their_border():
     assert cluster_set(np.array([0.95, 0.05, 0.0])) == (0,)
     assert cluster_set(np.array([0.5, 0.0, 0.5])) == (0, 2)
     assert cluster_set(np.array([0.3, 0.3, 0.3, 0.1])) == (0, 1, 2)
+
+
+def test_border_pages_sample_evenly_and_the_table_links_them(tmp_path):
+    import json
+
+    from in_tfm.border_pages import evenly_ranked
+    from in_tfm.report_page.borders_section import BORDER_INDEX, BORDERS_DIR
+
+    members = np.arange(10)
+    lead = np.linspace(0.9, 0.1, 10)
+    assert list(evenly_ranked(members, lead, 4)) == [0, 3, 6, 9], "first and last, and evenly between"
+    assert list(evenly_ranked(members[:2], lead[:2], 6)) == [0, 1]
+
+    forest = density_peak_forest(two_blobs(), k=5, distance="euclidean")
+    trees = forest_trees(forest)
+    data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), max_entropy=0.5)
+    data.probabilities[:5] = np.array([0.5, 0.5])  # five points on the border of both blobs
+    save_forest_data(tmp_path, data)
+    (tmp_path / BORDERS_DIR).mkdir()
+    (tmp_path / BORDERS_DIR / BORDER_INDEX).write_text(json.dumps({"0-1": "borders/border_0.html"}))
+    parts = page_parts(load_page_data(tmp_path), a_meta())
+    assert 'href="borders/border_0.html"' in parts.sections_html

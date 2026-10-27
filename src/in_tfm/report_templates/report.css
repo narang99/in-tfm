@@ -91,3 +91,10 @@ details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
 table.borders { border-collapse:collapse; font-size:0.85rem; margin:4px 0; }
 table.borders th { text-align:left; color:var(--muted); font-weight:600; font-size:0.75rem; padding:4px 14px 4px 0; }
 table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
+.border-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; }
+.border-hit { border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:10px; min-width:0; }
+.border-hit img { max-width:100%; height:auto; }
+.border-bars { display:grid; gap:3px; max-width:420px; margin-bottom:8px; }
+.border-bar { display:grid; grid-template-columns:48px 1fr 44px; align-items:center; gap:8px; font-size:0.75rem; color:var(--muted); }
+.border-bar i { display:block; height:8px; border-radius:4px; min-width:2px; }
+.border-bar b { color:var(--fg); font-weight:600; text-align:right; }

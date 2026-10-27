@@ -29,6 +29,7 @@ from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .border_pages import write_border_pages
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
@@ -217,6 +218,12 @@ def report_neuron(
                 membership_entropy(memberships), max_entropy, config.report.min_uniq_samples_per_cluster, run.attr_fn,
             )
         print(f"[{tag}] mixed hits -> {mixed_path}")
+    if clustered.forest is not None:
+        with timed(f"{tag}: write border pages"):
+            border_paths = write_border_pages(
+                hits, Path(config.out_dir) / report_name(neuron_idx, polarity), clustered.forest, run.attr_fn,
+            )
+        print(f"[{tag}] {len(border_paths)} border pages")
     with timed(f"{tag}: write report"):
         report_path = hits.write_report(
             config.out_dir,

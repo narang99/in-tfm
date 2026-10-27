@@ -1,5 +1,6 @@
 """The parts of a neuron's index page above its clusters: stat tiles, a glossary, and numbered sections."""
 
+import json
 import math
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from ..activation_ranges import ActivationRanges, load_activation_ranges
 from ..html_report import render_template
 from ..report_meta import ReportMeta
 from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
-from .borders_section import borders_section
+from .borders_section import BORDER_INDEX, BORDERS_DIR, borders_section
 from .forest_section import forest_section
 from .map_section import map_section
 from .membership import membership_section
@@ -21,6 +22,7 @@ class PageData(BaseModel):
     ranges: ActivationRanges | None
     forest: ForestData | None
     mixed_hits_page: str | None = None
+    border_links: dict[str, str] = {}
 
 
 class PageParts(BaseModel):
@@ -40,7 +42,13 @@ def load_page_data(report_dir: Path) -> PageData:
         ranges=load_activation_ranges(report_dir),
         forest=load_forest_data(report_dir),
         mixed_hits_page=MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None,
+        border_links=load_border_links(report_dir),
     )
+
+
+def load_border_links(report_dir: Path) -> dict[str, str]:
+    path = report_dir / BORDERS_DIR / BORDER_INDEX
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
 def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
@@ -51,7 +59,7 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
         forest_section(data.forest),
         membership_section(data.forest),
         map_section(data.forest),
-        borders_section(data.forest, data.mixed_hits_page),
+        borders_section(data.forest, data.mixed_hits_page, data.border_links),
     ]
     return [section for section in built if section is not None]
 
