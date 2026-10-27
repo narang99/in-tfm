@@ -22,7 +22,7 @@ from .cluster_membership import (
     one_hot_memberships, probability_matrix,
 )
 from .clustering import cluster_labels
-from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees
+from .density_peaks import DensityPeakForest, ForestTrees, calculate_probs, density_peak_forest, forest_trees, torch_forest
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
@@ -80,17 +80,29 @@ def report_name(neuron_idx: int, polarity: Polarity) -> str:
     return f"neuron_{neuron_idx}" if polarity == "positive" else f"neuron_{neuron_idx}_neg"
 
 
+def forest_device(device: str) -> str | None:
+    """The torch forest needs float64, which only CUDA does quickly. MPS has no float64, so it and the CPU use numpy."""
+    return device if device.startswith("cuda") else None
+
+
 def density_peak_trees(
-    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, strategy: DensityPeaksConfig
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, strategy: DensityPeaksConfig,
+    device: str | None = None,
 ) -> tuple[DensityPeakForest, ForestTrees]:
-    forest = density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise)
+    """`device` runs the forest with torch there. See `forest_device`."""
+    if device is None:
+        forest = density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise)
+    else:
+        forest = torch_forest.density_peak_forest(hdmd, strategy.k, clustering.distance, clustering.normalise, device)
     return forest, forest_trees(forest)
 
 
-def hit_memberships(hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig) -> list[HitMembership]:
+def hit_memberships(
+    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
+) -> list[HitMembership]:
     match clustering.strategy:
         case DensityPeaksConfig() as strategy:
-            forest, trees = density_peak_trees(hdmd, clustering, strategy)
+            forest, trees = density_peak_trees(hdmd, clustering, strategy, device)
             probabilities = calculate_probs(forest, trees, strategy.peak_share)
             return [ClusterProbabilities(probabilities=p) for p in probabilities[forest.distinct_of_hit]]
         case HdbscanConfig() as strategy:
@@ -153,7 +165,7 @@ def report_neuron(
     tag = f"neuron {neuron_idx} {polarity}"
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
-        memberships = hit_memberships(hdmd, config.clustering)
+        memberships = hit_memberships(hdmd, config.clustering, forest_device(config.device))
     labels = confident_labels(memberships, max_entropy_of(config.clustering))
     mixed = int((most_probable_labels(memberships) != labels).sum())
     print(f"[{tag}] {len(set(labels) - {NOISE_LABEL})} clusters, {mixed} of {len(labels)} hits too mixed to show")
