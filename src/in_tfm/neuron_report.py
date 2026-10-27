@@ -41,7 +41,7 @@ from .html_report import (
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
 from .report_page import (
-    PLOTLY_JS, SELECTION_DATA, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
+    MIXED_HITS_PAGE, PLOTLY_JS, SELECTION_DATA, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
     save_selection_curve, selection_curve,
 )
 from .report_meta import (
@@ -82,8 +82,6 @@ def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
     return report_dir / f"cluster_{cluster_id}"
 
 
-MIXED_HITS_PAGE = "mixed_hits.html"
-"""The sheet of hits split between clusters, linked from the index when it exists."""
 
 
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
@@ -99,8 +97,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    mixed_hits_page = MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None
-    report_path.write_text(_index_page(report_dir, data, meta, sections, presenter.page_controls(), mixed_hits_page))
+    report_path.write_text(_index_page(report_dir, data, meta, sections, presenter.page_controls(), data.mixed_hits_page))
     return report_path
 
 

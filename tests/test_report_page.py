@@ -118,3 +118,11 @@ def test_the_map_holds_every_root_and_gets_its_own_section(tmp_path):
     save_forest_data(tmp_path, data)
     parts = page_parts(load_page_data(tmp_path), a_meta())
     assert 'id="hit-map"' in parts.sections_html and "Map" in parts.sections_html
+
+
+def test_a_hit_split_between_two_clusters_sits_on_their_border():
+    from in_tfm.report_page.borders_section import cluster_set
+
+    assert cluster_set(np.array([0.95, 0.05, 0.0])) == (0,)
+    assert cluster_set(np.array([0.5, 0.0, 0.5])) == (0, 2)
+    assert cluster_set(np.array([0.3, 0.3, 0.3, 0.1])) == (0, 1, 2)

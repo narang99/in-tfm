@@ -9,6 +9,7 @@ from ..activation_ranges import ActivationRanges, load_activation_ranges
 from ..html_report import render_template
 from ..report_meta import ReportMeta
 from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
+from .borders_section import borders_section
 from .forest_section import forest_section
 from .map_section import map_section
 from .membership import membership_section
@@ -19,6 +20,7 @@ class PageData(BaseModel):
     curve: SelectionCurve | None
     ranges: ActivationRanges | None
     forest: ForestData | None
+    mixed_hits_page: str | None = None
 
 
 class PageParts(BaseModel):
@@ -28,11 +30,16 @@ class PageParts(BaseModel):
     has_charts: bool
 
 
+MIXED_HITS_PAGE = "mixed_hits.html"
+"""The sheet of hits split between clusters, linked from the page when it exists."""
+
+
 def load_page_data(report_dir: Path) -> PageData:
     return PageData(
         curve=load_selection_curve(report_dir),
         ranges=load_activation_ranges(report_dir),
         forest=load_forest_data(report_dir),
+        mixed_hits_page=MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None,
     )
 
 
@@ -44,6 +51,7 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
         forest_section(data.forest),
         membership_section(data.forest),
         map_section(data.forest),
+        borders_section(data.forest, data.mixed_hits_page),
     ]
     return [section for section in built if section is not None]
 

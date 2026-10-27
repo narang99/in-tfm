@@ -1,0 +1,8 @@
+<table class="borders">
+<thead><tr><th>clusters</th><th>hits</th><th>of all hits</th></tr></thead>
+<tbody>
+{% for row in rows %}
+<tr><td>{{ row.chips|safe }}</td><td>{{ "{:,}".format(row.hits) }}</td><td>{{ "{:.1%}".format(row.share) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>

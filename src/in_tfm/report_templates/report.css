@@ -88,3 +88,6 @@ details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
 .card-stat b { color:var(--fg); }
 .tree-chip { display:inline-block; margin-left:4px; padding:0 8px; border-radius:999px; font-size:0.75rem;
   background:var(--c); color:#fff; text-decoration:none; }
+table.borders { border-collapse:collapse; font-size:0.85rem; margin:4px 0; }
+table.borders th { text-align:left; color:var(--muted); font-weight:600; font-size:0.75rem; padding:4px 14px 4px 0; }
+table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
