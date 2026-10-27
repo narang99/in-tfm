@@ -80,8 +80,13 @@ else:
 
 ```python
 !tr '\r' '\n' < /content/run.log | grep -E "^\[|Error|Traceback|EXIT" | tail -20
-!pgrep -af scripts/space_reports.py || echo "no run alive"
+import subprocess
+print(subprocess.run(["pgrep", "-af", "scripts/space_reports.py"], capture_output=True, text=True).stdout or "no run alive")
 ```
+
+- Call `pgrep` without a shell, as above, never as `!pgrep -f <pattern>`.
+  - `!` runs the line through `/bin/sh -c`, whose own command line contains the pattern, so `pgrep` matches the shell.
+  - The run then looks alive forever. On 2026-10-28 a finished run kept reporting "alive" this way.
 
 - `tr '\r' '\n'` turns tqdm's carriage returns into lines, so the stage lines can be grepped.
 - Set `PYTHONUNBUFFERED=1` in the run's environment.
