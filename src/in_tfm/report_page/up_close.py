@@ -16,7 +16,10 @@ from ..density_peaks import PeakDistance
 from ..weighted_jaccard import weighted_jaccard_block
 
 POINT_BUDGET = 1500
-"""Points sampled over all trees before ancestors are added. The layout is quadratic in points."""
+"""Points in the slice, ancestors included. The layout is quadratic in points per iteration.
+
+- On mixed4e:55 (41 trees) 36 samples per tree grew to 3,068 points with their ancestors, and the layout took 52 s."""
+ITERATIONS = 100
 MAX_PER_TREE = 60
 MIN_PER_TREE = 5
 NEIGHBOURS = 6
@@ -48,6 +51,19 @@ def sampled_with_ancestors(
     return np.array(sorted(chosen), dtype=int)
 
 
+def slice_within_budget(
+    tree: Int[np.ndarray, "n_distinct"], parent_in_tree: Int[np.ndarray, "n_distinct"], seed: int,
+) -> tuple[Int[np.ndarray, "n_shown"], int]:
+    """The most samples per tree whose slice, ancestors included, fits `POINT_BUDGET`. Never below `MIN_PER_TREE`."""
+    n_trees = len(np.unique(tree))
+    per_tree = int(np.clip(POINT_BUDGET // max(n_trees, 1), MIN_PER_TREE, MAX_PER_TREE))
+    points = sampled_with_ancestors(tree, parent_in_tree, per_tree, seed)
+    while len(points) > POINT_BUDGET and per_tree > MIN_PER_TREE:
+        per_tree = max(MIN_PER_TREE, per_tree * POINT_BUDGET // len(points))
+        points = sampled_with_ancestors(tree, parent_in_tree, per_tree, seed)
+    return points, per_tree
+
+
 def slice_distances(rows: Float[np.ndarray, "n_shown dim"], distance: PeakDistance) -> Float[np.ndarray, "n_shown n_shown"]:
     """`rows` are already `comparable_rows`."""
     return weighted_jaccard_block(rows, rows) if distance == "weighted_jaccard" else cdist(rows, rows)
@@ -66,7 +82,7 @@ def spring_positions(
     for i, parent in enumerate(parents):
         if parent >= 0:
             graph.add_edge(i, int(parent), weight=PARENT_WEIGHT)
-    positions = nx.spring_layout(graph, weight="weight", iterations=150, seed=seed)
+    positions = nx.spring_layout(graph, weight="weight", iterations=ITERATIONS, seed=seed)
     return np.array([positions[i] for i in range(len(distances))])
 
 
@@ -77,9 +93,7 @@ def up_close_layout(
     distance: PeakDistance,
     seed: int = 0,
 ) -> UpCloseLayout:
-    n_trees = len(np.unique(tree))
-    per_tree = int(np.clip(POINT_BUDGET // max(n_trees, 1), MIN_PER_TREE, MAX_PER_TREE))
-    points = sampled_with_ancestors(tree, parent_in_tree, per_tree, seed)
+    points, per_tree = slice_within_budget(tree, parent_in_tree, seed)
     slot = np.full(len(tree), -1)
     slot[points] = np.arange(len(points))
     parents = np.where(parent_in_tree[points] >= 0, slot[parent_in_tree[points]], -1)
