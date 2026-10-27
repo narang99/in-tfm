@@ -84,3 +84,7 @@ details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
   border:1px solid var(--line); background:var(--bg); color:var(--muted); }
 .picker .pick { border-color:var(--c); }
 .picker .pick.on { background:var(--c); color:#fff; }
+.card-stats { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font-size:0.8rem; color:var(--muted); margin:0 0 10px; }
+.card-stat b { color:var(--fg); }
+.tree-chip { display:inline-block; margin-left:4px; padding:0 8px; border-radius:999px; font-size:0.75rem;
+  background:var(--c); color:#fff; text-decoration:none; }

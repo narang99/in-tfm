@@ -119,6 +119,7 @@ def cluster_hits(
                     forest, trees, probabilities,
                     comparable_rows(hdmd.astype(np.float64), clustering.distance, clustering.normalise),
                     clustering.distance,
+                    strategy.max_entropy,
                 ),
             )
         case HdbscanConfig() as strategy:

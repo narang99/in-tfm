@@ -105,6 +105,8 @@ class ForestData(BaseModel):
     probabilities: Float[np.ndarray, "n_distinct n_trees"]
     neighbours: Int[np.ndarray, "n_distinct n_neighbours"]
     distinct_of_hit: Int[np.ndarray, "n_hits"]
+    max_entropy: float = float("nan")
+    """Hits at or above it, in bits, are too mixed to show in a cluster. NaN when there is no threshold."""
     up_close_points: Int[np.ndarray, "n_shown"] = np.zeros(0, dtype=int)
     """The "Forest up close" slice. Empty when no rows were given to lay it out."""
     up_close_xy: Float[np.ndarray, "n_shown 2"] = np.zeros((0, 2))
@@ -117,6 +119,17 @@ class ForestData(BaseModel):
     @property
     def most_probable(self) -> Int[np.ndarray, "n_distinct"]:
         return self.probabilities.argmax(axis=1)
+
+    @property
+    def hit_entropy(self) -> Float[np.ndarray, "n_hits"]:
+        """In bits, as `cluster_membership.membership_entropy` computes it."""
+        p = self.probabilities[self.distinct_of_hit].astype(np.float64)
+        logs = np.log2(np.where(p > 0, p, 1.0))
+        return -(p * logs).sum(axis=1)
+
+    @property
+    def hit_cluster(self) -> Int[np.ndarray, "n_hits"]:
+        return self.most_probable[self.distinct_of_hit]
 
     @property
     def hits_per_tree(self) -> Int[np.ndarray, "n_trees"]:
@@ -147,6 +160,7 @@ def forest_data(
     probabilities: Float[np.ndarray, "n_distinct n_trees"],
     hit_rows: Float[np.ndarray, "n_hits dim"] | None = None,
     distance: PeakDistance = "weighted_jaccard",
+    max_entropy: float | None = None,
 ) -> ForestData:
     """`hit_rows` are `comparable_rows` of the hits. With them, the up-close slice is laid out."""
     rho = log_density(forest.kth_distance)
@@ -171,6 +185,7 @@ def forest_data(
         probabilities=probabilities.astype(np.float32),
         neighbours=forest.neighbours,
         distinct_of_hit=forest.distinct_of_hit,
+        max_entropy=float("nan") if max_entropy is None else max_entropy,
         **up_close,
     )
 
@@ -184,7 +199,7 @@ def load_forest_data(report_dir: Path) -> ForestData | None:
     if not path.exists():
         return None
     arrays = np.load(path)
-    scalars = {"cut_rho": float, "cut_delta": float, "up_close_per_tree": int}
+    scalars = {"cut_rho": float, "cut_delta": float, "max_entropy": float, "up_close_per_tree": int}
     return ForestData(**{
         name: scalars[name](arrays[name]) if name in scalars else arrays[name]
         for name in ForestData.model_fields if name in arrays

@@ -8,9 +8,10 @@ from .data import (
     save_forest_data, save_selection_curve, selection_curve,
 )
 from .figures import PLOTLY_JS
-from .page import page_parts
+from .membership import cluster_stats_html
+from .page import PageData, load_page_data, page_parts
 
 __all__ = [
     "FOREST_DATA", "PLOTLY_JS", "SELECTION_DATA", "ForestData", "SelectionCurve", "forest_data", "load_forest_data",
-    "load_selection_curve", "page_parts", "save_forest_data", "save_selection_curve", "selection_curve",
+    "load_selection_curve", "page_parts", "PageData", "cluster_stats_html", "load_page_data", "save_forest_data", "save_selection_curve", "selection_curve",
 ]

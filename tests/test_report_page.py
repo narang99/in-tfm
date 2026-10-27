@@ -7,6 +7,7 @@ from in_tfm.hit_selection import ElbowPick, HitSelection
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
 from in_tfm.report_page.data import touching_counts
 from in_tfm.report_page import (
+    load_page_data,
     forest_data, load_forest_data, load_selection_curve, page_parts, save_forest_data, save_selection_curve,
     selection_curve,
 )
@@ -58,10 +59,10 @@ def test_forest_data_round_trips_and_cuts_root_links(tmp_path):
 
 
 def test_the_page_numbers_only_the_sections_it_has_data_for(tmp_path):
-    assert page_parts(tmp_path, a_meta()).n_sections == 0
+    assert page_parts(load_page_data(tmp_path), a_meta()).n_sections == 0
     save_selection_curve(tmp_path, selection_curve(a_selection()))
     write_activation_ranges(tmp_path, ActivationRanges(clusters={0: [1.0, 2.0], 1: [3.0]}, noise=[0.1, -0.2]))
-    parts = page_parts(tmp_path, a_meta())
+    parts = page_parts(load_page_data(tmp_path), a_meta())
     assert parts.n_sections == 2 and parts.has_charts
     assert "Plotly.newPlot" in parts.sections_html
     assert "positions in the tail" in parts.header_html
@@ -75,7 +76,7 @@ def test_a_forest_report_gets_four_forest_tabs_and_an_up_close_slice(tmp_path):
     assert len(data.up_close_points) > 0 and data.up_close_xy.shape == (len(data.up_close_points), 2)
     assert set(data.roots) <= set(data.up_close_points), "every sampled path ends at its root"
     save_forest_data(tmp_path, data)
-    parts = page_parts(tmp_path, a_meta())
+    parts = page_parts(load_page_data(tmp_path), a_meta())
     for tab in ["Decision graph", "Peak separation", "Forest up close", "Forest landscape"]:
         assert tab in parts.sections_html
     assert 'data-plot="forest-up-close"' in parts.sections_html
@@ -85,3 +86,23 @@ def test_touching_counts_are_symmetric_and_mostly_inside_each_blob():
     counts = touching_counts(a_forest())
     assert (counts == counts.T).all()
     assert counts.trace() > 0 and counts[0, 1] == 0, "the blobs are far apart, so no mutual neighbours cross"
+
+
+def test_hdbscan_cards_get_no_stats_and_forest_cards_link_their_neighbours():
+    from in_tfm.report_page import cluster_stats_html
+
+    assert cluster_stats_html(None, 0) == ""
+    forest = density_peak_forest(two_blobs(), k=5, distance="euclidean")
+    trees = forest_trees(forest)
+    data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), max_entropy=0.5)
+    stats = cluster_stats_html(data, 0)
+    assert "confident" in stats and "self-contained" in stats
+
+
+def test_the_membership_section_and_confident_tile_follow_the_forest(tmp_path):
+    forest = density_peak_forest(two_blobs(), k=5, distance="euclidean")
+    trees = forest_trees(forest)
+    save_forest_data(tmp_path, forest_data(forest, trees, calculate_probs(forest, trees, 0.8), max_entropy=0.5))
+    parts = page_parts(load_page_data(tmp_path), a_meta())
+    assert "Soft membership" in parts.sections_html and "Which clusters touch" in parts.sections_html
+    assert "confident hits" in parts.header_html

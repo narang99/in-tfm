@@ -41,7 +41,8 @@ from .html_report import (
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
 from .report_page import (
-    PLOTLY_JS, SELECTION_DATA, ForestData, page_parts, save_forest_data, save_selection_curve, selection_curve,
+    PLOTLY_JS, SELECTION_DATA, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
+    save_selection_curve, selection_curve,
 )
 from .report_meta import (
     BucketedPickMeta,
@@ -84,15 +85,17 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
     meta = load_report_meta(report_dir)
+    data = load_page_data(report_dir)
     sections = [
         _cluster_section(
-            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
+            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape,
+            cluster_stats_html(data.forest, cid),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
     mixed_hits_page = MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None
-    report_path.write_text(_index_page(report_dir, meta, sections, presenter.page_controls(), mixed_hits_page))
+    report_path.write_text(_index_page(report_dir, data, meta, sections, presenter.page_controls(), mixed_hits_page))
     return report_path
 
 
@@ -103,13 +106,14 @@ def _cluster_section(
     cluster_dir: Path,
     presenter: ClusterPresenter,
     hadamard_shape: HadamardShape,
+    stats_html: str = "",
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
     hits = load_hits(cluster_dir)
     artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
     body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
+    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, stats_html + body)
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
@@ -144,10 +148,15 @@ def _legacy_plots(report_dir: Path, meta: ReportMeta) -> str:
 
 
 def _index_page(
-    report_dir: Path, meta: ReportMeta, sections: list[str], page_controls: str, mixed_hits_page: str | None
+    report_dir: Path,
+    data: PageData,
+    meta: ReportMeta,
+    sections: list[str],
+    page_controls: str,
+    mixed_hits_page: str | None,
 ) -> str:
     title = f"Neuron {meta.neuron_idx}"
-    parts = page_parts(report_dir, meta)
+    parts = page_parts(data, meta)
     body = neuron_index(
         title=title,
         threshold=meta.threshold,
