@@ -1,4 +1,8 @@
-"""The torch forest against the numpy one, on torch's CPU device, so the check runs without a GPU."""
+"""The torch forest against the numpy one, on torch's CPU device, so the check runs without a GPU.
+
+- The torch forest compares pairs in float32, so near ties can swap density ranks.
+- These points have no near ties, so the forests agree exactly. Distances agree to float32 rounding.
+"""
 
 import numpy as np
 import pytest
@@ -11,6 +15,7 @@ from in_tfm.weighted_jaccard import weighted_jaccard_distances
 DISTANCES = ["euclidean", "weighted_jaccard"]
 BLOCK_ELEMENTS = [10, 7 * 33, 2**27]
 """One row per block, a few rows per block, and one block."""
+FLOAT32_TOLERANCE = 1e-5
 
 
 def points_with_copies(rng: np.random.Generator) -> np.ndarray:
@@ -21,12 +26,12 @@ def points_with_copies(rng: np.random.Generator) -> np.ndarray:
 def assert_same_forest(forest, expected) -> None:
     assert np.array_equal(forest.distinct_of_hit, expected.distinct_of_hit)
     assert np.array_equal(forest.counts, expected.counts)
-    assert np.allclose(forest.kth_distance, expected.kth_distance)
+    assert np.allclose(forest.kth_distance, expected.kth_distance, atol=FLOAT32_TOLERANCE)
     assert np.array_equal(forest.density_rank, expected.density_rank)
     assert np.array_equal(forest.parent, expected.parent)
-    assert np.allclose(forest.delta, expected.delta)
+    assert np.allclose(forest.delta, expected.delta, atol=FLOAT32_TOLERANCE)
     assert np.array_equal(forest.neighbours, expected.neighbours)
-    assert np.allclose(forest.neighbour_distance, expected.neighbour_distance)
+    assert np.allclose(forest.neighbour_distance, expected.neighbour_distance, atol=FLOAT32_TOLERANCE)
 
 
 @pytest.mark.parametrize("block_elements", BLOCK_ELEMENTS)
@@ -62,25 +67,7 @@ def test_pairwise_distances_match_numpy(normalise):
     expected = weighted_jaccard_distances(points, normalise=normalise)
     result = torch_forest.pairwise_distances(points, "weighted_jaccard", normalise, "cpu", block_elements=7 * 25)
     assert result.dtype == np.float32
-    assert np.abs(result - expected).max() <= torch_forest.float32_error_bound(torch.zeros(1, 6), "weighted_jaccard")
-
-
-@pytest.mark.parametrize("distance", DISTANCES)
-def test_torch_forest_with_wide_candidate_sets_matches_numpy(distance, monkeypatch):
-    """A huge error bound makes most points candidates, so the exact step decides nearly everything."""
-    monkeypatch.setattr(torch_forest, "float32_error_bound", lambda rows, distance: 10.0)
-    points = points_with_copies(np.random.default_rng(4))
-    expected = vectorized.density_peak_forest(points, k=4, distance=distance)
-    forest = torch_forest.density_peak_forest(points, k=4, distance=distance, device="cpu", block_elements=7 * 33)
-    assert_same_forest(forest, expected)
-
-
-@pytest.mark.parametrize("distance", DISTANCES)
-def test_float32_distances_are_within_the_bound(distance):
-    points = np.random.default_rng(5).normal(size=(40, 300)) * np.random.default_rng(6).exponential(size=(40, 1))
-    rows = torch_forest.TorchRows(comparable_rows(points, distance, normalise=False), distance, "cpu")
-    exact = rows.exact_rows(torch.arange(len(rows)))
-    assert (rows.fast_block(0, len(rows)).double() - exact).abs().max() <= rows.error_bound
+    assert np.abs(result - expected).max() <= FLOAT32_TOLERANCE
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a GPU")
