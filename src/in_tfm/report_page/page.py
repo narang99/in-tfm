@@ -10,6 +10,7 @@ from ..html_report import render_template
 from ..report_meta import ReportMeta
 from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
 from .forest_section import forest_section
+from .map_section import map_section
 from .membership import membership_section
 from .sections import PageSection, StatTile, activations_section, cluster_ranges_section
 
@@ -42,6 +43,7 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
         cluster_ranges_section(data.ranges, cluster_ids),
         forest_section(data.forest),
         membership_section(data.forest),
+        map_section(data.forest),
     ]
     return [section for section in built if section is not None]
 

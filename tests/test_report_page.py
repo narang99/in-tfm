@@ -106,3 +106,15 @@ def test_the_membership_section_and_confident_tile_follow_the_forest(tmp_path):
     parts = page_parts(load_page_data(tmp_path), a_meta())
     assert "Soft membership" in parts.sections_html and "Which clusters touch" in parts.sections_html
     assert "confident hits" in parts.header_html
+
+
+def test_the_map_holds_every_root_and_gets_its_own_section(tmp_path):
+    points = two_blobs()
+    forest = density_peak_forest(points, k=5, distance="euclidean")
+    trees = forest_trees(forest)
+    data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), points, "euclidean", 0.5)
+    assert set(data.roots) <= set(data.map_points), "each cluster's peak anchors the map"
+    assert data.map_xy.shape == (len(data.map_points), 2)
+    save_forest_data(tmp_path, data)
+    parts = page_parts(load_page_data(tmp_path), a_meta())
+    assert 'id="hit-map"' in parts.sections_html and "Map" in parts.sections_html
