@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from tqdm import tqdm
 
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
@@ -59,6 +59,11 @@ AttrFn = Callable[..., np.ndarray]
 
 HITS_CACHE_NAME = "hits.pt"
 SAMPLE_SEED = 0
+COLLECT_EVERY = 32
+"""Hits attributed between garbage collections.
+
+- Collecting after every hit was 44% of the cluster report's time on mixed4e:55, in a py-spy profile.
+- Collecting now and then still frees each hit's batch and graph, so memory stays bounded."""
 
 
 def save_hits(hits: list[ClusterHit], cluster_dir: Path) -> None:
@@ -220,6 +225,7 @@ class NeuronClusterHits(BaseModel):
     noise_activations: Float[np.ndarray, "n"] | None = None
     """With it, the report gets a collapsed activation range plot."""
     device: str = Field(default_factory=default_device)
+    _hits_since_collect: int = PrivateAttr(0)
 
     def sample_cluster(
         self, cluster_id: int, max_n: int = 5, attr_fn: AttrFn = compute_attnlrp_relevance
@@ -241,9 +247,15 @@ class NeuronClusterHits(BaseModel):
             display_ids=None if singleton_batch.display_ids is None else singleton_batch.display_ids[0].cpu(),
         )
         del singleton_batch
-        empty_cache()
-        gc.collect()
+        self._collect_now_and_then()
         return result
+
+    def _collect_now_and_then(self) -> None:
+        self._hits_since_collect += 1
+        if self._hits_since_collect >= COLLECT_EVERY:
+            gc.collect()
+            empty_cache()
+            self._hits_since_collect = 0
 
     def shown_cluster_ids(self, min_uniq_images: int) -> list[int]:
         """Largest first, without clusters drawn from fewer than `min_uniq_images` distinct images."""
