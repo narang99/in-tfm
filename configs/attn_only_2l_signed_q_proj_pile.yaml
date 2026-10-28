@@ -1,0 +1,25 @@
+# Both tails of attn-only 2L layer 0 q_proj neuron 3, over pile-10k, for the entropy-by-rho-and-delta question.
+# Every document is cut at 128 tokens, so the scan covers about 1.22M positions.
+# 20,000 hits needs the GPU forest. Run on Colab with:
+#   python scripts/run_neuron_report.py --config configs/attn_only_2l_signed_q_proj_pile.yaml
+model: self/attn-only-2l
+target: q_proj
+layer_idx: 0
+neurons: [3]
+polarity: signed
+batch_size: 64
+out_dir: reports/attn_only_2l_signed_pile
+text:
+  dataset: NeelNanda/pile-10k
+  dataset_config: null
+  unit: document
+  n_samples: 10000
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 20000
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks

@@ -1,4 +1,4 @@
-"""The wikitext corpus as a list of texts, one per paragraph or per article."""
+"""A text corpus as a list of texts: wikitext by paragraph or by article, or any corpus by document."""
 
 import random
 import re
@@ -33,9 +33,12 @@ def load_texts(text_config: TextDataConfig, seed: int) -> list[str]:
     from datasets import load_dataset
 
     rows = list(load_dataset(text_config.dataset, text_config.dataset_config, split=text_config.split)["text"])
-    if text_config.unit == "paragraph":
-        texts = paragraphs(rows)
-    else:
-        texts = [a for a in articles(rows) if len(a) >= text_config.min_article_chars]
+    match text_config.unit:
+        case "paragraph":
+            texts = paragraphs(rows)
+        case "article":
+            texts = [a for a in articles(rows) if len(a) >= text_config.min_article_chars]
+        case "document":
+            texts = [row for row in rows if row.strip()]
     random.Random(seed).shuffle(texts)
     return texts[: text_config.n_samples]

@@ -80,13 +80,14 @@ class Section(BaseModel):
 
 class TextDataConfig(Section):
     dataset: str = Field("Salesforce/wikitext", description="hf dataset name")
-    dataset_config: str = "wikitext-2-raw-v1"
+    dataset_config: str | None = Field("wikitext-2-raw-v1", description="none for a dataset without configs")
     split: str = "train"
     n_samples: int = 64
     max_length: int = 128
-    unit: Literal["paragraph", "article"] = Field(
+    unit: Literal["paragraph", "article", "document"] = Field(
         "paragraph",
-        description="article joins a wikitext article's paragraphs, so a long max_length is mostly real tokens",
+        description="article joins a wikitext article's paragraphs, so a long max_length is mostly real tokens. "
+        "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
 
