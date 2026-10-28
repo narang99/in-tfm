@@ -37,6 +37,7 @@ from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
 from .report_page import ForestData, forest_data
 from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig, Target
+from .soft_hdbscan import soft_memberships
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
 
@@ -124,6 +125,8 @@ def cluster_hits(
                     strategy.max_entropy,
                 ),
             )
+        case HdbscanConfig(soft=True) as strategy:
+            return Clustered(memberships=soft_memberships(hdmd, clustering, strategy, device))
         case HdbscanConfig() as strategy:
             return Clustered(memberships=one_hot_memberships(cluster_labels(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
@@ -138,9 +141,9 @@ def hit_memberships(
 
 
 def max_entropy_of(clustering: ClusteringConfig) -> float | None:
-    """Only density peaks gives soft probabilities. HDBSCAN's are one-hot, so it needs no threshold."""
+    """Hard HDBSCAN gives one-hot probabilities, so it needs no threshold."""
     match clustering.strategy:
-        case DensityPeaksConfig(max_entropy=max_entropy):
+        case DensityPeaksConfig(max_entropy=max_entropy) | HdbscanConfig(soft=True, max_entropy=max_entropy):
             return max_entropy
         case HdbscanConfig():
             return None

@@ -149,6 +149,14 @@ class HdbscanConfig(Section):
     min_cluster_size: int = 10
     min_samples: int | None = Field(None, description="defaults to min_cluster_size")
     selection_method: Literal["eom", "leaf"] = "leaf"
+    soft: bool = Field(
+        False,
+        description="each hit gets a probability per cluster, as the hdbscan package's soft clustering gives it. "
+        "Noise stays noise",
+    )
+    max_entropy: float = Field(
+        0.5, gt=0, description="soft only: bits. Hits this mixed or more are left out of the cluster report",
+    )
 
 
 class DensityPeaksConfig(Section):

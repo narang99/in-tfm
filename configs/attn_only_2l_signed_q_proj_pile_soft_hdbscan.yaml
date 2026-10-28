@@ -1,0 +1,28 @@
+# As attn_only_2l_signed_q_proj_pile.yaml, clustered by soft HDBSCAN instead of the density-peak forest.
+# Same hits, distance and normalisation, so the two reports compare like for like.
+#   python scripts/run_neuron_report.py --config configs/attn_only_2l_signed_q_proj_pile_soft_hdbscan.yaml
+model: self/attn-only-2l
+target: q_proj
+layer_idx: 0
+neurons: [3]
+polarity: signed
+batch_size: 64
+out_dir: reports/attn_only_2l_signed_pile_soft_hdbscan
+text:
+  dataset: NeelNanda/pile-10k
+  dataset_config: null
+  unit: document
+  n_samples: 10000
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 20000
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: hdbscan
+    soft: true
+    min_cluster_size: 50
+    selection_method: leaf
+    max_entropy: 0.5
