@@ -1,6 +1,9 @@
 """Plotly figures as page fragments, styled to sit on the report's light or dark background."""
 
+from collections.abc import Collection
+
 import plotly.graph_objects as go
+from markupsafe import escape
 from plotly.colors import qualitative
 from plotly.offline import get_plotlyjs_version
 
@@ -42,3 +45,16 @@ def embed(fig: go.Figure, height: str = "60vh", div_id: str | None = None) -> st
         config={"responsive": True, "displaylogo": False},
         div_id=div_id,
     )
+
+
+def cluster_chip(tree: int, shown: Collection[int], label: str = "", page: str = "") -> str:
+    """A chip that links to the cluster's section, or plain when it has none.
+
+    - A cluster gets a section only with enough confident hits, so a tree can be drawn without one.
+    - `page` is the index's path from a page beside it, empty on the index itself.
+    """
+    text = escape(label or tree_name(tree))
+    style = f'style="--c:{tree_color(tree)}"'
+    if tree in shown:
+        return f'<a class="tree-chip" href="{page}#cluster-{tree}" {style}>{text}</a>'
+    return f'<span class="tree-chip unlinked" {style} title="no section: too few confident hits">{text}</span>'

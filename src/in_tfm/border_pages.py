@@ -8,6 +8,7 @@
 """
 
 import json
+from collections.abc import Collection
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +21,7 @@ from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterArtifacts
 from .report_page import ForestData
 from .report_page.borders_section import BORDER_INDEX, BORDERS_DIR, border_key, hit_sets, largest_borders
-from .report_page.figures import tree_color, tree_name
+from .report_page.figures import cluster_chip, tree_color, tree_name
 
 PAGES = 12
 MIN_HITS = 10
@@ -65,7 +66,8 @@ def border_hits(
 
 
 def write_border_pages(
-    hits: NeuronClusterHits, report_dir: Path, data: ForestData, attr_fn: AttrFn = compute_attnlrp_relevance,
+    hits: NeuronClusterHits, report_dir: Path, data: ForestData, shown: Collection[int],
+    attr_fn: AttrFn = compute_attnlrp_relevance,
 ) -> list[Path]:
     """Writes the pages and `borders/borders.json`, which the report's borders table reads to link them."""
     page_dir = report_dir / BORDERS_DIR
@@ -75,11 +77,12 @@ def write_border_pages(
     paths = []
     for page_id, (clusters, n_hits) in enumerate(largest_borders(data, PAGES, MIN_HITS)):
         members = np.flatnonzero([s == clusters for s in sets])
-        shown = border_hits(hits, data, members, clusters, page_dir, page_id, attr_fn)
+        on_page = border_hits(hits, data, members, clusters, page_dir, page_id, attr_fn)
         body = render_template(
             "border_page.html",
             title=f"Neuron {hits.neuron_idx}: the border of {', '.join(tree_name(t) for t in clusters)}",
-            clusters=[(t, tree_name(t), tree_color(t)) for t in clusters], n_hits=n_hits, hits=shown,
+            chips="".join(cluster_chip(t, shown, page="../index.html") for t in clusters),
+            first_cluster=tree_name(clusters[0]), n_hits=n_hits, hits=on_page,
         )
         path = page_dir / f"border_{page_id}.html"
         path.write_text(page(f"Neuron {hits.neuron_idx}: border", body))
