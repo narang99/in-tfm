@@ -1,0 +1,26 @@
+# Both tails of attn-only 2L layer 1 q_proj neuron 3, over pile-10k, for the rotation experiment.
+# Layer 1 reads the stream after layer 0's heads have written to it, so its hits have context.
+#   python scripts/rotated_model_report.py --config configs/attn_only_2l_signed_q_proj_l1_pile.yaml [--rotation-seed 1]
+# The control clusters raw inputs, which a rotation cannot change:
+#   ... --clustering.on input --clustering.distance euclidean
+model: self/attn-only-2l
+target: q_proj
+layer_idx: 1
+neurons: [3]
+polarity: signed
+batch_size: 64
+out_dir: reports/attn_only_2l_l1_pile
+text:
+  dataset: NeelNanda/pile-10k
+  dataset_config: null
+  unit: document
+  n_samples: 10000
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 20000
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
