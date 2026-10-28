@@ -6,10 +6,6 @@
 <title>{{ title }}</title>
 <style>
 {% include "report.css" %}
-
-{% for color in accents %}
-.accent-{{ loop.index0 }} { --accent:{{ color }}; }
-{% endfor %}
 </style>
 {% if plotly_js %}
 <script src="{{ plotly_js }}"></script>

@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict
 
 from ..density_peaks import DensityPeakForest, ForestTrees, PeakDistance, log_density
 from ..hit_selection import BucketedPick, ElbowPick, HitSelection
-from .hit_map import hit_map_layout
 from .up_close import up_close_layout
 
 SELECTION_DATA = "selection.npz"
@@ -103,7 +102,6 @@ class ForestData(BaseModel):
     depth: Int[np.ndarray, "n_distinct"]
     counts: Int[np.ndarray, "n_distinct"]
     roots: Int[np.ndarray, "n_trees"]
-    is_root_candidate: Int[np.ndarray, "n_distinct"]
     """1 where the point passes the rho cut, so it could have been a root."""
     cut_rho: float
     cut_delta: float
@@ -116,9 +114,6 @@ class ForestData(BaseModel):
     """The "Forest up close" slice. Empty when no rows were given to lay it out."""
     up_close_xy: Float[np.ndarray, "n_shown 2"] = np.zeros((0, 2))
     up_close_per_tree: int = 0
-    map_points: Int[np.ndarray, "n_mapped"] = np.zeros(0, dtype=int)
-    """The "Map" sample. Empty when no rows were given to lay it out."""
-    map_xy: Float[np.ndarray, "n_mapped 2"] = np.zeros((0, 2))
 
     @property
     def n_trees(self) -> int:
@@ -179,8 +174,6 @@ def forest_data(
         _, first_hit = np.unique(forest.distinct_of_hit, return_index=True)
         layout = up_close_layout(hit_rows[first_hit], trees.tree, parent_in_tree, distance)
         up_close = dict(up_close_points=layout.points, up_close_xy=layout.xy, up_close_per_tree=layout.per_tree)
-        hit_map = hit_map_layout(hit_rows[first_hit], forest.counts, trees.roots, probabilities, distance)
-        up_close |= dict(map_points=hit_map.points, map_xy=hit_map.xy)
     return ForestData(
         rho=rho,
         delta=forest.delta,
@@ -189,7 +182,6 @@ def forest_data(
         depth=trees.depth,
         counts=forest.counts,
         roots=trees.roots,
-        is_root_candidate=(rho >= trees.cuts.rho).astype(np.int8),
         cut_rho=trees.cuts.rho,
         cut_delta=trees.cuts.delta,
         probabilities=probabilities.astype(np.float32),

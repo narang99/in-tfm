@@ -9,6 +9,7 @@ from collections import Counter
 from collections.abc import Collection
 
 import numpy as np
+
 from ..html_report import render_template
 from .data import ForestData
 from .figures import cluster_chip

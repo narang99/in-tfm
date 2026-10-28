@@ -39,19 +39,10 @@ class StatTile(BaseModel):
     name: str
 
 
-def activations_section(curve: SelectionCurve | None, ranges: ActivationRanges | None) -> PageSection | None:
+def activations_section(curve: SelectionCurve | None) -> PageSection | None:
     if curve is None:
         return None
     panes = [Pane(name="Sorted curve", body_html=embed(sorted_curve_figure(curve), "55vh"))]
-    if ranges is not None and ranges.noise:
-        panes.append(Pane(
-            name="Histogram",
-            intro=(
-                f"A random sample of {len(ranges.noise):,} positions, hits or not, signed. "
-                "Counts are on a log scale. The shaded tail is past the threshold."
-            ),
-            body_html=embed(noise_histogram_figure(np.asarray(ranges.noise), curve), "50vh"),
-        ))
     return PageSection(
         key="activations",
         title="Activations and the threshold",
@@ -99,25 +90,6 @@ def add_bucket_edges(fig: go.Figure, curve: SelectionCurve) -> None:
     for edge in curve.bucket_edges[:-1]:
         position = int(curve.index[min(np.searchsorted(curve.magnitude, edge), len(curve.index) - 1)])
         fig.add_vline(x=position, line=dict(color=MARK, dash="dash", width=1), annotation_text=f"{edge:.3g}")
-
-
-def noise_histogram_figure(noise: np.ndarray, curve: SelectionCurve) -> go.Figure:
-    fig = go.Figure(go.Histogram(x=noise, nbinsx=120, marker_color=MUTED))
-    for cut in hit_cuts(curve):
-        tail_end = min(float(noise.min()), cut) if cut < 0 else max(float(noise.max()), cut)
-        fig.add_vrect(x0=min(cut, tail_end), x1=max(cut, tail_end), fillcolor=MARK, opacity=0.12, line_width=0)
-        fig.add_vline(x=cut, line=dict(color=MARK, dash="dash"), annotation_text="threshold")
-    fig.update_yaxes(type="log", title="positions (log scale)")
-    fig.update_xaxes(title="activation")
-    fig.update_layout(showlegend=False)
-    return fig
-
-
-def hit_cuts(curve: SelectionCurve) -> list[float]:
-    """Where the hit tails start on a signed axis: one cut per tail."""
-    if curve.signed:
-        return [-curve.threshold, curve.threshold]
-    return [-curve.threshold if curve.negative else curve.threshold]
 
 
 def cluster_ranges_section(ranges: ActivationRanges | None, cluster_ids: list[int]) -> PageSection | None:

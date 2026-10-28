@@ -31,7 +31,6 @@ from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
 from .html_report import (
     ClusterLink,
-    accent_class,
     cluster_nav,
     cluster_section,
     details,
@@ -115,14 +114,14 @@ def _cluster_section(
     hits = load_hits(cluster_dir)
     artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
     body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, stats_html + body)
+    return cluster_section(cluster_id, cluster.n_hits, cluster.n_unique_images, stats_html + body)
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
     return cluster_nav(
         [
-            ClusterLink(cluster_id=cid, n_hits=c.n_hits, accent_class=accent_class(i))
-            for i, (cid, c) in enumerate(meta.clusters.items())
+            ClusterLink(cluster_id=cid, n_hits=c.n_hits)
+            for cid, c in meta.clusters.items()
         ]
     )
 

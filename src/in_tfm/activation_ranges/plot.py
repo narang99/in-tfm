@@ -15,12 +15,6 @@ from matplotlib.figure import Figure
 
 Activations = Float[np.ndarray, "n"]
 
-KELLY_COLORS = [
-    "#F2F3F4", "#F3C300", "#875692", "#F38400", "#A1CAF1", "#BE0032", "#C2B280", "#848482", "#008856", "#E68FAC",
-    "#0067A5", "#F99379", "#604E97", "#F6A600", "#B3446C", "#DCD300", "#882D17", "#8DB600", "#654522", "#E25822",
-    "#2B3D26",
-]  # fmt: skip
-"""Index 0 is white, reserved for the noise series, so clusters use `KELLY_COLORS[1:]`."""
 NOISE_COLOR = "white"
 NOISE_RANGE_COLOR = "#888888"
 BACKGROUND = "#212529"

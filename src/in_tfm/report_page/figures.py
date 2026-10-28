@@ -4,13 +4,13 @@ from collections.abc import Collection
 
 import plotly.graph_objects as go
 from markupsafe import escape
-from plotly.colors import qualitative
 from plotly.offline import get_plotlyjs_version
+
+from ..cluster_colors import cluster_color, ink_on
 
 PLOTLY_JS = f"https://cdn.plot.ly/plotly-{get_plotlyjs_version()}.min.js"
 """The same plotly.js the figures were written for."""
 
-TREE_COLORS = qualitative.Plotly + qualitative.D3 + qualitative.Light24 + qualitative.Dark24
 INK = "#8a8a8a"
 """Mid grey reads on both backgrounds, since a figure cannot follow the page's colour scheme."""
 GRID = "rgba(138,138,138,0.25)"
@@ -20,7 +20,7 @@ MUTED = "#9aa1ae"
 
 
 def tree_color(tree: int) -> str:
-    return TREE_COLORS[int(tree) % len(TREE_COLORS)]
+    return cluster_color(tree)
 
 
 def tree_name(tree: int) -> str:
@@ -54,7 +54,7 @@ def cluster_chip(tree: int, shown: Collection[int], label: str = "", page: str =
     - `page` is the index's path from a page beside it, empty on the index itself.
     """
     text = escape(label or tree_name(tree))
-    style = f'style="--c:{tree_color(tree)}"'
+    style = f'style="--c:{tree_color(tree)};--ink:{ink_on(tree_color(tree))}"'
     if tree in shown:
         return f'<a class="tree-chip" href="{page}#cluster-{tree}" {style}>{text}</a>'
     return f'<span class="tree-chip unlinked" {style} title="no section: too few confident hits">{text}</span>'

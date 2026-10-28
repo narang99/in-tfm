@@ -6,7 +6,6 @@ from in_tfm.density_peaks import calculate_probs, density_peak_forest, forest_tr
 from in_tfm.hit_selection import ElbowPick, HitSelection
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
 from in_tfm.report_page.data import touching_counts
-from in_tfm.report_page.sections import hit_cuts
 from in_tfm.report_page import (
     load_page_data,
     forest_data, load_forest_data, load_selection_curve, page_parts, save_forest_data, save_selection_curve,
@@ -53,7 +52,7 @@ def test_a_signed_curve_round_trips_and_cuts_both_tails(tmp_path):
     selection = a_selection().model_copy(update={"polarity": "signed"})
     save_selection_curve(tmp_path, selection_curve(selection))
     curve = load_selection_curve(tmp_path)
-    assert curve.signed and hit_cuts(curve) == [-curve.threshold, curve.threshold]
+    assert curve.signed and not curve.negative
 
 
 def test_forest_data_round_trips_and_cuts_root_links(tmp_path):
@@ -76,7 +75,7 @@ def test_the_page_numbers_only_the_sections_it_has_data_for(tmp_path):
     assert "positions in the tail" in parts.header_html
 
 
-def test_a_forest_report_gets_four_forest_tabs_and_an_up_close_slice(tmp_path):
+def test_a_forest_report_gets_three_forest_tabs_and_an_up_close_slice(tmp_path):
     points = two_blobs()
     forest = density_peak_forest(points, k=5, distance="euclidean")
     trees = forest_trees(forest)
@@ -85,7 +84,7 @@ def test_a_forest_report_gets_four_forest_tabs_and_an_up_close_slice(tmp_path):
     assert set(data.roots) <= set(data.up_close_points), "every sampled path ends at its root"
     save_forest_data(tmp_path, data)
     parts = page_parts(load_page_data(tmp_path), a_meta())
-    for tab in ["Decision graph", "Peak separation", "Forest up close", "Forest landscape"]:
+    for tab in ["Decision graph", "Root cuts", "Forest up close"]:
         assert tab in parts.sections_html
     assert 'data-plot="forest-up-close"' in parts.sections_html
 
@@ -122,18 +121,6 @@ def test_the_membership_section_and_confident_tile_follow_the_forest(tmp_path):
     parts = page_parts(load_page_data(tmp_path), a_meta())
     assert "Soft membership" in parts.sections_html and "Which clusters touch" in parts.sections_html
     assert "confident hits" in parts.header_html
-
-
-def test_the_map_holds_every_root_and_gets_its_own_section(tmp_path):
-    points = two_blobs()
-    forest = density_peak_forest(points, k=5, distance="euclidean")
-    trees = forest_trees(forest)
-    data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), points, "euclidean", 0.5)
-    assert set(data.roots) <= set(data.map_points), "each cluster's peak anchors the map"
-    assert data.map_xy.shape == (len(data.map_points), 2)
-    save_forest_data(tmp_path, data)
-    parts = page_parts(load_page_data(tmp_path), a_meta())
-    assert 'id="hit-map"' in parts.sections_html and "Map" in parts.sections_html
 
 
 def test_a_hit_split_between_two_clusters_sits_on_their_border():

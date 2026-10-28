@@ -1,23 +1,22 @@
-"""The "Density-peak forest" section: four views of the forest, as tabs.
+"""The "Density-peak forest" section: three views of the forest, as tabs.
 
 - Decision graph: every point by density and distance to anything denser, with both root cuts.
-- Peak separation: how far each root stands above the delta cut, next to the best points that missed it.
+- Root cuts: the sorted rho and delta curves, each with the elbow that set its cut.
 - Forest up close: a sampled slice of real points and their paths to the root, laid out on real distances.
-- Forest landscape: each tree as a hill, density against the order of points along the tree.
 
 Points are distinct points, so a point with copies stands for several hits.
 """
 
 import numpy as np
 import plotly.graph_objects as go
-from jaxtyping import Int
+from jaxtyping import Float, Int
 from markupsafe import escape
+from plotly.subplots import make_subplots
 
 from .data import ForestData, touching_counts
 from .figures import MARK, MUTED, embed, tree_color, tree_name
 from .sections import GuideEntry, PageSection, Pane
 
-RUNNERS_UP = 10
 DEFAULT_PICKS = 2
 """Trees switched on when the up-close tab opens: the pair among the largest trees that touch most."""
 UP_CLOSE_DIV = "forest-up-close"
@@ -28,11 +27,10 @@ def forest_section(data: ForestData | None) -> PageSection | None:
         return None
     panes = [
         Pane(name="Decision graph", intro=DECISION_INTRO, body_html=embed(decision_figure(data), "65vh")),
-        Pane(name="Peak separation", intro=SEPARATION_INTRO, body_html=embed(separation_figure(data), "55vh")),
+        Pane(name="Root cuts", intro=CUTS_INTRO, body_html=embed(cuts_figure(data), "55vh")),
     ]
     if len(data.up_close_points):
         panes.append(Pane(name="Forest up close", intro=up_close_intro(data), body_html=up_close_html(data)))
-    panes.append(Pane(name="Forest landscape", intro=LANDSCAPE_INTRO, body_html=embed(landscape_figure(data), "70vh")))
     return PageSection(
         key="forest",
         title="Density-peak forest",
@@ -64,15 +62,9 @@ DECISION_INTRO = (
     "is far from anything denser. Most points sit low, on the slope of some hill. Roots are past both cut lines, in the "
     "top right. High dots on the left are loners, not centres."
 )
-SEPARATION_INTRO = (
-    "How clearly each peak stands out. Every root is dense enough, and its bar is how far it is from anything denser. "
-    "Tall bars are clear peaks. Bars just above the cut would merge under a slightly stricter cut. Grey bars are the "
-    "densest-enough points that missed it."
-)
-LANDSCAPE_INTRO = (
-    "Each tree drawn as a hill: height is density, lines are parent links, and the root is on top. Across is only the "
-    "order of points along their tree, not a distance. Click a tree in the legend to isolate it, and double-click to "
-    "add others."
+CUTS_INTRO = (
+    "Each cut is the elbow of its own curve, sorted largest first: the point furthest below the line from the first "
+    "value to the last. Roots are the points past both cuts."
 )
 
 
@@ -107,27 +99,26 @@ def decision_figure(data: ForestData) -> go.Figure:
     return fig
 
 
-def runners_up(data: ForestData) -> Int[np.ndarray, "n_runners"]:
-    is_root = np.zeros(len(data.rho), bool)
-    is_root[data.roots] = True
-    candidates = np.flatnonzero(~is_root & data.is_root_candidate.astype(bool))
-    return candidates[np.argsort(-data.delta[candidates])][:RUNNERS_UP]
+def delta_for_elbow(data: ForestData) -> Float[np.ndarray, "n_distinct"]:
+    """As `density_peaks.delta_for_elbow`: the densest point's delta is capped at the next largest."""
+    delta = data.delta.copy()
+    densest = int(np.argmax(data.rho))
+    delta[densest] = np.delete(delta, densest).max(initial=delta[densest])
+    return delta
 
 
-def separation_figure(data: ForestData) -> go.Figure:
-    """The axis starts at 0: a runner-up is below the delta cut by construction, so a raised floor would hide it."""
-    tree_of_root = {int(r): t for t, r in enumerate(data.roots)}
-    shown = sorted([*map(int, data.roots), *map(int, runners_up(data))], key=lambda p: -data.delta[p])
-    fig = go.Figure(go.Bar(
-        x=[tree_name(tree_of_root[p]) if p in tree_of_root else f"#{p}" for p in shown],
-        y=[data.delta[p] for p in shown],
-        marker_color=[tree_color(tree_of_root[p]) if p in tree_of_root else MUTED for p in shown],
-        text=[f"rho {data.rho[p]:.3f} | {data.counts[p]} hit(s)" for p in shown], textposition="none",
-        hovertemplate="%{x}<br>delta %{y:.3f}<br>%{text}<extra></extra>",
-    ))
-    fig.add_hline(y=data.cut_delta, line=dict(color=MARK, dash="dash"), annotation_text="delta cut")
-    fig.update_yaxes(title="delta (distance to the nearest denser point)", rangemode="tozero")
-    fig.update_xaxes(title="roots, coloured, and the best points that missed the cut, grey", type="category")
+def cuts_figure(data: ForestData) -> go.Figure:
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("rho, sorted", "delta, sorted"), horizontal_spacing=0.08)
+    for col, (values, cut) in enumerate([(data.rho, data.cut_rho), (delta_for_elbow(data), data.cut_delta)], start=1):
+        curve = np.sort(values)[::-1]
+        fig.add_trace(go.Scattergl(
+            x=np.arange(len(curve)), y=curve, mode="lines", line=dict(color=MUTED, width=2),
+            hovertemplate="rank %{x}<br>%{y:.3f}<extra></extra>",
+        ), row=1, col=col)
+        fig.add_hline(y=cut, line=dict(color=MARK, dash="dash"), annotation_text=f"cut {cut:.3f}", row=1, col=col)
+        fig.add_vline(x=int((curve >= cut).sum()) - 1, line=dict(color=MARK, dash="dot", width=1), row=1, col=col)
+    fig.update_xaxes(title="points, largest first")
+    fig.update_layout(showlegend=False)
     return fig
 
 
@@ -198,55 +189,4 @@ def up_close_figure(data: ForestData, picks: set[int]) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x")
     fig.update_layout(showlegend=False)
-    return fig
-
-
-def tree_order(data: ForestData) -> Int[np.ndarray, "n_distinct"]:
-    """Depth first from each root, sparsest child first, so each tree draws as one hill."""
-    children: dict[int, list[int]] = {}
-    for point, parent in enumerate(data.parent_in_tree):
-        if parent >= 0:
-            children.setdefault(int(parent), []).append(point)
-    order: list[int] = []
-    for root in data.roots:
-        stack = [int(root)]
-        while stack:
-            point = stack.pop()
-            order.append(point)
-            stack.extend(sorted(children.get(point, []), key=lambda child: data.rho[child]))
-    return np.array(order, dtype=int)
-
-
-def landscape_figure(data: ForestData) -> go.Figure:
-    """Each tree's root marker shares its legend group, so isolating a tree keeps its root."""
-    x = np.empty(len(data.rho))
-    x[tree_order(data)] = np.arange(len(data.rho))
-    hits = data.hits_per_tree
-    fig = go.Figure()
-    for t in range(data.n_trees):
-        members = np.flatnonzero(data.tree == t)
-        linked = members[data.parent_in_tree[members] >= 0]
-        parents = data.parent_in_tree[linked]
-        gap = np.full(len(linked), np.nan)
-        group = tree_name(t)
-        fig.add_trace(go.Scattergl(
-            x=np.column_stack([x[linked], x[parents], gap]).ravel(),
-            y=np.column_stack([data.rho[linked], data.rho[parents], gap]).ravel(),
-            mode="lines", line=dict(color=tree_color(t), width=0.7), opacity=0.5, legendgroup=group,
-            showlegend=False, hoverinfo="skip",
-        ))
-        fig.add_trace(go.Scattergl(
-            x=x[members], y=data.rho[members], mode="markers", name=f"{group} ({hits[t]:,})", legendgroup=group,
-            marker=dict(size=3, color=tree_color(t)), text=point_hover(data, members),
-            hovertemplate="%{text}<extra></extra>",
-        ))
-        root = data.roots[t]
-        fig.add_trace(go.Scatter(
-            x=[x[root]], y=[data.rho[root]], mode="markers+text", text=[group], textposition="top center",
-            legendgroup=group, showlegend=False, hoverinfo="skip",
-            marker=dict(size=10, symbol="triangle-up", color=tree_color(t), line=dict(color="#fff", width=1)),
-        ))
-    fig.update_xaxes(title="points, in order along their tree", showticklabels=False)
-    fig.update_yaxes(title="rho (log density)")
-    fig.update_layout(legend=dict(itemclick="toggleothers", itemdoubleclick="toggle", font=dict(size=11)))
     return fig

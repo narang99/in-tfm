@@ -9,10 +9,9 @@ from pydantic import BaseModel
 from ..activation_ranges import ActivationRanges, load_activation_ranges
 from ..html_report import render_template
 from ..report_meta import ReportMeta
-from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
 from .borders_section import BORDER_INDEX, BORDERS_DIR, borders_section
+from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
 from .forest_section import forest_section
-from .map_section import map_section
 from .membership import membership_section
 from .sections import PageSection, StatTile, activations_section, cluster_ranges_section
 
@@ -54,11 +53,10 @@ def load_border_links(report_dir: Path) -> dict[str, str]:
 def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
     cluster_ids = list(meta.clusters)
     built = [
-        activations_section(data.curve, data.ranges),
+        activations_section(data.curve),
         cluster_ranges_section(data.ranges, cluster_ids),
         forest_section(data.forest),
         membership_section(data.forest),
-        map_section(data.forest),
         borders_section(data.forest, data.mixed_hits_page, data.border_links, set(cluster_ids)),
     ]
     return [section for section in built if section is not None]

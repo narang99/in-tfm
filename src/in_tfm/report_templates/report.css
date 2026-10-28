@@ -10,7 +10,7 @@ h1 { font-size:1.5rem; margin:0 0 4px; }
 .cluster { border:1px solid var(--line); border-left:6px solid var(--accent);
   border-radius:8px; background:var(--panel); margin:64px 0; }
 .cluster-head { position:sticky; top:0; z-index:5; display:flex; align-items:baseline;
-  gap:14px; padding:12px 18px; background:var(--accent); color:#fff;
+  gap:14px; padding:12px 18px; background:var(--accent); color:var(--accent-ink, #fff);
   border-radius:2px 6px 0 0; box-shadow:0 2px 6px rgba(0,0,0,0.25); }
 .cluster-badge { font-size:1.25rem; font-weight:700; }
 .cluster-stats { font-size:0.85rem; opacity:0.9; }
@@ -87,7 +87,7 @@ details summary { cursor:pointer; color:var(--muted); font-size:0.85rem; }
 .card-stats { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font-size:0.8rem; color:var(--muted); margin:0 0 10px; }
 .card-stat b { color:var(--fg); }
 .tree-chip { display:inline-block; margin-left:4px; padding:0 8px; border-radius:999px; font-size:0.75rem;
-  background:var(--c); color:#fff; text-decoration:none; }
+  background:var(--c); color:var(--ink, #fff); text-decoration:none; }
 .tree-chip.unlinked { opacity:0.55; cursor:default; }
 table.borders { border-collapse:collapse; font-size:0.85rem; margin:4px 0; }
 table.borders th { text-align:left; color:var(--muted); font-weight:600; font-size:0.75rem; padding:4px 14px 4px 0; }

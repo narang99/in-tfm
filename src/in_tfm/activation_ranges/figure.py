@@ -15,8 +15,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+from ..cluster_colors import KELLY_COLORS
 from .plot import (
-    KELLY_COLORS,
     NOISE_COLOR,
     NOISE_RANGE_COLOR,
     draw_hlines,
