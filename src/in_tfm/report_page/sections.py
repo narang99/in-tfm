@@ -77,30 +77,14 @@ def sorted_curve_figure(curve: SelectionCurve) -> go.Figure:
         add_bucket_edges(fig, curve)
     fig.update_xaxes(title="sorted index (low to high)")
     fig.update_yaxes(title="activation magnitude")
-    fig.update_layout(legend=dict(x=0.01, y=0.99))
     return fig
 
 
 def add_elbow(fig: go.Figure, curve: SelectionCurve) -> None:
-    """The elbow is the point furthest below the chord from the first value to the last."""
-    first, last, n = float(curve.magnitude[0]), float(curve.magnitude[-1]), curve.n_positive
-    elbow = curve.elbow_idx
-    chord_at_elbow = first + (last - first) * elbow / max(n - 1, 1)
-    fig.add_vrect(
-        x0=elbow, x1=n - 1, fillcolor=MARK, opacity=0.1, line_width=0,
-        annotation_text="hits", annotation_position="top left",
+    fig.add_vrect(x0=curve.elbow_idx, x1=curve.n_positive - 1, fillcolor=MARK, opacity=0.1, line_width=0)
+    fig.add_vline(
+        x=curve.elbow_idx, line=dict(color=MARK, dash="dash"), annotation_text=f"threshold {curve.threshold:.4g}",
     )
-    fig.add_trace(go.Scatter(
-        x=[0, n - 1], y=[first, last], mode="lines", name="chord, first to last", line=dict(color=MUTED, dash="dot"),
-    ))
-    fig.add_trace(go.Scatter(
-        x=[elbow, elbow], y=[curve.threshold, chord_at_elbow], mode="lines", name="largest gap to the chord",
-        line=dict(color="#ff7f50", width=3),
-    ))
-    fig.add_trace(go.Scatter(
-        x=[elbow], y=[curve.threshold], mode="markers", name=f"elbow: {curve.threshold:.4g}",
-        marker=dict(color=MARK, size=12),
-    ))
 
 
 def add_bucket_edges(fig: go.Figure, curve: SelectionCurve) -> None:
