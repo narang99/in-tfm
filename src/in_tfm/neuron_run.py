@@ -17,26 +17,52 @@ from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
+from .border_pages import write_border_pages
 from .cluster_membership import (
-    NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, membership_entropy, most_probable_labels,
-    one_hot_memberships, probability_matrix,
+    NOISE_LABEL,
+    ClusterProbabilities,
+    HitMembership,
+    confident_labels,
+    membership_entropy,
+    most_probable_labels,
+    one_hot_memberships,
+    probability_matrix,
 )
 from .clustering import cluster_labels
 from .density_peaks import (
-    DensityPeakForest, ForestTrees, calculate_probs, comparable_rows, density_peak_forest, forest_trees, torch_forest,
+    DensityPeakForest,
+    ForestTrees,
+    calculate_probs,
+    comparable_rows,
+    density_peak_forest,
+    forest_trees,
+    torch_forest,
 )
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
-from .border_pages import write_border_pages
+from .layers import (
+    LayerGetter,
+    conv_getter,
+    down_proj_getter,
+    fc2_getter,
+    k_proj_getter,
+    q_proj_getter,
+)
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
-from .neuron_capture import NeuronCapture, merge_positions
+from .neuron_capture import NeuronCapture, ScanResult, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
 from .report_page import ForestData, forest_data
-from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig, Target
+from .run_config import (
+    ClusteringConfig,
+    DensityPeaksConfig,
+    HdbscanConfig,
+    Polarity,
+    RunConfig,
+    Target,
+)
 from .soft_hdbscan import soft_memberships
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
@@ -179,6 +205,19 @@ def prepare_run[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], sa
     )
 
 
+HIT_POSITIONS = "hit_positions.npz"
+
+
+def save_hit_positions(report_dir: Path, selection: HitSelection, sample_ids: list[str]) -> None:
+    """Which (sample, token) each hit is, in the order every per-hit array of the report uses."""
+    report_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        report_dir / HIT_POSITIONS,
+        sample_id=np.asarray([sample_ids[b] for b in selection.batch_idx]), token_idx=selection.token_idx,
+        activation=np.asarray(selection.activations),
+    )
+
+
 def report_neuron(
     neuron_idx: int,
     polarity: Polarity,
@@ -191,6 +230,7 @@ def report_neuron(
     config: RunConfig,
 ) -> None:
     tag = f"neuron {neuron_idx} {polarity}"
+    save_hit_positions(Path(config.out_dir) / report_name(neuron_idx, polarity), selection, sample_ids)
     hdmd = clustered_rows(rows, weight, neuron_idx, config.clustering)
     with timed(f"{tag}: cluster"):
         clustered = cluster_hits(hdmd, config.clustering, forest_device(config.device))
@@ -241,20 +281,32 @@ def report_neuron(
     print(f"[{tag}] report -> {report_path}")
 
 
-def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], samples: SamplesT) -> None:
-    run = prepare_run(config, adapter, samples)
+class Selected(BaseModel):
+    """Pass one's result: the scan, and the hits picked from it for each neuron and polarity."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    scan: ScanResult
+    selections: dict[tuple[int, Polarity], HitSelection]
+
+
+def scan_and_select(run: PreparedRun, config: RunConfig) -> Selected:
     with timed("pass 1: scan"):
         scan = run.capture.scan()
     print(f"scanned {len(scan.sample_ids)} samples, activations {tuple(scan.activations.shape)}, "
           f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded")
-
     targets = [(n, polarity) for n in config.neuron_idxs for polarity in polarities_for(config)]
-    selections = {
-        (n, polarity): select_hits(
-            scan, n, polarity, config.hits, config.seed
-        ) for (n, polarity) in targets
-    }
+    return Selected(
+        scan=scan,
+        selections={(n, polarity): select_hits(scan, n, polarity, config.hits, config.seed) for n, polarity in targets},
+    )
+
+
+def report_selected(run: PreparedRun, config: RunConfig, selected: Selected) -> None:
+    """Gathers the selected hits with `run`, which may be another model than the one that scanned.
+
+    - Pass two's activations are checked against the scan, so a different model must give the same activations."""
+    scan, selections = selected.scan, selected.selections
     merged = merge_positions([(s.batch_idx, s.token_idx) for s in selections.values()], scan.valid_mask.shape[1])
     with timed("pass 2: gather"):
         gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
@@ -265,8 +317,13 @@ def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[Sample
     empty_cache()
     weight = run.layout.weight(layer_getter_for(config)(run.module).weight)
 
-    for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
+    for (neuron_idx, polarity), index_map in zip(selections, merged.index_maps):
         report_neuron(
             neuron_idx, polarity, selections[(neuron_idx, polarity)], gathered.inputs[index_map],
             scan.sample_ids, weight, sample_noise(scan, neuron_idx, config.seed), run, config,
         )
+
+
+def run_neuron_reports[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], samples: SamplesT) -> None:
+    run = prepare_run(config, adapter, samples)
+    report_selected(run, config, scan_and_select(run, config))
