@@ -11,6 +11,15 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 - `vectorized.py` is the implementation callers use.
   - `__init__.py` exposes it, so `from in_tfm.density_peaks import ...` gets the vectorized functions.
 - `naive.py` mirrors it.
+- `torch_forest.py` builds the same forest with torch, for a GPU.
+  - The pipeline uses it when the run's device is CUDA. See `neuron_run.forest_device`.
+  - It compares every pair in float32, so it matches `vectorized.py` up to float32 rounding.
+    - Near ties can swap a few density ranks. On mixed4e:55 at 20,000 hits no parent, root or tree changed.
+  - On CUDA the float32 distances come from the Triton kernel in `triton_distance.py`.
+    - `torch.cdist` with p=1 rereads both rows for every pair, which took hours on 20,000 hits.
+  - `tests/test_torch_forest.py` checks its trees and parents against `vectorized.py` on torch's CPU device.
+    - The Triton kernel only runs on CUDA, so `scripts/bench_forest.py` compares it with a saved forest on Colab.
+  - A change to the forest's rules changes it too, in the same commit.
 - `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
   - It builds on the forest's stored neighbours.
   - It has its own naive and vectorized split. See its AGENTS.md.

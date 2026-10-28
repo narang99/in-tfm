@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from tqdm import tqdm
 
 from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
@@ -40,6 +40,10 @@ from .html_report import (
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
+from .report_page import (
+    MIXED_HITS_PAGE, PLOTLY_JS, SELECTION_DATA, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
+    save_selection_curve, selection_curve,
+)
 from .report_meta import (
     BucketedPickMeta,
     ClusterMeta,
@@ -49,13 +53,17 @@ from .report_meta import (
     write_report_meta,
 )
 from .sources import SampleId, SampleSource
-from .viz import save_bucket_edges_plot, save_elbow_plot
 
 AttrFn = Callable[..., np.ndarray]
 
 
 HITS_CACHE_NAME = "hits.pt"
 SAMPLE_SEED = 0
+COLLECT_EVERY = 32
+"""Hits attributed between garbage collections.
+
+- Collecting after every hit was 44% of the cluster report's time on mixed4e:55, in a py-spy profile.
+- Collecting now and then still frees each hit's batch and graph, so memory stays bounded."""
 
 
 def save_hits(hits: list[ClusterHit], cluster_dir: Path) -> None:
@@ -74,25 +82,22 @@ def cluster_dir_for(report_dir: Path, cluster_id: int) -> Path:
     return report_dir / f"cluster_{cluster_id}"
 
 
-MIXED_HITS_PAGE = "mixed_hits.html"
-"""The sheet of hits split between clusters, linked from the index when it exists."""
 
 
 def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     """`index.html` from `meta.json` and each cluster's `hits.pt` - no model needed."""
     report_dir = Path(report_dir)
     meta = load_report_meta(report_dir)
+    data = load_page_data(report_dir)
     sections = [
         _cluster_section(
-            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape
+            cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape,
+            cluster_stats_html(data.forest, cid),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
     report_path = report_dir / "index.html"
-    mixed_hits_page = MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None
-    report_path.write_text(
-        _index_page(meta, sections, presenter.page_controls(), _activation_ranges_plot(report_dir), mixed_hits_page)
-    )
+    report_path.write_text(_index_page(report_dir, data, meta, sections, presenter.page_controls(), data.mixed_hits_page))
     return report_path
 
 
@@ -103,13 +108,14 @@ def _cluster_section(
     cluster_dir: Path,
     presenter: ClusterPresenter,
     hadamard_shape: HadamardShape,
+    stats_html: str = "",
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
     hits = load_hits(cluster_dir)
     artifacts = ClusterArtifacts(cluster_dir=cluster_dir)
     body = presenter.render(hits, artifacts, hadamard_shape) if hits else "<p>no hits sampled.</p>"
-    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, body)
+    return cluster_section(cluster_id, position, cluster.n_hits, cluster.n_unique_images, stats_html + body)
 
 
 def _cluster_nav(meta: ReportMeta) -> str:
@@ -122,6 +128,7 @@ def _cluster_nav(meta: ReportMeta) -> str:
 
 
 def _activation_plot(meta: ReportMeta) -> str:
+    """Reports written before `selection.npz` keep their saved image."""
     match meta.pick:
         case ElbowPickMeta():
             return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
@@ -136,22 +143,37 @@ def _activation_ranges_plot(report_dir: Path) -> str:
     return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
 
 
+def _legacy_plots(report_dir: Path, meta: ReportMeta) -> str:
+    """The images a report saved before its charts had data files. Each is shown only if its chart is missing."""
+    plots = "" if (report_dir / SELECTION_DATA).exists() else _activation_plot(meta)
+    return plots if (report_dir / RANGES_NAME).exists() else plots + _activation_ranges_plot(report_dir)
+
+
 def _index_page(
-    meta: ReportMeta, sections: list[str], page_controls: str, activation_ranges_plot: str, mixed_hits_page: str | None
+    report_dir: Path,
+    data: PageData,
+    meta: ReportMeta,
+    sections: list[str],
+    page_controls: str,
+    mixed_hits_page: str | None,
 ) -> str:
     title = f"Neuron {meta.neuron_idx}"
+    parts = page_parts(data, meta)
     body = neuron_index(
         title=title,
         threshold=meta.threshold,
         n_hits=meta.n_hits,
         n_clusters=len(sections),
         page_controls=page_controls,
-        activation_plot=_activation_plot(meta) + activation_ranges_plot,
+        activation_plot=_legacy_plots(report_dir, meta),
         cluster_nav=_cluster_nav(meta),
         sections=sections,
         mixed_hits_page=mixed_hits_page,
+        header_html=parts.header_html,
+        page_sections_html=parts.sections_html,
+        clusters_step=parts.n_sections + 1,
     )
-    return page(title, body)
+    return page(title, body, PLOTLY_JS if parts.has_charts else None)
 
 
 def cluster_counts(labels: Int[np.ndarray, "n_hits"]) -> dict[int, int]:
@@ -200,6 +222,7 @@ class NeuronClusterHits(BaseModel):
     noise_activations: Float[np.ndarray, "n"] | None = None
     """With it, the report gets a collapsed activation range plot."""
     device: str = Field(default_factory=default_device)
+    _hits_since_collect: int = PrivateAttr(0)
 
     def sample_cluster(
         self, cluster_id: int, max_n: int = 5, attr_fn: AttrFn = compute_attnlrp_relevance
@@ -221,9 +244,15 @@ class NeuronClusterHits(BaseModel):
             display_ids=None if singleton_batch.display_ids is None else singleton_batch.display_ids[0].cpu(),
         )
         del singleton_batch
-        empty_cache()
-        gc.collect()
+        self._collect_now_and_then()
         return result
+
+    def _collect_now_and_then(self) -> None:
+        self._hits_since_collect += 1
+        if self._hits_since_collect >= COLLECT_EVERY:
+            gc.collect()
+            empty_cache()
+            self._hits_since_collect = 0
 
     def shown_cluster_ids(self, min_uniq_images: int) -> list[int]:
         """Largest first, without clusters drawn from fewer than `min_uniq_images` distinct images."""
@@ -266,14 +295,6 @@ class NeuronClusterHits(BaseModel):
             sample_ids=list(self.sample_ids),
         )
 
-    def _save_selection_plot(self, report_dir: Path) -> None:
-        curve = self.selection.sorted_magnitudes.numpy()
-        match self.selection.pick:
-            case ElbowPick(elbow_idx=elbow_idx):
-                save_elbow_plot(curve, elbow_idx, report_dir / "elbow.png")
-            case BucketedPick(bucket_edges=edges):
-                save_bucket_edges_plot(curve, edges, report_dir / "buckets.png")
-
     def _pick_meta(self) -> ElbowPickMeta | BucketedPickMeta:
         threshold = self.selection.threshold
         match self.selection.pick:
@@ -298,6 +319,7 @@ class NeuronClusterHits(BaseModel):
         attr_fn: AttrFn = compute_attnlrp_relevance,
         max_n: int = 5,
         min_uniq_images: int = 2,
+        forest: ForestData | None = None,
     ) -> Path:
         """Self-contained report folder for this neuron: `out_dir/{name}/index.html`, every
         cluster largest first (each in its own `cluster_{id}/` subfolder), the elbow plot and
@@ -308,11 +330,14 @@ class NeuronClusterHits(BaseModel):
         see cluster_unique_image_counts for why.
 
         `name` defaults to `neuron_{idx}` but can be overridden.
+        `forest` adds the forest sections to the page. Only density-peak clustering has one.
         """
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        self._save_selection_plot(report_dir)
+        save_selection_curve(report_dir, selection_curve(self.selection))
+        if forest is not None:
+            save_forest_data(report_dir, forest)
 
         cluster_ids = self.shown_cluster_ids(min_uniq_images)
         meta = self._meta(cluster_ids, min_uniq_images)

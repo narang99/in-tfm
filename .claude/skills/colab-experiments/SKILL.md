@@ -39,7 +39,8 @@ Setup cells run once per VM. Only the run cell re-runs.
 | assert | rarely | print versions, assert `torch.cuda.is_available()` and `"+cu" in torch.__version__` |
 | data | rarely | download the corpus |
 | checkout | per branch | `git fetch && git checkout <branch> && git pull`, then re-run the editable install |
-| run | every iteration | `!MPLBACKEND=Agg python .../script.py <flags>` |
+| run | every iteration | `!MPLBACKEND=Agg python .../script.py <flags>` for a short run, a detached `Popen` for a long one (see below) |
+| status | while a long run works | tail the run's log, and check the process is alive |
 
 Then: **edit locally → commit → push → run the checkout cell → run the run cell.**
 
@@ -49,6 +50,66 @@ like a broken fix rather than a broken install.
 
 Keep the actual run in a subprocess (`!python ...`), never in the kernel. Fresh imports each
 time, and process-wide monkey-patching can't leak between runs.
+
+## Long runs: detach, then check a status cell
+
+- A run of more than a couple of minutes goes in the background, logged to a file.
+  - The kernel stays free, so other cells run while it works: status checks, uploads, small fixes.
+  - A foreground `!python ...` holds the kernel until the run ends.
+    - `run_code_cell` moves it to the background after 120 s, but every later cell waits behind it.
+- Launch it with `subprocess.Popen` in its own session, with stdin closed:
+
+```python
+import subprocess
+alive = subprocess.run(["pgrep", "-f", "scripts/space_reports.py"], capture_output=True, text=True).stdout.split()
+if alive:
+    print("already running, pids", alive)
+else:
+    log = open("/content/run.log", "w")
+    proc = subprocess.Popen(
+        "MPLBACKEND=Agg PYTHONUNBUFFERED=1 python scripts/space_reports.py --config <yaml>; echo EXIT $?",
+        shell=True, cwd="/content/in-tfm", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    print("started, pid", proc.pid)
+```
+
+- The `pgrep` guard makes re-running the cell safe, since it never starts a second run.
+- `echo EXIT $?` puts the exit code in the log, for the checks under "Verifying a run".
+- Read progress with a separate status cell, as often as needed:
+
+```python
+!tr '\r' '\n' < /content/run.log | grep -E "^\[|Error|Traceback|EXIT" | tail -20
+import subprocess
+print(subprocess.run(["pgrep", "-af", "scripts/space_reports.py"], capture_output=True, text=True).stdout or "no run alive")
+```
+
+- Call `pgrep` without a shell, as above, never as `!pgrep -f <pattern>`.
+  - `!` runs the line through `/bin/sh -c`, whose own command line contains the pattern, so `pgrep` matches the shell.
+  - The run then looks alive forever. On 2026-10-28 a finished run kept reporting "alive" this way.
+
+- `tr '\r' '\n'` turns tqdm's carriage returns into lines, so the stage lines can be grepped.
+- Set `PYTHONUNBUFFERED=1` in the run's environment.
+  - Python buffers stdout to a file, so stage lines otherwise show up many minutes late.
+  - Until then, judge progress by the files the run has written.
+- To wait for a run from another script, wait for its `EXIT` line in the log, not for its pid.
+  - A run started with `Popen` is a child of the kernel, so once it exits it stays a zombie until the kernel reaps it.
+  - `kill -0` succeeds on a zombie, so `while kill -0 $pid` never ends.
+  - On 2026-10-24 that stalled a chain of runs until an unrelated `subprocess.run` in the notebook happened to reap it.
+
+### Never `!cmd &`, even with `nohup`
+
+- Colab's `!` waits until every process started from it releases the terminal.
+  - A job backgrounded with `&` keeps the terminal's stdin unless it is redirected, so the cell never returns.
+- Symptoms, seen on 2026-10-24:
+  - The launch cell stays "executing" for as long as the run lasts.
+  - Every cell sent after it shows `execution_count: null`, and `run_code_cell` returns empty outputs.
+  - Reconnecting with `open_colab_browser_connection` does not help, since the kernel itself is busy.
+- Interrupting the stuck cell kills the run too, despite `nohup`.
+  - The run ended in a `KeyboardInterrupt` after 25 minutes of work, and had to start over.
+- If it happens anyway, stop the cell yourself through Claude in Chrome, then relaunch with `Popen` as above.
+  - The Colab tab is open in the user's Chrome, so its stop button, or Runtime > Interrupt execution, can be clicked.
+  - Ask the user only if the browser tools fail.
 
 ## Verifying a run
 

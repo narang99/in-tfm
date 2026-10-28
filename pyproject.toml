@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib>=3.8",
     "nnsight>=0.7.0",
     "numpy>=2.1",
+    "plotly>=5.20",
     "pydantic>=2.7",
     "pydantic-settings>=2.7",
     "pydicom>=3.0.2",

@@ -12,12 +12,10 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel
 
 from ..neuron_capture import ScanResult
-from .figure import save_activation_range_plot
 
 RANGES_NAME = "activation_ranges.json"
 PLOT_NAME = "activation_ranges.jpg"
 NOISE_SAMPLE_SIZE = 1000
-PLOT_SEED = 0
 
 
 class ActivationRanges(BaseModel):
@@ -48,8 +46,10 @@ def cluster_activations(
 
 
 def write_activation_ranges(report_dir: Path, ranges: ActivationRanges) -> None:
+    """The report page draws it as a chart. `figure.save_activation_range_plot` drew the older image of it."""
     (report_dir / RANGES_NAME).write_text(ranges.model_dump_json())
-    if ranges.clusters:
-        save_activation_range_plot(
-            ranges.clusters, np.asarray(ranges.noise), report_dir / PLOT_NAME, np.random.default_rng(PLOT_SEED)
-        )
+
+
+def load_activation_ranges(report_dir: Path) -> ActivationRanges | None:
+    path = report_dir / RANGES_NAME
+    return ActivationRanges.model_validate_json(path.read_text()) if path.exists() else None

@@ -9,6 +9,7 @@ from in_tfm.activation_ranges import (
     ActivationRanges,
     cluster_activations,
     sample_noise,
+    load_activation_ranges,
     write_activation_ranges,
 )
 from in_tfm.hit_selection import select_hits
@@ -73,15 +74,21 @@ def test_round_robin_gives_every_panel_a_high_and_a_low_cluster():
     assert panels == [[11, 8, 5, 2], [10, 7, 4, 1], [9, 6, 3, 0]]
 
 
-def test_the_plot_is_written_and_the_report_section_is_collapsed(tmp_path):
+def test_ranges_round_trip_as_json_without_an_image(tmp_path):
     rng = np.random.default_rng(0)
     ranges = ActivationRanges(
         clusters={i: rng.normal(i, 1, 30).tolist() for i in range(20)}, noise=rng.normal(0, 1, 100).tolist()
     )
-    assert _activation_ranges_plot(tmp_path) == ""
+    assert load_activation_ranges(tmp_path) is None
     write_activation_ranges(tmp_path, ranges)
+    assert load_activation_ranges(tmp_path) == ranges
+    assert not (tmp_path / PLOT_NAME).exists(), "the page draws the ranges as a chart now"
+
+
+def test_an_older_reports_image_still_gets_a_collapsed_section(tmp_path):
+    assert _activation_ranges_plot(tmp_path) == ""
+    (tmp_path / PLOT_NAME).write_bytes(b"jpg")
     section = _activation_ranges_plot(tmp_path)
-    assert (tmp_path / PLOT_NAME).stat().st_size > 0
     assert PLOT_NAME in section
     assert "<details>" in section
     assert "elbow" not in section, "the elbow class caps an image at 420px, far too small for this figure"
