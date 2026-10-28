@@ -1,7 +1,7 @@
 <h1>{{ title }}</h1>
 <p class="meta">{{ "{:,}".format(n_hits) }} hits need these clusters together to reach most of their probability &middot; <a href="../index.html#borders">back to the report</a></p>
-<p>{% for tree, name, color in clusters %}<a class="tree-chip" href="../index.html#cluster-{{ tree }}" style="--c:{{ color }}">{{ name }}</a>{% endfor %}</p>
-<p class="lede">Up to {{ hits|length }} of its hits, spread evenly from the most to the least probable in {{ clusters[0][1] }}. Each bar is the hit's probability in one cluster of the border.</p>
+<p>{{ chips|safe }}</p>
+<p class="lede">Up to {{ hits|length }} of its hits, spread evenly from the most to the least probable in {{ first_cluster }}. Each bar is the hit's probability in one cluster of the border.</p>
 <div class="border-grid">
 {% for hit in hits %}
 <section class="border-hit">

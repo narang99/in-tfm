@@ -99,12 +99,20 @@ def test_touching_counts_are_symmetric_and_mostly_inside_each_blob():
 def test_hdbscan_cards_get_no_stats_and_forest_cards_link_their_neighbours():
     from in_tfm.report_page import cluster_stats_html
 
-    assert cluster_stats_html(None, 0) == ""
+    assert cluster_stats_html(None, 0, {0}) == ""
     forest = density_peak_forest(two_blobs(), k=5, distance="euclidean")
     trees = forest_trees(forest)
     data = forest_data(forest, trees, calculate_probs(forest, trees, 0.8), max_entropy=0.5)
-    stats = cluster_stats_html(data, 0)
+    stats = cluster_stats_html(data, 0, {0})
     assert "confident" in stats and "self-contained" in stats
+
+
+def test_a_chip_links_only_to_a_cluster_with_a_section():
+    from in_tfm.report_page.figures import cluster_chip
+
+    assert 'href="#cluster-1"' in cluster_chip(1, {1})
+    assert 'href="../index.html#cluster-1"' in cluster_chip(1, {1}, page="../index.html")
+    assert "href" not in cluster_chip(2, {1}) and "unlinked" in cluster_chip(2, {1})
 
 
 def test_the_membership_section_and_confident_tile_follow_the_forest(tmp_path):

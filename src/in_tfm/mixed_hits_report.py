@@ -72,7 +72,12 @@ def tile_url(tile: Image.Image, out_dir: Path, name: str) -> str:
 
 
 def cells(probabilities: Float[np.ndarray, "n_shown"], tiles: list[Image.Image], out_dir: Path, row: int) -> list[Cell]:
-    """The fade is relative to the hit's most likely shown cluster, so that one is always at full colour."""
+    """The fade is relative to the hit's most likely shown cluster, so that one is always at full colour.
+
+    - With no cluster shown, every hit is mixed and there are no cells.
+    """
+    if probabilities.size == 0:
+        return []
     top = probabilities.max() if probabilities.max() > 0 else 1.0
     return [
         Cell(

@@ -5,13 +5,13 @@
 """
 
 import math
+from collections.abc import Collection
 
 import numpy as np
 import plotly.graph_objects as go
-from markupsafe import escape
 
 from .data import ForestData, touching_counts
-from .figures import MARK, embed, tree_color, tree_name
+from .figures import MARK, cluster_chip, embed, tree_name
 from .sections import GuideEntry, PageSection, Pane
 
 NEAREST_SHOWN = 3
@@ -93,7 +93,7 @@ def touching_figure(data: ForestData) -> go.Figure:
     return fig
 
 
-def cluster_stats_html(data: ForestData | None, cluster_id: int) -> str:
+def cluster_stats_html(data: ForestData | None, cluster_id: int, shown: Collection[int]) -> str:
     """A row of stats for one cluster's card. Empty without a forest, so HDBSCAN cards are unchanged."""
     if data is None or cluster_id >= data.n_trees:
         return ""
@@ -106,10 +106,6 @@ def cluster_stats_html(data: ForestData | None, cluster_id: int) -> str:
     parts.append(f'<span class="card-stat"><b>{shares[cluster_id]:.0%}</b> self-contained</span>')
     others = [int(t) for t in np.argsort(-shares) if t != cluster_id and shares[t] > 0][:NEAREST_SHOWN]
     if others:
-        chips = "".join(
-            f'<a class="tree-chip" href="#cluster-{t}" style="--c:{tree_color(t)}">'
-            f"{escape(tree_name(t))} {shares[t]:.0%}</a>"
-            for t in others
-        )
+        chips = "".join(cluster_chip(t, shown, f"{tree_name(t)} {shares[t]:.0%}") for t in others)
         parts.append(f'<span class="card-stat">touches {chips}</span>')
     return f'<div class="card-stats">{"".join(parts)}</div>'

@@ -59,7 +59,7 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
         forest_section(data.forest),
         membership_section(data.forest),
         map_section(data.forest),
-        borders_section(data.forest, data.mixed_hits_page, data.border_links),
+        borders_section(data.forest, data.mixed_hits_page, data.border_links, set(cluster_ids)),
     ]
     return [section for section in built if section is not None]
 

@@ -222,7 +222,8 @@ def report_neuron(
     if clustered.forest is not None:
         with timed(f"{tag}: write border pages"):
             border_paths = write_border_pages(
-                hits, Path(config.out_dir) / report_name(neuron_idx, polarity), clustered.forest, run.attr_fn,
+                hits, Path(config.out_dir) / report_name(neuron_idx, polarity), clustered.forest,
+                set(hits.shown_cluster_ids(config.report.min_uniq_samples_per_cluster)), run.attr_fn,
             )
         print(f"[{tag}] {len(border_paths)} border pages")
     with timed(f"{tag}: write report"):

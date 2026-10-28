@@ -6,13 +6,12 @@
 """
 
 from collections import Counter
+from collections.abc import Collection
 
 import numpy as np
-from markupsafe import escape
-
 from ..html_report import render_template
 from .data import ForestData
-from .figures import tree_color, tree_name
+from .figures import cluster_chip
 from .sections import GuideEntry, PageSection, Pane
 
 SET_SHARE = 0.85
@@ -57,12 +56,9 @@ def border_key(clusters: tuple[int, ...]) -> str:
     return "-".join(map(str, clusters))
 
 
-def chip(tree: int) -> str:
-    return f'<a class="tree-chip" href="#cluster-{tree}" style="--c:{tree_color(tree)}">{escape(tree_name(tree))}</a>'
-
-
 def borders_section(
-    data: ForestData | None, mixed_hits_page: str | None, border_links: dict[str, str] | None = None,
+    data: ForestData | None, mixed_hits_page: str | None, border_links: dict[str, str] | None,
+    shown: Collection[int],
 ) -> PageSection | None:
     if data is None:
         return None
@@ -72,7 +68,7 @@ def borders_section(
     n_hits = len(data.distinct_of_hit)
     rows = [
         {
-            "chips": "".join(chip(t) for t in clusters), "hits": hits, "share": hits / n_hits,
+            "chips": "".join(cluster_chip(t, shown) for t in clusters), "hits": hits, "share": hits / n_hits,
             "page": (border_links or {}).get(border_key(clusters)),
         }
         for clusters, hits in counts.most_common(ROWS_SHOWN)

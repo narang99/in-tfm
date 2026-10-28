@@ -30,12 +30,13 @@ function pickAll(button, on) {
   showPicks(picker);
 }
 
-// Clicking a point on the map jumps to its cluster's card.
+// Clicking a point on the map jumps to its cluster's card, when the cluster has one.
 window.addEventListener('load', () => {
   const map = document.getElementById('hit-map');
   if (map && map.on) {
     map.on('plotly_click', (event) => {
-      location.hash = 'cluster-' + event.points[0].customdata;
+      const target = 'cluster-' + event.points[0].customdata;
+      if (document.getElementById(target)) location.hash = target;
     });
   }
 });

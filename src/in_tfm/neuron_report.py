@@ -92,7 +92,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     sections = [
         _cluster_section(
             cid, cluster, position, cluster_dir_for(report_dir, cid), presenter, meta.hadamard_shape,
-            cluster_stats_html(data.forest, cid),
+            cluster_stats_html(data.forest, cid, set(meta.clusters)),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
