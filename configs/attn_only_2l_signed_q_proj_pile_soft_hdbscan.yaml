@@ -1,5 +1,7 @@
 # As attn_only_2l_signed_q_proj_pile.yaml, clustered by soft HDBSCAN instead of the density-peak forest.
-# Same hits, distance and normalisation, so the two reports compare like for like.
+# Same corpus, distance and normalisation as the density-peak run.
+# 12,000 hits, not 20,000: the hdbscan package holds several full n x n float64 matrices,
+# and at 20,000 hits they ran out of a standard T4 VM's 12 GB of RAM.
 #   python scripts/run_neuron_report.py --config configs/attn_only_2l_signed_q_proj_pile_soft_hdbscan.yaml
 model: self/attn-only-2l
 target: q_proj
@@ -16,7 +18,7 @@ text:
   max_length: 128
 hits:
   method: bucketed
-  max_hits: 20000
+  max_hits: 12000
 clustering:
   distance: weighted_jaccard
   normalise: false
