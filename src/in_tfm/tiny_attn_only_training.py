@@ -128,8 +128,8 @@ def training_windows(
 ) -> Int[torch.Tensor, "batch seq_plus_one"]:
     n_repeat = rng.binomial(config.batch_size, config.repeat_share)
     seq_len = config.shape.seq_len
-    plain = sample_windows(tokens, starts, config.batch_size - n_repeat, seq_len, rng)
-    return torch.cat([plain, repeated_span_windows(tokens, starts, n_repeat, seq_len, rng)])
+    parts = [(sample_windows, config.batch_size - n_repeat), (repeated_span_windows, n_repeat)]
+    return torch.cat([draw(tokens, starts, n, seq_len, rng) for draw, n in parts if n > 0])
 
 
 def build_model(config: TinyAttnOnlyTrainConfig) -> AttnOnlyForCausalLM:
