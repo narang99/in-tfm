@@ -113,7 +113,7 @@ def repeated_span_windows(
     - The second copy of a span is predictable only by induction, so these windows pay for the circuit.
     """
     chosen = rng.choice(starts, size=batch_size)
-    spans = rng.integers(min_span, seq_len // 2 + 1, size=batch_size)
+    spans = rng.integers(min(min_span, seq_len // 2), seq_len // 2 + 1, size=batch_size)
     windows = []
     for start, span in zip(chosen, spans):
         text = tokens[start + 1:start + 1 + span]
