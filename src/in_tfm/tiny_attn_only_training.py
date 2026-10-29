@@ -25,7 +25,7 @@ from torch import nn
 
 from .device import default_device
 from .models.attn_only_2l.model import (
-    BOS_TOKEN, TRAINED_CONFIG, TRAINED_TOKENIZER, TRAINED_WEIGHTS, AttnOnlyConfig, AttnOnlyForCausalLM,
+    BOS_TOKEN, TRAINED_CONFIG, TRAINED_TOKENIZER, TRAINED_WEIGHTS, AttnOnlyConfig, AttnOnlyForCausalLM, attention_patterns,
 )
 
 TOKENS_FILE = "{split}_tokens.npy"
@@ -140,6 +140,10 @@ class EvalPoint(BaseModel):
     induction_first: float
     induction_second: float
     """Loss on the second copy of a repeated random sequence. Far below the first copy means induction works."""
+    induction_attention: float
+    """The best layer 1 head's attention from the second copy to the token after the same token in the first copy."""
+    previous_attention: float
+    """The best layer 0 head's attention to the previous token, on the same sequences."""
     seconds: float
 
 
@@ -153,16 +157,35 @@ def val_loss(model, tokens, starts, config: TinyAttnOnlyTrainConfig, rng: np.ran
     return float(np.mean(losses))
 
 
+class InductionCheck(BaseModel):
+    loss_first: float
+    loss_second: float
+    induction_attention: float
+    previous_attention: float
+
+
 @torch.no_grad()
-def induction_losses(model, bos: int, config: TinyAttnOnlyTrainConfig, rng: np.random.Generator,
-                     batch: int = 32) -> tuple[float, float]:
-    """Random tokens are unpredictable the first time and fully predictable the second time, by copying."""
-    length = min(50, config.shape.seq_len // 2)
+def induction_check(model, bos: int, config: TinyAttnOnlyTrainConfig, rng: np.random.Generator,
+                    batch: int = 32) -> InductionCheck:
+    """Random tokens are unpredictable the first time and fully predictable the second time, by copying.
+
+    - The attention scores show the circuit even while the copied token's logit is still too weak to win.
+    - Layer 1 is only checked when the model has one.
+    """
+    length = min(50, (config.shape.seq_len - 1) // 2)
     half = rng.integers(1, config.vocab_size, size=(batch, length))
     windows = torch.from_numpy(np.concatenate([np.full((batch, 1), bos), half, half], axis=1)).to(config.device)
     logits = model(input_ids=windows[:, :-1]).logits.float()
     per_token = nn.functional.cross_entropy(logits.transpose(1, 2), windows[:, 1:], reduction="none")
-    return per_token[:, 1:length].mean().item(), per_token[:, length + 1:].mean().item()
+    every = torch.arange(1, 2 * length + 1, device=config.device)
+    previous = attention_patterns(model, windows, 0)[:, :, every, every - 1].mean(dim=(0, 2)).max().item()
+    induction = 0.0
+    if config.shape.n_layers > 1:
+        second = torch.arange(length + 1, 2 * length + 1, device=config.device)
+        induction = attention_patterns(model, windows, 1)[:, :, second, second - length + 1].mean(dim=(0, 2)).max().item()
+    return InductionCheck(loss_first=per_token[:, 1:length].mean().item(),
+                          loss_second=per_token[:, length + 1:].mean().item(),
+                          induction_attention=induction, previous_attention=previous)
 
 
 def prepare_tokens(config: TinyAttnOnlyTrainConfig) -> tuple[Tokenizer, dict[str, np.ndarray]]:
@@ -231,7 +254,8 @@ def train(config: TinyAttnOnlyTrainConfig) -> Path:
             log.write(point.model_dump_json() + "\n")
             log.flush()
             print(f"[{point.step}/{total_steps}] tokens {seen:,} train {point.train_loss:.3f} val {point.val_loss:.3f} "
-                  f"induction {point.induction_first:.2f}->{point.induction_second:.2f} {point.seconds:.0f}s")
+                  f"induction {point.induction_first:.2f}->{point.induction_second:.2f} attn {point.induction_attention:.2f} "
+                  f"previous {point.previous_attention:.2f} {point.seconds:.0f}s")
 
     path = config.out_dir / TRAINED_WEIGHTS
     save_weights(model, path)
@@ -245,7 +269,8 @@ def evaluate(model, train_loss: float, step: int, seen: int, bos: int, val_token
     model.eval()
     with torch.autocast("cuda", dtype=torch.float16, enabled=config.device.startswith("cuda")):
         loss = val_loss(model, val_tokens, val_starts, config, rng)
-        first, second = induction_losses(model, bos, config, rng)
+        check = induction_check(model, bos, config, rng)
     model.train()
-    return EvalPoint(step=step, tokens=seen, train_loss=train_loss, val_loss=loss, induction_first=first,
-                     induction_second=second, seconds=seconds)
+    return EvalPoint(step=step, tokens=seen, train_loss=train_loss, val_loss=loss, induction_first=check.loss_first,
+                     induction_second=check.loss_second, induction_attention=check.induction_attention,
+                     previous_attention=check.previous_attention, seconds=seconds)
