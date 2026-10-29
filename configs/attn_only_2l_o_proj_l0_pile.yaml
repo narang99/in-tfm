@@ -1,0 +1,26 @@
+# The layer 0 o_proj config over pile-10k, to see whether more data gives confident memberships.
+# 10,000 documents cut to BOS plus 7 tokens is 80,000 positions, so hits are a sample and a trace is not
+# guaranteed in-sample. This config is for debugging the memberships, not for tracing.
+# Run on Colab with:
+#   python scripts/run_neuron_report.py --config configs/attn_only_2l_o_proj_l0_pile.yaml
+model: self/attn-only-2l
+target: linear
+layer_name: layers.0.self_attn.o_proj
+neurons: [0, 1, 2, 3]
+polarity: signed
+batch_size: 64
+out_dir: reports/attn_only_2l_o_proj_l0_pile
+text:
+  dataset: NeelNanda/pile-10k
+  dataset_config: null
+  unit: document
+  n_samples: 10000
+  max_length: 8
+hits:
+  method: bucketed
+  max_hits: 2500
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
