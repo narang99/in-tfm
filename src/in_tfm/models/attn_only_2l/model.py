@@ -18,11 +18,13 @@ Two things differ from a stock HF decoder, both read off the checkpoint:
   position term, which RoPE models do not allow.
 """
 
+from pathlib import Path
+
 import torch
 from huggingface_hub import hf_hub_download
 from jaxtyping import Bool, Float, Int
 from torch import nn
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerFast
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutput
 
 ATTN_ONLY_2L_REPO = "callummcdougall/attn_only_2L_half"
@@ -45,6 +47,7 @@ class AttnOnlyConfig(PretrainedConfig):
         num_hidden_layers: int = 2,
         max_position_embeddings: int = 2048,
         vocab_size: int = 50278,
+        attention_bias: bool = True,
         **kwargs,
     ) -> None:
         self.hidden_size = hidden_size
@@ -53,6 +56,7 @@ class AttnOnlyConfig(PretrainedConfig):
         self.num_hidden_layers = num_hidden_layers
         self.max_position_embeddings = max_position_embeddings
         self.vocab_size = vocab_size
+        self.attention_bias = attention_bias
         super().__init__(**kwargs)
 
 
@@ -115,10 +119,11 @@ class AttnOnlyAttention(nn.Module):
         self.head_dim = config.head_dim
         self.scaling = self.head_dim**-0.5
         inner = self.n_heads * self.head_dim
-        self.q_proj = nn.Linear(config.hidden_size, inner)
-        self.k_proj = nn.Linear(config.hidden_size, inner)
-        self.v_proj = nn.Linear(config.hidden_size, inner)
-        self.o_proj = nn.Linear(inner, config.hidden_size)
+        bias = config.attention_bias
+        self.q_proj = nn.Linear(config.hidden_size, inner, bias=bias)
+        self.k_proj = nn.Linear(config.hidden_size, inner, bias=bias)
+        self.v_proj = nn.Linear(config.hidden_size, inner, bias=bias)
+        self.o_proj = nn.Linear(inner, config.hidden_size, bias=bias)
 
     def forward(
         self,
@@ -290,3 +295,22 @@ def load_attn_only_2l(
     model.load_state_dict(_converted_state_dict(tl_state, config))
     tokenizer = AutoTokenizer.from_pretrained(ATTN_ONLY_2L_TOKENIZER)
     return model.to(dtype).eval(), tokenizer
+
+
+TRAINED_CONFIG = "config.json"
+TRAINED_TOKENIZER = "tokenizer.json"
+TRAINED_WEIGHTS = "final.pt"
+BOS_TOKEN = "<|endoftext|>"
+
+
+def load_trained_attn_only(
+    checkpoint_dir: Path, weights: str = TRAINED_WEIGHTS
+) -> tuple[AttnOnlyForCausalLM, PreTrainedTokenizerFast]:
+    """A model written by `tiny_attn_only_training`, with the tokenizer trained on its own corpus."""
+    model = AttnOnlyForCausalLM(AttnOnlyConfig.from_json_file(checkpoint_dir / TRAINED_CONFIG))
+    model.load_state_dict(torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True))
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_file=str(checkpoint_dir / TRAINED_TOKENIZER), bos_token=BOS_TOKEN, eos_token=BOS_TOKEN,
+        pad_token=BOS_TOKEN,
+    )
+    return model.eval(), tokenizer
