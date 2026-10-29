@@ -52,7 +52,9 @@ class TinyAttnOnlyTrainConfig(BaseSettings):
     """How many training stories the BPE merges are learned from. The whole split is then encoded."""
     shape: ModelShape = ModelShape()
     batch_size: int = 128
-    lr: float = 1e-3
+    lr: float = 3e-3
+    init_std: float = 0.1
+    """GPT-2's 0.02 never formed induction heads here, see `init_weights`."""
     warmup_steps: int = 500
     weight_decay: float = 0.01
     max_tokens: int = 500_000_000
@@ -139,19 +141,26 @@ def build_model(config: TinyAttnOnlyTrainConfig) -> AttnOnlyForCausalLM:
         num_hidden_layers=shape.n_layers, max_position_embeddings=shape.seq_len, vocab_size=config.vocab_size,
         attention_bias=False,
     ))
-    init_weights(model, shape.n_layers)
+    init_weights(model, shape.n_layers, config.init_std)
     return model
 
 
-def init_weights(model: AttnOnlyForCausalLM, n_layers: int) -> None:
-    """GPT-2 style. The output projections are scaled down because each one adds to an unnormalized stream."""
+def init_weights(model: AttnOnlyForCausalLM, n_layers: int, std: float) -> None:
+    """GPT-2 style, at a larger scale. The output projections are scaled down, since each adds to an unnormalized stream.
+
+    - Without normalization the residual stream is as small as the init, so every attention score starts near 0.
+      - A score is bilinear in two small weights, so its gradient starts small too.
+    - At std 0.02 neither TinyStories nor repeated random tokens formed a previous-token head.
+      - On repeated random tokens, std 0.1 with lr 3e-3 formed both heads in a few thousand steps.
+      - std 0.05, or lr 1e-3, did not.
+    """
     for name, param in model.named_parameters():
         if name.endswith("bias"):
             nn.init.zeros_(param)
         elif "o_proj" in name:
-            nn.init.normal_(param, std=0.02 / math.sqrt(2 * n_layers))
+            nn.init.normal_(param, std=std / math.sqrt(2 * n_layers))
         else:
-            nn.init.normal_(param, std=0.02)
+            nn.init.normal_(param, std=std)
 
 
 def next_token_loss(model: AttnOnlyForCausalLM, windows: Int[torch.Tensor, "batch seq_plus_one"]) -> torch.Tensor:
