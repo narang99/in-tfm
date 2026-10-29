@@ -4,7 +4,7 @@ import torch
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_TOKENIZER, load_trained_attn_only
 from in_tfm.tiny_attn_only_training import (
     ModelShape, TinyAttnOnlyTrainConfig, build_model, encode_stories, next_token_loss, repeated_span_windows, sample_windows,
-    save_weights, story_starts, train_bpe,
+    save_weights, story_starts, train_bpe, training_windows,
 )
 
 STORIES = [f"Once upon a time there was a {animal} who liked to {verb}." for animal in ("cat", "dog", "bird")
@@ -76,3 +76,12 @@ def test_a_repeated_window_holds_its_span_twice_after_bos():
         assert window[0] == 0
         span = window[1:17]
         assert np.array_equal(window[17:33], span)
+
+
+def test_a_batch_of_only_repeats_or_only_plain_windows_still_draws(tmp_path):
+    tokenizer = train_bpe(STORIES, 300)
+    tokens = encode_stories(tokenizer, STORIES)
+    starts = story_starts(tokens, tokenizer.token_to_id(BOS_TOKEN), 16)
+    for share in (0.0, 1.0):
+        config = tiny_config(tmp_path).model_copy(update={"repeat_share": share})
+        assert training_windows(tokens, starts, config, np.random.default_rng(0)).shape == (8, 17)
