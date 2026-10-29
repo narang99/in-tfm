@@ -6,6 +6,8 @@
 - The tokenizer is a byte-level BPE trained on the corpus itself.
   - A small vocab makes token pairs repeat far more often, which is what the clusters need.
 - Every training window starts at a story's BOS, like the report adapter, which prepends BOS.
+- `repeat_share` of the windows repeat a span of story text, so the model has a reason to learn induction.
+  - The val loss is on plain windows only.
 - The token arrays are saved next to the checkpoint, so a later report reads the exact training stream.
 """
 
@@ -58,6 +60,8 @@ class TinyAttnOnlyTrainConfig(BaseSettings):
     eval_batches: int = 20
     snapshot_tokens: list[int] = [1_000_000, 5_000_000, 20_000_000, 50_000_000, 100_000_000, 200_000_000]
     """Extra checkpoints along the way, to see when the induction heads form."""
+    repeat_share: float = 0.0
+    """The share of training windows that repeat a span of story text, see `repeated_span_windows`."""
     seed: int = 0
     device: str = default_device()
     out_dir: Path = Path("checkpoints/tiny_attn_only_2l")
@@ -96,6 +100,36 @@ def sample_windows(
     """One extra token per window, so the inputs and the next-token targets come from one slice."""
     chosen = rng.choice(starts, size=batch_size)
     return torch.from_numpy(np.stack([tokens[s:s + seq_len + 1] for s in chosen]).astype(np.int64))
+
+
+def repeated_span_windows(
+    tokens: Int[np.ndarray, "n_tokens"], starts: Int[np.ndarray, "n_starts"], batch_size: int, seq_len: int,
+    rng: np.random.Generator, min_span: int = 16,
+) -> Int[torch.Tensor, "batch seq_plus_one"]:
+    """BOS, a span of a story, the same span again, then the story goes on.
+
+    - On TinyStories alone a 2-layer model never formed induction heads in 500M tokens.
+      - Names are what repeats there, and a single head that attends to earlier names can already copy them.
+    - The second copy of a span is predictable only by induction, so these windows pay for the circuit.
+    """
+    chosen = rng.choice(starts, size=batch_size)
+    spans = rng.integers(min_span, seq_len // 2 + 1, size=batch_size)
+    windows = []
+    for start, span in zip(chosen, spans):
+        text = tokens[start + 1:start + 1 + span]
+        rest = tokens[start + 1 + span:start + 1 + seq_len]
+        windows.append(np.concatenate([tokens[start:start + 1], text, text, rest])[:seq_len + 1])
+    return torch.from_numpy(np.stack(windows).astype(np.int64))
+
+
+def training_windows(
+    tokens: Int[np.ndarray, "n_tokens"], starts: Int[np.ndarray, "n_starts"], config: "TinyAttnOnlyTrainConfig",
+    rng: np.random.Generator,
+) -> Int[torch.Tensor, "batch seq_plus_one"]:
+    n_repeat = rng.binomial(config.batch_size, config.repeat_share)
+    seq_len = config.shape.seq_len
+    plain = sample_windows(tokens, starts, config.batch_size - n_repeat, seq_len, rng)
+    return torch.cat([plain, repeated_span_windows(tokens, starts, n_repeat, seq_len, rng)])
 
 
 def build_model(config: TinyAttnOnlyTrainConfig) -> AttnOnlyForCausalLM:
@@ -235,7 +269,7 @@ def train(config: TinyAttnOnlyTrainConfig) -> Path:
     for step in range(total_steps):
         for group in optimizer.param_groups:
             group["lr"] = lr_at(step, total_steps, config)
-        windows = sample_windows(arrays["train"], starts["train"], config.batch_size, seq_len, rng).to(config.device)
+        windows = training_windows(arrays["train"], starts["train"], config, rng).to(config.device)
         with torch.autocast("cuda", dtype=torch.float16, enabled=use_fp16):
             loss = next_token_loss(model, windows)
         optimizer.zero_grad(set_to_none=True)
