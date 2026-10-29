@@ -4,7 +4,7 @@ import torch
 from PIL import Image
 
 from in_tfm.attribution import compute_deeplift_relevance
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.mnist_cnn import MnistCnn
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
 from in_tfm.run_config import ModelName, load_run_config
@@ -40,7 +40,7 @@ def test_pixels_are_raw_so_the_zero_baseline_is_a_blank_image(adapter):
 def test_deeplift_only_reaches_the_positions_receptive_field(adapter):
     """conv2's first position reads conv1's first 3 rows, which read pixels 0 to 5 through conv1's padding."""
     position = 0
-    relevance = compute_deeplift_relevance(adapter.get_model(), batch_for(adapter, [0]), conv_getter("conv2"), 0, position)
+    relevance = compute_deeplift_relevance(adapter.get_model(), batch_for(adapter, [0]), submodule_getter("conv2"), 0, position)
     assert relevance.shape == (1, 1, 28, 28)
     assert not relevance[..., 6:, :].any() and not relevance[..., :, 6:].any()
 
@@ -55,7 +55,7 @@ def test_deeplift_attributions_sum_to_the_activation_change_from_a_blank_image(a
         model(batch.kwargs["x"])
         model(torch.zeros_like(batch.kwargs["x"]))
     handle.remove()
-    relevance = compute_deeplift_relevance(model, batch, conv_getter("conv2"), neuron, token)
+    relevance = compute_deeplift_relevance(model, batch, submodule_getter("conv2"), neuron, token)
     assert relevance.sum() == pytest.approx((seen[0] - seen[1]).item(), rel=1e-3, abs=1e-5)
 
 
@@ -89,5 +89,5 @@ def test_deeplift_on_a_logit_sums_to_its_change_from_a_blank_image():
     batch = batch_for(adapter, [0])
     with torch.no_grad():
         change = (model(batch.kwargs["x"]) - model(torch.zeros_like(batch.kwargs["x"])))[0, 7]
-    relevance = compute_deeplift_relevance(model, batch, conv_getter("head.1"), 7, 0)
+    relevance = compute_deeplift_relevance(model, batch, submodule_getter("head.1"), 7, 0)
     assert relevance.sum() == pytest.approx(change.item(), rel=1e-3, abs=1e-5)

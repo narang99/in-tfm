@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.stl_inception import StlInception
 from in_tfm.token_layout import ConvLayout, grid_shape
 
@@ -34,8 +34,8 @@ def test_grouped_convs_are_rejected():
         ConvLayout(torch.nn.Conv2d(4, 4, 3, groups=2))
 
 
-def test_conv_getter_follows_a_dotted_path_through_sequentials():
+def test_submodule_getter_follows_a_dotted_path_through_sequentials():
     model = StlInception()
-    conv = conv_getter("block_b.branch_3x3.1.0")(model)
+    conv = submodule_getter("block_b.branch_3x3.1.0")(model)
     assert isinstance(conv, torch.nn.Conv2d)
     assert conv.kernel_size == (3, 3)

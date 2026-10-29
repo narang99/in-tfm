@@ -3,7 +3,7 @@ import torch
 from torch import nn
 
 from in_tfm.attribution.deeplift import deeplift_attribution
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.stl_inception import StlInception
 
 POSITION = 5
@@ -69,7 +69,7 @@ def test_attributions_are_complete_across_the_real_model(layer_name):
     torch.manual_seed(0)
     model = StlInception().eval()
     x = torch.randn(1, 3, 96, 96)
-    layer = conv_getter(layer_name)(model)
+    layer = submodule_getter(layer_name)(model)
     attribution = deeplift_attribution(model, x, layer, select_position)
     expected = change_from_baseline(model, layer, x, torch.zeros_like(x))
     assert attribution.sum().item() == pytest.approx(expected.item(), abs=1e-3, rel=1e-3)

@@ -4,7 +4,7 @@ import torch
 from PIL import Image
 
 from in_tfm.attribution import compute_deeplift_relevance
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.stl_inception import StlInception
 from in_tfm.models.stl_inception.adapter import StlInceptionAdapter, tokens_in_layer
 
@@ -30,7 +30,7 @@ def adapter():
 
 def test_block_b_has_a_24_by_24_grid_of_positions():
     model = StlInception()
-    assert tokens_in_layer(model, conv_getter(LAYER)(model)) == 24 * 24
+    assert tokens_in_layer(model, submodule_getter(LAYER)(model)) == 24 * 24
 
 
 def test_sample_ids_name_the_split_and_index(adapter):
@@ -48,7 +48,7 @@ def test_deeplift_is_exactly_zero_far_from_the_neuron(adapter):
     source = adapter.make_source([0])
     batch = source.to_model_batch(list(source.sample_ids()))
     corner = 0
-    relevance = compute_deeplift_relevance(adapter.get_model(), batch, conv_getter(LAYER), 0, corner)
+    relevance = compute_deeplift_relevance(adapter.get_model(), batch, submodule_getter(LAYER), 0, corner)
     assert relevance.shape == (1, 3, 96, 96)
     assert relevance.any()
     assert not relevance[..., 48:, 48:].any()
@@ -61,13 +61,13 @@ def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(ad
     batch = source.to_model_batch(list(source.sample_ids()))
     token, neuron = 100, 5
     seen: list[torch.Tensor] = []
-    layer = conv_getter(LAYER)(model)
+    layer = submodule_getter(LAYER)(model)
     handle = layer.register_forward_hook(lambda m, i, o: seen.append(o[:, neuron].flatten(1)[:, token]))
     with torch.no_grad():
         model(batch.kwargs["x"])
         model(torch.zeros_like(batch.kwargs["x"]))
     handle.remove()
-    relevance = compute_deeplift_relevance(model, batch, conv_getter(LAYER), neuron, token)
+    relevance = compute_deeplift_relevance(model, batch, submodule_getter(LAYER), neuron, token)
     assert relevance.sum() == pytest.approx((seen[0] - seen[1]).item(), rel=1e-3, abs=1e-4)
 
 
@@ -83,7 +83,7 @@ def test_hub_images_are_rgb_pairs():
 def test_positions_are_counted_on_the_models_own_device():
     """The pipeline moves the model to the accelerator before it builds the source."""
     model = StlInception().to("meta")
-    assert tokens_in_layer(model, conv_getter(LAYER)(model)) == 24 * 24
+    assert tokens_in_layer(model, submodule_getter(LAYER)(model)) == 24 * 24
 
 
 def test_deeplift_explains_hits_unless_told_otherwise(adapter):
@@ -94,7 +94,7 @@ def test_integrated_gradients_can_be_chosen_with_its_step_count():
     adapter = StlInceptionAdapter(StlInception(), LAYER, FakeStl(2), "test", "integrated-gradients", ig_steps=7)
     source = adapter.make_source([0])
     batch = source.to_model_batch(list(source.sample_ids()))
-    relevance = adapter.attr_fn(adapter.get_model(), batch, conv_getter(LAYER), 0, 100)
+    relevance = adapter.attr_fn(adapter.get_model(), batch, submodule_getter(LAYER), 0, 100)
     assert relevance.shape == (1, 3, 96, 96)
     assert adapter.attr_fn.keywords == {"n_steps": 7}
 

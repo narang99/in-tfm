@@ -59,14 +59,14 @@ class Target(StrEnum):
 
 SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
     ModelName.GEMMA3_270M: {Target.DOWN_PROJ, Target.Q_PROJ, Target.K_PROJ},
-    ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ},
+    ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ, Target.LINEAR},
     ModelName.RAD_DINO: {Target.FC2},
     ModelName.STL_INCEPTION: {Target.CONV},
     ModelName.MNIST_CNN: {Target.CONV, Target.LINEAR},
     ModelName.MNIST_CNN_SMALL: {Target.CONV, Target.LINEAR},
     ModelName.INCEPTION_V1: {Target.CONV},
 }
-"""The attention-only model has no MLP, so it has no `down_proj`. Dinov2 calls its MLP output `fc2`."""
+"""The attention-only model has no MLP, so it has no `down_proj`. Its `o_proj` is a `linear` target. Dinov2 calls its MLP output `fc2`."""
 
 Polarity = Literal["positive", "negative", "signed"]
 """`signed` takes hits from both tails into one space."""

@@ -10,7 +10,7 @@ from in_tfm.attribution.comparison import (
     pearson,
     top_k_overlap,
 )
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.stl_inception import StlInception
 from in_tfm.sources import ModelBatch
 
@@ -50,7 +50,7 @@ def test_completeness_gap_is_relative_to_the_change():
 
 def test_converged_integrated_gradients_agrees_with_deeplift(model, images):
     config = ComparisonConfig(ig_steps=[4, 64], device="cpu", neuron=2)
-    layer = conv_getter(LAYER)(model)
+    layer = submodule_getter(LAYER)(model)
     _, many = merge([measure_batch(model, layer, images, config)], [len(images)])
     assert many.ig_completeness_gap < 0.01
     assert many.pearson > 0.9
@@ -59,7 +59,7 @@ def test_converged_integrated_gradients_agrees_with_deeplift(model, images):
 
 def test_ig_relevance_has_the_shape_and_the_sum_of_deeplift_relevance(model, images):
     batch = ModelBatch(kwargs={"x": images}, grad_leaf_key="x", valid_mask=torch.ones(2, 24 * 24, dtype=torch.bool))
-    args = (model, batch, conv_getter(LAYER), 2, 100)
+    args = (model, batch, submodule_getter(LAYER), 2, 100)
     deeplift = compute_deeplift_relevance(*args)
     ig = compute_integrated_gradients_relevance(*args, n_steps=128)
     assert ig.shape == deeplift.shape == (2, 3, 96, 96)

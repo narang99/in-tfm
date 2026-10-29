@@ -12,7 +12,7 @@ import torch
 from datasets import load_dataset
 
 from ...attribution import compute_deeplift_relevance
-from ...layers import conv_getter
+from ...layers import submodule_getter
 from ...mnist_training import load_checkpoint
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
@@ -66,7 +66,7 @@ class MnistAdapter:
         reject_nnsight_wrapped(self.model)
 
     def make_source(self, samples: list[int]) -> MnistSource:
-        n_tokens = positions_in_layer(self.model, conv_getter(self.layer_name)(self.model))
+        n_tokens = positions_in_layer(self.model, submodule_getter(self.layer_name)(self.model))
         return MnistSource(self.split_rows, samples, self.split, n_tokens)
 
     def make_presenter(self, source: MnistSource, clustered_label: str) -> ImagePresenter:

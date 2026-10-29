@@ -28,7 +28,7 @@ from .density_peaks import (
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, conv_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .layers import LayerGetter, submodule_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
 from .border_pages import write_border_pages
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
@@ -56,7 +56,7 @@ def layer_getter_for(config: RunConfig) -> LayerGetter:
         Target.FC2: fc2_getter,
     }
     if config.target in (Target.CONV, Target.LINEAR):
-        return conv_getter(config.layer_name)
+        return submodule_getter(config.layer_name)
     return getters[config.target](config.layer_idx)
 
 

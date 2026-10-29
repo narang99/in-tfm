@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ...attribution import compute_deeplift_relevance
-from ...layers import conv_getter
+from ...layers import submodule_getter
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
 from ..base import reject_nnsight_wrapped
@@ -32,7 +32,7 @@ class InceptionV1Adapter:
         reject_nnsight_wrapped(self.model)
 
     def make_source(self, samples: list[str]) -> InceptionSource:
-        n_tokens = tokens_in_layer(self.model, conv_getter(self.layer_name)(self.model), IMAGE_SIZE)
+        n_tokens = tokens_in_layer(self.model, submodule_getter(self.layer_name)(self.model), IMAGE_SIZE)
         return InceptionSource(self.image_dir, samples, n_tokens)
 
     def make_presenter(self, source: InceptionSource, clustered_label: str) -> ImagePresenter:
