@@ -3,7 +3,7 @@ import torch
 
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_TOKENIZER, load_trained_attn_only
 from in_tfm.tiny_attn_only_training import (
-    ModelShape, TinyAttnOnlyTrainConfig, build_model, encode_stories, next_token_loss, sample_windows,
+    ModelShape, TinyAttnOnlyTrainConfig, build_model, encode_stories, next_token_loss, repeated_span_windows, sample_windows,
     save_weights, story_starts, train_bpe,
 )
 
@@ -65,3 +65,14 @@ def test_the_saved_checkpoint_loads_with_its_own_tokenizer(tmp_path):
     assert torch.allclose(loaded(input_ids=ids).logits, model.eval()(input_ids=ids).logits)
     assert hf_tokenizer.bos_token_id == tokenizer.token_to_id(BOS_TOKEN)
     assert all(name.endswith("lm_head.bias") or not name.endswith("bias") for name in loaded.state_dict())
+
+
+def test_a_repeated_window_holds_its_span_twice_after_bos():
+    tokens = np.concatenate([[0], np.arange(1, 200), [0], np.arange(200, 400)]).astype(np.uint16)
+    starts = story_starts(tokens, 0, 32)
+    windows = repeated_span_windows(tokens, starts, 4, 32, np.random.default_rng(0), min_span=16)
+    assert windows.shape == (4, 33)
+    for window in windows.numpy():
+        assert window[0] == 0
+        span = window[1:17]
+        assert np.array_equal(window[17:33], span)
