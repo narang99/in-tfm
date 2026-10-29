@@ -21,6 +21,7 @@ from .cluster_membership import (
     NOISE_LABEL, ClusterProbabilities, HitMembership, confident_labels, membership_entropy, most_probable_labels,
     one_hot_memberships, probability_matrix,
 )
+from .cluster_fit import cluster_fit, save_cluster_fit
 from .clustering import cluster_labels
 from .density_peaks import (
     DensityPeakForest, ForestTrees, calculate_probs, comparable_rows, density_peak_forest, forest_trees, torch_forest,
@@ -102,10 +103,22 @@ def density_peak_trees(
     return forest, forest_trees(forest)
 
 
+class DensityPeakClusters(BaseModel):
+    """What `cluster_fit` saves for a later trace."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    forest: DensityPeakForest
+    trees: ForestTrees
+    probabilities: Float[np.ndarray, "n_distinct n_trees"]
+    strategy: DensityPeaksConfig
+
+
 class Clustered(BaseModel):
     memberships: list[HitMembership]
     forest: ForestData | None = None
     """Only density peaks builds a forest. The report page draws it."""
+    density_peaks: DensityPeakClusters | None = None
 
 
 def cluster_hits(
@@ -122,6 +135,9 @@ def cluster_hits(
                     comparable_rows(hdmd.astype(np.float64), clustering.distance, clustering.normalise),
                     clustering.distance,
                     strategy.max_entropy,
+                ),
+                density_peaks=DensityPeakClusters(
+                    forest=forest, trees=trees, probabilities=probabilities, strategy=strategy
                 ),
             )
         case HdbscanConfig() as strategy:
@@ -176,6 +192,17 @@ def prepare_run[SamplesT](config: RunConfig, adapter: ModelAdapter[SamplesT], sa
     )
 
 
+def save_fit(
+    clusters: DensityPeakClusters, selection: HitSelection, sample_ids: list[str], neuron_idx: int, config: RunConfig,
+) -> None:
+    fit = cluster_fit(
+        clusters.forest, clusters.trees, clusters.probabilities, selection, sample_ids, neuron_idx, config.clustering,
+        clusters.strategy,
+    )
+    path = save_cluster_fit(fit, Path(config.out_dir) / report_name(neuron_idx, selection.polarity))
+    print(f"[neuron {neuron_idx} {selection.polarity}] cluster fit -> {path}")
+
+
 def report_neuron(
     neuron_idx: int,
     polarity: Polarity,
@@ -195,6 +222,8 @@ def report_neuron(
     labels = confident_labels(memberships, max_entropy_of(config.clustering))
     mixed = int((most_probable_labels(memberships) != labels).sum())
     print(f"[{tag}] {len(set(labels) - {NOISE_LABEL})} clusters, {mixed} of {len(labels)} hits too mixed to show")
+    if clustered.density_peaks is not None:
+        save_fit(clustered.density_peaks, selection, sample_ids, neuron_idx, config)
 
     hits = NeuronClusterHits(
         model=run.module,

@@ -116,6 +116,12 @@ def test_geodesic_distances_match_the_naive_dijkstra(forest, trees):
 
 
 @pytest.mark.parametrize("forest, trees", forests())
+def test_distances_to_peaks_match_the_naive_loop(forest, trees):
+    expected = naive.distances_to_peaks(forest, trees, 0.8)
+    assert np.allclose(vectorized.distances_to_peaks(forest, trees, 0.8), expected)
+
+
+@pytest.mark.parametrize("forest, trees", forests())
 def test_step_length_matches_the_naive_loop(forest, trees):
     assert vectorized.step_length(forest) == naive.step_length(forest)
 
