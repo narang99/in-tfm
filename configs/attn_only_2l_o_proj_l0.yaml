@@ -1,0 +1,23 @@
+# A few attn-only 2L layer 0 o_proj neurons, the residual dims the head outputs write to.
+# Every paragraph is cut to BOS plus 7 tokens, and 312 * 8 = 2,496 positions fit the 2,500 hit budget.
+# So every position is a hit for every neuron, and a later trace over this corpus is always in-sample.
+# Run on Colab with:
+#   python scripts/run_neuron_report.py --config configs/attn_only_2l_o_proj_l0.yaml
+model: self/attn-only-2l
+target: linear
+layer_name: layers.0.self_attn.o_proj
+neurons: [0, 1, 2, 3]
+polarity: signed
+batch_size: 64
+out_dir: reports/attn_only_2l_o_proj_l0
+text:
+  n_samples: 312
+  max_length: 8
+hits:
+  method: bucketed
+  max_hits: 2500
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
