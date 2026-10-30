@@ -8,6 +8,7 @@
 
 import numpy as np
 import pytest
+import torch
 
 from in_tfm.density_peaks import comparable_rows, forest_trees, ivf_forest, merge_copies, vectorized
 from in_tfm.density_peaks.ivf_forest import IvfSettings, ivf_density_peak_forest
@@ -34,7 +35,7 @@ def in_merge_order(points: np.ndarray, distance: str, normalise: bool) -> np.nda
 @pytest.fixture(autouse=True)
 def small_blocks(monkeypatch):
     monkeypatch.setattr(ivf_forest, "BLOCK_ELEMENTS", 500)
-    monkeypatch.setattr(ivf_forest, "QUERY_CHUNK", 70)
+    monkeypatch.setattr(ivf_forest, "PROBE_PAIRS", 70)
 
 
 @pytest.mark.parametrize("normalise", [True, False])
@@ -61,6 +62,17 @@ def test_a_short_list_leaves_more_local_peaks():
     _, short_stats = ivf_density_peak_forest(points, short, k=4, device="cpu")
     _, long_stats = ivf_density_peak_forest(points, long, k=4, device="cpu")
     assert long_stats.local_peaks < short_stats.local_peaks
+
+
+@pytest.mark.parametrize("distance", ["euclidean", "weighted_jaccard"])
+def test_probing_every_list_finds_what_the_exhaustive_search_finds(distance):
+    rows = ivf_forest.Rows(clustered_points(np.random.default_rng(7)), distance, False, "cpu")
+    lists = ivf_forest.build_lists(rows, 9, seed=0)
+    queries = torch.arange(len(rows))
+    probed = ivf_forest.probed_search(rows, lists, queries, 9, 6)
+    exhaustive = ivf_forest.exhaustive_search(rows, queries, 6, None)
+    assert torch.equal(probed[0], exhaustive[0])
+    assert torch.allclose(probed[1], exhaustive[1])
 
 
 def test_a_partial_probe_still_builds_one_forest_with_copies():
