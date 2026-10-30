@@ -8,6 +8,9 @@
   - The running top `TOP` keys and a new tile are joined and sorted, and the first half is kept.
 - Each (query, probe slot) writes its own top keys, so programs never write to the same place.
   - One `topk` per query over its slots then gives the final list.
+- The search runs in two passes, so most tiles skip the sort.
+  - First each query's nearest list alone. Its nth best distance is then an upper bound on the final nth.
+  - Then the other lists, where only candidates within that bound count. A tile with none of them is not sorted.
 - `tests/test_triton_ivf.py` checks it against the torch path, and skips without CUDA.
 """
 
@@ -26,10 +29,11 @@ EMPTY = torch.iinfo(torch.int64).max
 
 @triton.jit
 def ivf_scan_kernel(
-    rows_ptr, sums_ptr, members_ptr, starts_ptr, ranks_ptr,
+    rows_ptr, sums_ptr, members_ptr, starts_ptr, ranks_ptr, bound_ptr,
     work_list_ptr, work_start_ptr, work_count_ptr, pair_query_ptr, pair_slot_ptr, query_ids_ptr, out_ptr,
     D, n_probe,
-    JACCARD: tl.constexpr, DENSER: tl.constexpr, BM: tl.constexpr, K: tl.constexpr, BK: tl.constexpr,
+    JACCARD: tl.constexpr, DENSER: tl.constexpr, BOUND: tl.constexpr, BM: tl.constexpr, K: tl.constexpr,
+    BK: tl.constexpr,
 ):
     work = tl.program_id(0)
     list_id = tl.load(work_list_ptr + work)
@@ -44,6 +48,8 @@ def ivf_scan_kernel(
         query_sum = tl.load(sums_ptr + query, mask=valid, other=0.0)
     if DENSER:
         query_rank = tl.load(ranks_ptr + query, mask=valid, other=0)
+    if BOUND:
+        bound = tl.load(bound_ptr + query_pos, mask=valid, other=0.0)
     member_start = tl.load(starts_ptr + list_id)
     member_end = tl.load(starts_ptr + list_id + 1)
     running = tl.full((BM, K), 0x7FFFFFFFFFFFFFFF, dtype=tl.int64)
@@ -74,11 +80,15 @@ def ivf_scan_kernel(
         if DENSER:
             other_rank = tl.load(ranks_ptr + other, mask=present, other=0)
             excluded = excluded | (other_rank[None, :] <= query_rank[:, None])
+        if BOUND:
+            excluded = excluded | (distance > bound[:, None])
         keys = (distance.to(tl.int32, bitcast=True).to(tl.int64) << 32) | other[None, :].to(tl.int64)
         keys = tl.where(excluded, 0x7FFFFFFFFFFFFFFF, keys)
-        joined = tl.reshape(tl.join(running, keys), (BM, 2 * K))
-        ordered = tl.sort(joined, dim=1)
-        running = tl.split(tl.permute(tl.reshape(ordered, (BM, 2, K)), (0, 2, 1)))[0]
+        worst = tl.max(running, axis=1)
+        if tl.sum((keys < worst[:, None]).to(tl.int32)) > 0:
+            joined = tl.reshape(tl.join(running, keys), (BM, 2 * K))
+            ordered = tl.sort(joined, dim=1)
+            running = tl.split(tl.permute(tl.reshape(ordered, (BM, 2, K)), (0, 2, 1)))[0]
     columns = tl.arange(0, K)
     target = out_ptr + ((query_pos * n_probe + slot) * K)[:, None] + columns[None, :]
     tl.store(target, running, mask=valid[:, None])
@@ -101,6 +111,32 @@ def work_items(probes: Int[torch.Tensor, "q n_probe"]) -> tuple[torch.Tensor, ..
     return present[segment], start, count, pair_query, pair_slot
 
 
+def scan(
+    signed, sums, members, starts, queries, probes, denser_ranks, bound,
+) -> Int[torch.Tensor, "q slots top"]:
+    """Each (query, slot)'s top keys within that slot's list."""
+    out = torch.full((len(queries), probes.shape[1], TOP), EMPTY, dtype=torch.int64, device=signed.device)
+    if probes.shape[1] == 0 or len(queries) == 0:
+        return out
+    work_list, work_start, work_count, pair_query, pair_slot = work_items(probes)
+    jaccard = sums is not None
+    ivf_scan_kernel[(len(work_list),)](
+        signed, sums if jaccard else signed, members, starts, denser_ranks if denser_ranks is not None else members,
+        bound if bound is not None else signed,
+        work_list, work_start, work_count, pair_query, pair_slot, queries, out,
+        signed.shape[1], probes.shape[1],
+        JACCARD=jaccard, DENSER=denser_ranks is not None, BOUND=bound is not None, BM=BLOCK_PAIRS, K=TOP, BK=8,
+        num_warps=4,
+    )
+    return out
+
+
+def decode(keys: Int[torch.Tensor, "q n"]) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
+    empty = keys == EMPTY
+    distance = (keys >> 32).to(torch.int32).view(torch.float32)
+    return torch.where(empty, -1, keys & 0xFFFFFFFF), torch.where(empty, torch.inf, distance)
+
+
 def fused_probed_search(
     signed: Float[torch.Tensor, "n dim"], sums: Float[torch.Tensor, "n"] | None, members: Int[torch.Tensor, "n"],
     starts: Int[torch.Tensor, "l1"], queries: Int[torch.Tensor, "q"], probes: Int[torch.Tensor, "q n_probe"], n: int,
@@ -109,17 +145,9 @@ def fused_probed_search(
     """The n closest points among each query's probed lists, closest first, with -1 at inf for empty slots."""
     assert n <= TOP, f"at most {TOP} neighbours per query"
     signed = signed.contiguous()
-    jaccard = sums is not None
-    out = torch.full((len(queries), probes.shape[1], TOP), EMPTY, dtype=torch.int64, device=signed.device)
-    work_list, work_start, work_count, pair_query, pair_slot = work_items(probes)
-    ivf_scan_kernel[(len(work_list),)](
-        signed, sums if jaccard else signed, members, starts, denser_ranks if denser_ranks is not None else members,
-        work_list, work_start, work_count, pair_query, pair_slot, queries, out,
-        signed.shape[1], probes.shape[1],
-        JACCARD=jaccard, DENSER=denser_ranks is not None, BM=BLOCK_PAIRS, K=TOP, BK=8, num_warps=4,
-    )
-    keys = torch.topk(out.view(len(queries), -1), n, dim=1, largest=False, sorted=True).values
-    empty = keys == EMPTY
-    found = torch.where(empty, -1, keys & 0xFFFFFFFF)
-    distance = (keys >> 32).to(torch.int32).view(torch.float32)
-    return found, torch.where(empty, torch.inf, distance)
+    first = scan(signed, sums, members, starts, queries, probes[:, :1], denser_ranks, None)[:, 0]
+    first = torch.sort(first, dim=1).values[:, :n]
+    bound = decode(first[:, -1:])[1][:, 0].contiguous()
+    rest = scan(signed, sums, members, starts, queries, probes[:, 1:].contiguous(), denser_ranks, bound)
+    keys = torch.cat([first, rest.view(len(queries), -1)], dim=1)
+    return decode(torch.topk(keys, n, dim=1, largest=False, sorted=True).values)
