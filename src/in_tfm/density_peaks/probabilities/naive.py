@@ -119,3 +119,20 @@ def softmax_over_trees(distances: Float[np.ndarray, "n n_trees"], tau: float) ->
         if total > 0:
             probabilities[point] = [w / total for w in weights]
     return probabilities
+
+
+def geodesic_entropy(
+    forest: DensityPeakForest, trees: ForestTrees, peak_share: float, margin_steps: float
+) -> Float[np.ndarray, "n_distinct"]:
+    """Trees more than `margin_steps` steps past a point's nearest peak are left out, as in the vectorized version."""
+    distances = distances_to_peaks(forest, trees, peak_share)
+    tau = step_length(forest)
+    entropy = np.zeros(len(distances))
+    for point, row in enumerate(distances):
+        finite = [d for d in row if math.isfinite(d)]
+        if not finite:
+            continue
+        kept = [d if d - min(finite) <= margin_steps * tau else np.inf for d in row]
+        probabilities = softmax_over_trees(np.array([kept]), tau)[0]
+        entropy[point] = -sum(p * math.log2(p) for p in probabilities if p > 0)
+    return entropy

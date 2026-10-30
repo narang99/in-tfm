@@ -140,3 +140,29 @@ def test_softmax_matches_the_naive_loop():
 def test_probabilities_match_the_naive_loop(forest, trees, peak_share):
     expected = naive.calculate_probs(forest, trees, peak_share)
     assert np.allclose(vectorized.calculate_probs(forest, trees, peak_share), expected)
+
+
+def entropy_bits(probabilities: np.ndarray) -> np.ndarray:
+    safe = np.where(probabilities > 0, probabilities, 1)
+    return -(probabilities * np.log2(safe)).sum(axis=1)
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+@pytest.mark.parametrize("margin_steps", [0.5, 2.5, 1000.0])
+def test_entropy_matches_the_naive_loop(forest, trees, margin_steps):
+    expected = naive.geodesic_entropy(forest, trees, 0.8, margin_steps)
+    assert np.allclose(vectorized.geodesic_entropy(forest, trees, 0.8, margin_steps), expected)
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+def test_a_wide_margin_gives_the_entropy_of_the_full_probabilities(forest, trees):
+    expected = entropy_bits(vectorized.calculate_probs(forest, trees, 0.8))
+    assert np.allclose(vectorized.geodesic_entropy(forest, trees, 0.8, 1000.0), expected)
+
+
+def test_a_narrow_margin_only_lowers_the_entropy():
+    forest, trees = blob_forest(0)
+    full = vectorized.geodesic_entropy(forest, trees, 0.8, 1000.0)
+    narrow = vectorized.geodesic_entropy(forest, trees, 0.8, 0.5)
+    assert (narrow <= full + 1e-12).all()
+    assert (narrow < full - 1e-6).any()
