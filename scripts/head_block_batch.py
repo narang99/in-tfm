@@ -46,6 +46,8 @@ class HeadBlockBatchConfig(BaseSettings):
     block_elements: int = 2**26
     entropy_state: int = 2**30
     """Distances the entropy holds at once, trees x points. 4 GB of float32."""
+    entropy_edges: int = 2**25
+    """Edges one relaxation step takes. At 2^27 its index arrays ran a T4 out of memory at 4M points."""
     exact_on_device: bool = False
     seed: int = 0
     batch_size: int = 256
@@ -95,6 +97,7 @@ def main() -> None:
     print(config, flush=True)
     ivf_forest.BLOCK_ELEMENTS = config.block_elements
     frontier_entropy.STATE_ELEMENTS = config.entropy_state
+    frontier_entropy.EDGES_PER_STEP = config.entropy_edges
     config.out_dir.mkdir(parents=True, exist_ok=True)
     pending = [(n, h) for n in config.neurons for h in config.heads if not result_path(config, n, h).exists()]
     print(f"{len(pending)} pairs to run", flush=True)
