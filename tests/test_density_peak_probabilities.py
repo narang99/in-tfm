@@ -166,3 +166,9 @@ def test_a_narrow_margin_only_lowers_the_entropy():
     narrow = vectorized.geodesic_entropy(forest, trees, 0.8, 0.5)
     assert (narrow <= full + 1e-12).all()
     assert (narrow < full - 1e-6).any()
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+def test_entropy_over_several_workers_matches_one(forest, trees):
+    expected = vectorized.geodesic_entropy(forest, trees, 0.8, 2.5)
+    assert np.allclose(vectorized.geodesic_entropy(forest, trees, 0.8, 2.5, workers=3), expected)

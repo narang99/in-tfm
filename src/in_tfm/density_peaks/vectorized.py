@@ -1,7 +1,7 @@
 """The forest with numpy, a block of rows at a time. `naive.py` computes the same with plain loops."""
 
 import numpy as np
-from jaxtyping import Float, Int
+from jaxtyping import Bool, Float, Int
 from scipy.spatial.distance import cdist
 
 from ..weighted_jaccard import weighted_jaccard_block
@@ -148,16 +148,10 @@ def nearest_denser(
 def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> ForestTrees:
     """`cuts` defaults to `root_cuts`, the elbows.
 
-    Points are visited densest first, so a point's parent always has its tree and depth already."""
+    - Roots and depths come from pointer jumping, which `root_and_depth` explains."""
     cuts = cuts or root_cuts(forest)
     is_root = root_mask(forest, cuts)
-    root_of = np.empty(len(is_root), dtype=int)
-    depth = np.zeros(len(is_root), dtype=int)
-    for point in np.argsort(-forest.density_rank):
-        if is_root[point]:
-            root_of[point] = point
-        else:
-            root_of[point], depth[point] = root_of[forest.parent[point]], depth[forest.parent[point]] + 1
+    root_of, depth = root_and_depth(forest.parent, is_root)
     roots = np.flatnonzero(is_root)
     hits_per_root = np.bincount(root_of, weights=forest.counts, minlength=len(is_root))[roots]
     roots = roots[np.argsort(-hits_per_root, kind="stable")]
@@ -166,6 +160,26 @@ def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> For
     tree_of_root[roots] = np.arange(len(roots))
     tree = tree_of_root[root_of]
     return ForestTrees(cuts=cuts, roots=roots, tree=tree, depth=depth)
+
+
+def root_and_depth(
+    parent: Int[np.ndarray, "n"], is_root: Bool[np.ndarray, "n"]
+) -> tuple[Int[np.ndarray, "n"], Int[np.ndarray, "n"]]:
+    """Each point's root, and its number of steps up to it.
+
+    - Each round, every point jumps from its current ancestor to that ancestor's ancestor, and adds its hops.
+      - A root points at itself with 0 hops, so a point that reached its root stays there.
+    - The jump doubles each round, so the rounds grow with log(depth), not with the number of points.
+      - The naive version walks densest first instead, one point at a time."""
+    own = np.arange(len(parent))
+    assert (parent[~is_root] >= 0).all(), "only a root can be without a parent"
+    up = np.where(is_root, own, parent)
+    hops = (~is_root).astype(int)
+    while True:
+        next_up = up[up]
+        if np.array_equal(next_up, up):
+            return up, hops
+        hops, up = hops + hops[up], next_up
 
 
 def density_peak_forest(
