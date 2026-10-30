@@ -30,6 +30,7 @@ from sklearn.metrics import adjusted_rand_score
 
 from head_block_forests import draw_windows, entropy_bits
 from in_tfm.density_peaks import DensityPeakForest, ForestTrees, calculate_probs, forest_trees
+from in_tfm.density_peaks import ivf_forest
 from in_tfm.density_peaks.ivf_forest import IvfSettings, ivf_density_peak_forest
 from in_tfm.density_peaks.probabilities import geodesic_entropy
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, load_trained_attn_only
@@ -49,6 +50,11 @@ class HeadBlockScaleConfig(BaseSettings):
     confident_bits: float = 0.5
     lists_per_root_n: float = 2.0
     """n_lists is this times the square root of n, so a list holds about sqrt(n) / this points."""
+    cell_size: int | None = None
+    """When set, n_lists is n / cell_size instead, so the search grows with n rather than n^1.5."""
+    probe_by: Literal["point", "cell"] = "point"
+    block_elements: int = 2**26
+    """Distances in one block. An A100 takes 2^28 (1 GB of float32)."""
     n_probe: int = 16
     peak_probe: int = 64
     n_list_neighbours: int = 32
@@ -59,8 +65,11 @@ class HeadBlockScaleConfig(BaseSettings):
     confident_thresholds: list[float] = [0.1, 0.5, 1.0, 2.0]
     entropy_quantiles: list[float] = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
     histogram_bin_bits: float = 0.25
-    entropy_backend: Literal["scipy", "cugraph"] = "scipy"
+    entropy: bool = True
+    entropy_backend: Literal["scipy", "cugraph", "hybrid"] = "scipy"
     entropy_workers: int = 1
+    gpu_share: float = 0.45
+    """With the hybrid backend, the share of trees on the GPU. The rest go to the CPU workers."""
     """Processes for the scipy entropy. Each tree's search is independent."""
     exact_on_device: bool = False
     seed: int = 0
@@ -107,11 +116,12 @@ def purity(tree: Int[np.ndarray, "n"], labels: Int[np.ndarray, "n"]) -> float:
 
 
 def settings_for(n: int, config: HeadBlockScaleConfig, exact: bool) -> IvfSettings:
-    n_lists = max(1, round(config.lists_per_root_n * np.sqrt(n)))
+    by_size = -(-n // config.cell_size) if config.cell_size else round(config.lists_per_root_n * np.sqrt(n))
+    n_lists = max(1, by_size)
     return IvfSettings(
         n_lists=n_lists, n_probe=n_lists if exact else config.n_probe,
         peak_probe=n_lists if exact else config.peak_probe, n_list_neighbours=config.n_list_neighbours,
-        seed=config.seed, exact_on_device=config.exact_on_device,
+        seed=config.seed, exact_on_device=config.exact_on_device, probe_by=config.probe_by,
     )
 
 
@@ -132,10 +142,17 @@ def entropy_distribution(entropy: Float[np.ndarray, "n"], n_trees: int, config: 
 
 
 def tree_entropy(forest: DensityPeakForest, trees: ForestTrees, config: HeadBlockScaleConfig) -> Float[np.ndarray, "n"]:
+    if config.entropy_backend != "scipy":
+        torch.cuda.empty_cache()
     if config.entropy_backend == "cugraph":
         from in_tfm.density_peaks.probabilities.cugraph_entropy import gpu_geodesic_entropy
 
         return gpu_geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)
+    if config.entropy_backend == "hybrid":
+        from in_tfm.density_peaks.probabilities.cugraph_entropy import hybrid_geodesic_entropy
+
+        return hybrid_geodesic_entropy(forest, trees, config.peak_share, config.margin_steps, config.entropy_workers,
+                                       config.gpu_share)
     return geodesic_entropy(forest, trees, config.peak_share, config.margin_steps, config.entropy_workers)
 
 
@@ -165,7 +182,12 @@ def forest_summary(forest: DensityPeakForest, points: BlockPoints, n: int, confi
         "trees": len(trees.roots), "largest_tree": float(np.bincount(tree).max() / n),
         "purity_previous": purity(tree, points.previous[:n]), "purity_current": purity(tree, points.current[:n]),
     }
+    if not config.entropy:
+        summary["summary_seconds"] = time.perf_counter() - began
+        return summary, tree, np.zeros(n)
+    entropy_began = time.perf_counter()
     entropy = tree_entropy(forest, trees, config)[forest.distinct_of_hit]
+    summary["entropy_seconds"] = time.perf_counter() - entropy_began
     summary |= entropy_distribution(entropy, len(trees.roots), config)
     summary["summary_seconds"] = time.perf_counter() - began
     if n <= config.compare_dense_up_to:
@@ -193,9 +215,11 @@ def run_forest(points: BlockPoints, n: int, config: HeadBlockScaleConfig, exact:
     summary, tree, entropy = forest_summary(forest, points, n, config)
     row = {"n": n, "exact": exact, "n_lists": settings.n_lists, "n_probe": settings.n_probe,
            "peak_probe": settings.peak_probe, "margin_steps": config.margin_steps,
+           "probe_by": settings.probe_by, "cell_size": config.cell_size,
            "entropy_backend": config.entropy_backend, "forest_seconds": seconds,
            **stats.model_dump(), **summary}
-    save_entropy(entropy, n, exact, config)
+    if config.entropy:
+        save_entropy(entropy, n, exact, config)
     return row, forest, tree
 
 
@@ -207,6 +231,7 @@ def save_entropy(entropy: Float[np.ndarray, "n"], n: int, exact: bool, config: H
 
 def main() -> None:
     config = HeadBlockScaleConfig()
+    ivf_forest.BLOCK_ELEMENTS = config.block_elements
     print(config)
     model, tokenizer = load_trained_attn_only(config.checkpoint_dir)
     model = model.to(config.device).eval()
