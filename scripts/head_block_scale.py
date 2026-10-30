@@ -53,6 +53,8 @@ class HeadBlockScaleConfig(BaseSettings):
     cell_size: int | None = None
     """When set, n_lists is n / cell_size instead, so the search grows with n rather than n^1.5."""
     probe_by: Literal["point", "cell", "union"] = "point"
+    fused: bool = True
+    """On CUDA, the Triton kernel that does the search's distances and top-k together."""
     block_elements: int = 2**26
     """Distances in one block. An A100 takes 2^28 (1 GB of float32)."""
     n_probe: int = 16
@@ -60,7 +62,9 @@ class HeadBlockScaleConfig(BaseSettings):
     n_list_neighbours: int = 32
     exact_up_to: int = 256_000
     margin_steps: float = 10.0
-    """Trees this many steps of tau past a point's nearest peak are left out of its entropy."""
+    """Trees this many steps of tau past a point's nearest peak are left out of its entropy.
+
+    - Head 0 at 256k, against the dense table: 10 steps are off by 0.016 bits on average, 8 by 0.11, 6 by 0.45."""
     compare_dense_up_to: int = 256_000
     confident_thresholds: list[float] = [0.1, 0.5, 1.0, 2.0]
     entropy_quantiles: list[float] = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
@@ -121,7 +125,7 @@ def settings_for(n: int, config: HeadBlockScaleConfig, exact: bool) -> IvfSettin
     return IvfSettings(
         n_lists=n_lists, n_probe=n_lists if exact else config.n_probe,
         peak_probe=n_lists if exact else config.peak_probe, n_list_neighbours=config.n_list_neighbours,
-        seed=config.seed, exact_on_device=config.exact_on_device, probe_by=config.probe_by,
+        seed=config.seed, exact_on_device=config.exact_on_device, probe_by=config.probe_by, fused=config.fused,
     )
 
 
