@@ -1,0 +1,12 @@
+{% macro token_chips(label, chips) -%}
+<div class="firing"><span class="label">{{ label }}</span>{% for chip in chips %}<span class="chip"><code>{{ chip.text }}</code><span class="count">{{ "%.0f"|format(100 * chip.share) }}%</span></span>{% endfor %}</div>
+{%- endmacro %}
+<p class="meta">{{ "%.2f"|format(100 * share) }}% of points &middot; median entropy {{ "%.2f"|format(median_entropy) }} bits &middot; {{ "%.0f"|format(100 * confident) }}% confident</p>
+{{ token_chips("previous token", previous) }}
+{{ token_chips("current token", current) }}
+{% for example in examples %}
+<div class="hit">
+<div class="hit-tag">{{ example.tag }} &middot; window {{ example.window }} &middot; position {{ example.position }} &middot; {{ "%.2f"|format(example.entropy) }} bits</div>
+<div class="tokens">{% for tok in example.tokens %}<span class="tok{% if tok.current %} tok-firing{% endif %}"{% if tok.previous %} style="text-decoration:underline"{% endif %}>{{ tok.text }}</span>{% endfor %}</div>
+</div>
+{% endfor %}
