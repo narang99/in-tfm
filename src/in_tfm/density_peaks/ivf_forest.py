@@ -160,10 +160,24 @@ def build_lists(rows: Rows, n_lists: int, seed: int) -> IvfLists:
     n_lists = min(n_lists, len(rows))
     centroids = kmeans_centroids(rows.signed, n_lists, torch.Generator().manual_seed(seed))
     list_of_point = nearest_centroids(rows.signed, centroids, 1)[:, 0]
+    centroids, list_of_point = without_empty_lists(centroids, list_of_point)
+    n_lists = len(centroids)
     members = torch.argsort(list_of_point, stable=True)
     counts = torch.bincount(list_of_point, minlength=n_lists)
     starts = torch.cat([counts.new_zeros(1), torch.cumsum(counts, dim=0)])
     return IvfLists(centroids=centroids, members=members, starts=starts, list_of_point=list_of_point)
+
+
+def without_empty_lists(
+    centroids: Float[torch.Tensor, "c dim"], list_of_point: Int[torch.Tensor, "n"]
+) -> tuple[Float[torch.Tensor, "kept dim"], Int[torch.Tensor, "n"]]:
+    """Copies of one row give k-means copies of one centroid, and ties send every point to the first copy.
+
+    - The other copies hold no points. A point whose probes land on them finds too few neighbours.
+    - On head 2 at 32M points that left points with fewer than k neighbours, so empty lists are dropped."""
+    kept = torch.bincount(list_of_point, minlength=len(centroids)) > 0
+    renumber = torch.cumsum(kept, 0) - 1
+    return centroids[kept], renumber[list_of_point]
 
 
 def closest_first(
