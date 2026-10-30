@@ -5,9 +5,11 @@
 {{ token_chips("previous token", previous) }}
 {{ token_chips("current token", current) }}
 {{ token_chips("pair", pairs) }}
+{% if attended_tokens %}{{ token_chips("most attended", attended_tokens) }}
+{{ token_chips("attends", attended_offsets) }}{% endif %}
 {% for example in examples %}
 <div class="hit">
 <div class="hit-tag">{{ example.tag }} &middot; window {{ example.window }} &middot; position {{ example.position }} &middot; {{ "%.2f"|format(example.entropy) }} bits</div>
-<div class="tokens">{% for tok in example.tokens %}<span class="tok{% if tok.current %} tok-firing{% endif %}"{% if tok.previous %} style="text-decoration:underline"{% endif %}>{{ tok.text }}</span>{% endfor %}</div>
+<div class="tokens">{% for tok in example.tokens %}<span class="tok{% if tok.current %} tok-firing{% endif %}" style="{% if tok.previous %}text-decoration:underline;{% endif %}{% if tok.attended %}background:rgba(224,168,0,0.45);{% endif %}">{{ tok.text }}</span>{% endfor %}</div>
 </div>
 {% endfor %}
