@@ -16,6 +16,8 @@ A probability per tree for each point, from geodesic distance to each tree's pea
   - With a wide margin it equals the entropy of `geodesic_probabilities`.
 - `cugraph_entropy.gpu_geodesic_entropy` computes the same entropy on the GPU, with cuGraph.
   - It has no naive mirror, and the tests cannot run it. Its reference is `geodesic_entropy`.
+- `frontier_entropy.frontier_geodesic_entropy` computes it for a batch of trees at once, in torch.
+  - It has no naive mirror either. The tests check it against `geodesic_entropy` on the CPU.
 
 ## Naive and vectorized mirrors
 
