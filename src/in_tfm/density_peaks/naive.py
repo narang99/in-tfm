@@ -91,13 +91,7 @@ def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> For
     cuts = cuts or root_cuts(forest)
     is_root = root_mask(forest, cuts)
     n = len(is_root)
-    root_of, depth = [0] * n, [0] * n
-    for point in sorted(range(n), key=lambda p: -forest.density_rank[p]):
-        if is_root[point]:
-            root_of[point] = point
-        else:
-            parent = forest.parent[point]
-            root_of[point], depth[point] = root_of[parent], depth[parent] + 1
+    root_of, depth = root_and_depth(forest.parent, is_root)
 
     hits_in_tree = {root: 0 for root in range(n) if is_root[root]}
     for point in range(n):
@@ -109,6 +103,18 @@ def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> For
     return ForestTrees(
         cuts=cuts, roots=np.array(roots, dtype=int), tree=np.array(tree, dtype=int), depth=np.array(depth, dtype=int)
     )
+
+
+def root_and_depth(parent: np.ndarray, is_root: np.ndarray) -> tuple[list[int], list[int]]:
+    """Each point walks up its parents until it meets a root, counting the steps."""
+    root_of, depth = [], []
+    for point in range(len(parent)):
+        steps = 0
+        while not is_root[point]:
+            point, steps = int(parent[point]), steps + 1
+        root_of.append(point)
+        depth.append(steps)
+    return root_of, depth
 
 
 def density_peak_forest(

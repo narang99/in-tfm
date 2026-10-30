@@ -41,11 +41,13 @@ def small_blocks(monkeypatch):
 @pytest.mark.parametrize("normalise", [True, False])
 @pytest.mark.parametrize("distance", ["euclidean", "weighted_jaccard"])
 @pytest.mark.parametrize("list_length", [4, 32])
-def test_probing_every_list_matches_numpy(distance, normalise, list_length):
+@pytest.mark.parametrize("exact_on_device", [False, True])
+def test_probing_every_list_matches_numpy(distance, normalise, list_length, exact_on_device):
     points = in_merge_order(clustered_points(np.random.default_rng(0), 200), distance, normalise)
     expected = vectorized.density_peak_forest(points, k=4, distance=distance, normalise=normalise)
     assert np.array_equal(expected.distinct_of_hit, np.arange(len(points)))
-    settings = IvfSettings(n_lists=9, n_probe=9, peak_probe=9, n_list_neighbours=list_length)
+    settings = IvfSettings(n_lists=9, n_probe=9, peak_probe=9, n_list_neighbours=list_length,
+                           exact_on_device=exact_on_device)
     forest, _ = ivf_density_peak_forest(points, settings, k=4, distance=distance, normalise=normalise, device="cpu")
     assert np.allclose(forest.kth_distance, expected.kth_distance, atol=FLOAT32_TOLERANCE)
     assert np.array_equal(forest.density_rank, expected.density_rank)

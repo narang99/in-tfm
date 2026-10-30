@@ -132,6 +132,16 @@ def test_forest_trees_match_naive(cuts):
     assert np.array_equal(trees.depth, naive_trees.depth)
 
 
+@pytest.mark.parametrize("module", [naive, vectorized])
+def test_root_and_depth_follow_parents_up_to_a_root(module):
+    # 0 <- 1 <- 2 <- 3, and 4 <- 5, with 4 a root under 0
+    parent = np.array([-1, 0, 1, 2, 0, 4])
+    is_root = np.array([True, False, False, False, True, False])
+    root_of, depth = module.root_and_depth(parent, is_root)
+    assert list(root_of) == [0, 0, 0, 0, 4, 4]
+    assert list(depth) == [0, 1, 2, 3, 0, 1]
+
+
 @pytest.mark.parametrize("normalise", [True, False])
 @pytest.mark.parametrize("distance", DISTANCES)
 def test_whole_forest_matches_naive(distance, normalise):

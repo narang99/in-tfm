@@ -1,5 +1,7 @@
 """The implementation callers use. `naive.py` computes the same things one point at a time."""
 
+import multiprocessing
+
 import numpy as np
 import scipy.sparse as sp
 from jaxtyping import Float, Int
@@ -61,7 +63,7 @@ def geodesic_distances(graph: sp.csr_matrix, cores: list[np.ndarray]) -> Float[n
 
 
 def geodesic_entropy(
-    forest: DensityPeakForest, trees: ForestTrees, peak_share: float, margin_steps: float
+    forest: DensityPeakForest, trees: ForestTrees, peak_share: float, margin_steps: float, workers: int = 1,
 ) -> Float[np.ndarray, "n_distinct"]:
     """The entropy in bits of each point's probabilities over trees, without the points x trees table.
 
@@ -73,24 +75,57 @@ def geodesic_entropy(
     - The entropy comes from two running sums, so no point keeps its trees.
       - With e the steps past the nearest peak, a tree's weight is w = exp(-e).
       - Then the entropy in nats is log(sum w) + sum(w e) / sum w.
-    - A point out of reach of every peak gets 0, as its own tree gets all of its probability."""
+    - A point out of reach of every peak gets 0, as its own tree gets all of its probability.
+    - `workers` splits the trees over forked processes. Each returns its own two sums, and they add up."""
     graph = knn_graph(forest)
     cores = peak_cores(forest, trees, peak_share)
     tau = step_length(forest)
     nearest = dijkstra(graph, directed=False, indices=np.concatenate(cores), min_only=True) / tau
     steps = _past_nearest_peak(graph / tau, nearest)
-    total_weight = np.zeros(len(nearest))
-    weighted_steps = np.zeros(len(nearest))
+    total_weight, weighted_steps = _tree_sums(steps, cores, margin_steps, workers)
+    nats = np.zeros(len(nearest))
+    reachable = total_weight > 0
+    nats[reachable] = np.log(total_weight[reachable]) + weighted_steps[reachable] / total_weight[reachable]
+    return nats / np.log(2)
+
+
+_FORKED: tuple[sp.csr_matrix, list[np.ndarray], float, int] | None = None
+"""What forked workers read, since a fork shares the parent's memory without pickling the graph."""
+
+
+def _tree_sums(
+    steps: sp.csr_matrix, cores: list[np.ndarray], margin_steps: float, workers: int
+) -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+    global _FORKED
+    if workers <= 1:
+        return _sums_over(steps, cores, margin_steps)
+    _FORKED = (steps, cores, margin_steps, workers)
+    try:
+        with multiprocessing.get_context("fork").Pool(workers) as pool:
+            parts = pool.map(_forked_sums, range(workers))
+    finally:
+        _FORKED = None
+    return sum(p[0] for p in parts), sum(p[1] for p in parts)
+
+
+def _forked_sums(worker: int) -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+    """Trees are dealt out in turn, so each worker gets large and small trees alike."""
+    steps, cores, margin_steps, workers = _FORKED
+    return _sums_over(steps, cores[worker::workers], margin_steps)
+
+
+def _sums_over(
+    steps: sp.csr_matrix, cores: list[np.ndarray], margin_steps: float
+) -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+    total_weight = np.zeros(steps.shape[0])
+    weighted_steps = np.zeros(steps.shape[0])
     for core in cores:
         past = dijkstra(steps, directed=True, indices=core, min_only=True, limit=margin_steps)
         reached = np.flatnonzero(np.isfinite(past))
         weight = np.exp(-past[reached])
         total_weight[reached] += weight
         weighted_steps[reached] += weight * past[reached]
-    nats = np.zeros(len(nearest))
-    reachable = total_weight > 0
-    nats[reachable] = np.log(total_weight[reachable]) + weighted_steps[reachable] / total_weight[reachable]
-    return nats / np.log(2)
+    return total_weight, weighted_steps
 
 
 def _past_nearest_peak(graph: sp.csr_matrix, nearest: Float[np.ndarray, "n"]) -> sp.csr_matrix:
