@@ -179,6 +179,9 @@ def ivf_search(
         probes = nearest_centroids(rows.signed[chunk], lists.centroids, n_probe)
         for list_id, positions in probe_segments(probes):
             members = lists.members[lists.starts[list_id]:lists.starts[list_id + 1]]
+            # a centroid can end up with no points once every point is assigned
+            if len(members) == 0:
+                continue
             size = max(1, BLOCK_ELEMENTS // len(members))
             for part in torch.split(positions + chunk_start, size):
                 found, found_distance = search_list(rows, queries[part], members, n, allowed)
