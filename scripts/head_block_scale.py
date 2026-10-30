@@ -12,7 +12,7 @@
   - Comparing the two measures what the approximate search loses.
 - Entropy over trees comes from `geodesic_entropy`, which needs no points x trees table.
   - Up to `compare_dense_up_to` it is checked against the entropy of the full table.
-  - Each run saves every point's entropy, so later plots need no new run.
+  - Each run saves every point's entropy and tree, so later plots and reports need no new run.
   - `entropy_backend="cugraph"` computes it on the GPU. Up to `compare_dense_up_to` it is also checked against scipy.
 """
 
@@ -219,14 +219,18 @@ def run_forest(points: BlockPoints, n: int, config: HeadBlockScaleConfig, exact:
            "entropy_backend": config.entropy_backend, "forest_seconds": seconds,
            **stats.model_dump(), **summary}
     if config.entropy:
-        save_entropy(entropy, n, exact, config)
+        save_point_arrays(entropy, tree, n, exact, config)
     return row, forest, tree
 
 
-def save_entropy(entropy: Float[np.ndarray, "n"], n: int, exact: bool, config: HeadBlockScaleConfig) -> None:
+def save_point_arrays(
+    entropy: Float[np.ndarray, "n"], tree: Int[np.ndarray, "n"], n: int, exact: bool, config: HeadBlockScaleConfig
+) -> None:
+    """Points are in window order, so the windows that `draw_windows` gives for the seed say which token each is."""
     kind = "exact" if exact else f"probe{config.n_probe}"
-    path = config.out.parent / f"entropy_neuron{config.neuron}_head{config.head}_n{n}_{kind}.npy"
-    np.save(path, entropy.astype(np.float32))
+    name = f"neuron{config.neuron}_head{config.head}_n{n}_{kind}"
+    np.save(config.out.parent / f"entropy_{name}.npy", entropy.astype(np.float32))
+    np.save(config.out.parent / f"tree_{name}.npy", tree.astype(np.int32))
 
 
 def main() -> None:
