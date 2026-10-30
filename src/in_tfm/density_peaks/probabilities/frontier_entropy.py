@@ -5,6 +5,8 @@
   - That took 56 minutes on 12 cores. The work is real, but it is the same simple step many times over.
 - Here a batch of trees keeps a dense distance array, trees x points, in float32.
   - The tree's peak points start at 0. Each round, the points whose distance just fell relax their edges.
+  - Those points are flagged, and read a slice of flags at a time, so a busy round never holds one huge list.
+    - Sorting such a list with `torch.unique` ran a T4 out of memory at 4M points.
   - A candidate past the margin is dropped. Lengths never shrink along a path, so nothing it leads to is kept.
   - Rounds end when no distance falls. That is a label-correcting search, and it ends at the shortest paths.
 - Edges are `_past_nearest_peak` edges in steps of τ, as in the scipy version, so the two agree up to float32.
@@ -24,6 +26,8 @@ STATE_ELEMENTS = 2**31
 """Distances held at once, trees x points. 8 GB of float32."""
 EDGES_PER_STEP = 2**27
 """Edges relaxed in one step of a round."""
+SCAN_STATES = 2**26
+"""States whose dirty flags are read at once. The frontier is taken a slice at a time, so its size has a cap."""
 
 
 class CsrGraph:
@@ -76,12 +80,18 @@ def batch_distances(
     """Each tree's steps past the nearest peak, inf past the margin. Flat index t * n + point is one state."""
     distance = torch.full((len(cores), steps.n), torch.inf, dtype=torch.float32, device=device)
     flat = distance.view(-1)
+    dirty = torch.zeros(len(flat), dtype=torch.bool, device=device)
     sources = torch.from_numpy(np.concatenate([t * steps.n + core for t, core in enumerate(cores)])).to(device)
     flat[sources] = 0.0
-    frontier = sources
-    while len(frontier):
-        changed = [relax(steps, flat, part, margin_steps) for part in frontier_parts(steps, frontier)]
-        frontier = torch.unique(torch.cat(changed))
+    dirty[sources] = True
+    while dirty.any():
+        for start in range(0, len(flat), SCAN_STATES):
+            frontier = torch.nonzero(dirty[start:start + SCAN_STATES]).squeeze(1) + start
+            if len(frontier) == 0:
+                continue
+            dirty[frontier] = False
+            for part in frontier_parts(steps, frontier):
+                dirty[relax(steps, flat, part, margin_steps)] = True
     return distance
 
 

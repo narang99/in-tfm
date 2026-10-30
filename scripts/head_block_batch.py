@@ -9,6 +9,7 @@
   - One process, so the Triton kernels compile once instead of once per pair.
 - Each pair writes its own result file, and the tree and entropy arrays `head_block_scale.save_point_arrays` names.
   - A restart skips pairs whose result file exists.
+  - A pair that runs out of GPU memory is logged and skipped, so one pair cannot stop the rest. A rerun retries it.
   - With `s3_prefix`, the folder is synced every `upload_every` pairs, under its own prefix so no results file
     from another run is overwritten.
 - The defaults fit a 16 GB T4: smaller distance blocks, float64 rows on the CPU, and a smaller entropy batch.
@@ -54,7 +55,7 @@ class HeadBlockBatchConfig(BaseSettings):
     device: str = "cuda"
     out_dir: Path = Path("reports/head_block_batch")
     s3_prefix: str | None = None
-    upload_every: int = 8
+    upload_every: int = 1
 
 
 @torch.no_grad()
@@ -120,7 +121,12 @@ def main() -> None:
         block = slice(head * head_dim, (head + 1) * head_dim)
         points = BlockPoints(rows=z[:, block] * weight[neuron, block], current=current, previous=previous)
         began = time.perf_counter()
-        row, forest, _ = run_forest(points, config.size, pair_config(config, neuron, head), exact=False)
+        try:
+            row, forest, _ = run_forest(points, config.size, pair_config(config, neuron, head), exact=False)
+        except torch.OutOfMemoryError as error:
+            print(f"neuron {neuron} head {head}: out of GPU memory, skipped ({str(error)[:120]})", flush=True)
+            torch.cuda.empty_cache()
+            continue
         row |= {"neuron": neuron, "head": head, "pair_seconds": time.perf_counter() - began}
         result_path(config, neuron, head).write_text(json.dumps(row))
         print(f"neuron {neuron} head {head}: {row['pair_seconds']:.0f}s, forest {row['forest_seconds']:.0f}s, "
