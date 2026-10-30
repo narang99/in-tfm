@@ -248,33 +248,12 @@ def fused_search(
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
     from .triton_ivf import CHUNK_PAIRS, fused_probed_search
 
-    pool = probe_pool(lists, n_probe)
     found = []
     for part in torch.split(queries, max(1, CHUNK_PAIRS // n_probe)):
-        probes = probes_from_pool(rows.signed[part], lists, pool[lists.list_of_point[part]], n_probe)
+        probes = nearest_centroids(rows.signed[part], lists.centroids, n_probe)
         found.append(fused_probed_search(rows.signed, rows.sums, lists.members, lists.starts, part, probes, n,
                                          denser_ranks))
     return torch.cat([f[0] for f in found]), torch.cat([f[1] for f in found])
-
-
-POOL_PER_PROBE = 4
-"""A point ranks this many times n_probe centroids: those nearest its own list's centroid."""
-
-
-def probe_pool(lists: IvfLists, n_probe: int) -> Int[torch.Tensor, "n_lists pool"]:
-    """Each list's centroids nearest its own, as candidates for the probes of the points in it.
-
-    - Ranking every centroid for every point took about 1e12 scores at 32M points and 32,000 lists.
-    - A point's nearest centroids sit near its own list's centroid, so ranking a pool around it rarely loses one."""
-    return nearest_centroids(lists.centroids, lists.centroids, min(len(lists.centroids), POOL_PER_PROBE * n_probe))
-
-
-def probes_from_pool(
-    rows: Float[torch.Tensor, "q dim"], lists: IvfLists, pool: Int[torch.Tensor, "q p"], n_probe: int,
-) -> Int[torch.Tensor, "q n_probe"]:
-    centroids = lists.centroids[pool]
-    score = (centroids * centroids).sum(dim=2) - 2 * torch.einsum("qd,qpd->qp", rows, centroids)
-    return pool.gather(1, torch.topk(score, min(n_probe, pool.shape[1]), dim=1, largest=False).indices)
 
 
 def probed_search(
