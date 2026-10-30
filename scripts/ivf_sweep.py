@@ -38,7 +38,7 @@ class IvfSweepConfig(BaseSettings):
 def main() -> None:
     sweep = IvfSweepConfig()
     ivf_forest.BLOCK_ELEMENTS = sweep.block_elements
-    base = HeadBlockScaleConfig(_cli_parse_args=False, checkpoint_dir=sweep.checkpoint_dir, neuron=sweep.sizeeuron,
+    base = HeadBlockScaleConfig(_cli_parse_args=False, checkpoint_dir=sweep.checkpoint_dir, neuron=sweep.neuron,
                                 head=sweep.head, sizes=[sweep.size], entropy=False, exact_on_device=True,
                                 out=sweep.out, block_elements=sweep.block_elements)
     model, tokenizer = load_trained_attn_only(base.checkpoint_dir)
@@ -47,7 +47,7 @@ def main() -> None:
     seq_len = model.config.max_position_embeddings
     starts = story_starts(tokens, tokenizer.convert_tokens_to_ids(BOS_TOKEN), seq_len)
     windows, _ = draw_windows(tokens, starts, -(-sweep.size // seq_len), seq_len, np.random.default_rng(base.seed))
-    points = block_points(model, windows, sweep.sizeeuron, sweep.head, base)
+    points = block_points(model, windows, sweep.neuron, sweep.head, base)
     exact_row, exact_forest, exact_tree = run_forest(points, sweep.size, base, exact=True)
     print("exact", json.dumps({k: exact_row[k] for k in ("forest_seconds", "trees")}), flush=True)
     sweep.out.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def main() -> None:
             config = base.model_copy(update=variant)
             row, forest, tree = run_forest(points, sweep.size, config, exact=False)
             row |= agreement(forest, exact_forest, tree, exact_tree) | {"variant": variant, "exact_trees": exact_row["trees"]}
-            out.write(json.dumps({"neuron": sweep.sizeeuron, "head": sweep.head, **row}) + "\n")
+            out.write(json.dumps({"neuron": sweep.neuron, "head": sweep.head, **row}) + "\n")
             out.flush()
             keys = ("forest_seconds", "seconds", "trees", "neighbour_recall", "same_parent", "tree_ari", "local_peaks")
             print("variant", json.dumps(variant), json.dumps({k: row[k] for k in keys}), flush=True)
