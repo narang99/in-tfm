@@ -7,6 +7,9 @@
   - `run_size` is the largest size of that run. The windows were drawn for it, and smaller sizes are prefixes.
 - The full report pipeline wants a points x trees probability table, which millions of points cannot have.
   - So this page shows tree sizes, the entropy, a table of every tree, and cards for the largest trees.
+- With `attention`, each example marks the token the head attends to most, from a forward pass of the model.
+  - A head that reads past the previous token clusters on what it attends to, which the token chips alone miss.
+- Examples skip repeated contexts. TinyStories repeats stories, and exact copies sit at entropy 0.
 - "Merged pairs" asks whether a tree holds one (previous, current) token pair or several.
   - A tree whose top pair is a minority, but whose top previous token is a majority, merges current tokens.
   - A tree whose top previous token is itself a minority merges previous tokens.
@@ -22,7 +25,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from head_block_forests import draw_windows
 from in_tfm.html_report import ClusterLink, cluster_nav, cluster_section, page, render_template
-from in_tfm.models.attn_only_2l.model import BOS_TOKEN, load_trained_attn_only
+import torch
+
+from in_tfm.models.attn_only_2l.model import BOS_TOKEN, attention_patterns, load_trained_attn_only
 from in_tfm.report_page.figures import PLOTLY_JS, embed
 from in_tfm.tiny_attn_only_training import TOKENS_FILE, story_starts
 
@@ -44,6 +49,9 @@ class HeadBlockReportConfig(BaseSettings):
     context: int = 12
     """Tokens shown before the current one."""
     table_rows: int = 2000
+    attention: bool = True
+    attention_sample: int = 300
+    """Points per card whose most-attended token is counted."""
     out: Path | None = None
 
 
@@ -160,32 +168,82 @@ def top_pairs(prev: Int[np.ndarray, "m"], cur: Int[np.ndarray, "m"], texts: list
             for i in best]
 
 
-def example_points(members: Int[np.ndarray, "m"], count: int, rng: np.random.Generator) -> list[tuple[str, int]]:
-    """`members` are sorted by entropy, so the first ones are the tree's most confident points."""
-    confident = [("most confident", int(p)) for p in members[:count // 2]]
-    rest = members[count // 2:]
-    drawn = rng.choice(rest, size=min(count - len(confident), len(rest)), replace=False) if len(rest) else []
-    return confident + [("random", int(p)) for p in drawn]
+class Attention:
+    """The head's most-attended position for given points, one forward pass per window."""
+
+    def __init__(self, model, windows: Int[np.ndarray, "w seq"], head: int, batch: int = 64):
+        self.model, self.windows, self.head, self.batch = model, windows, head, batch
+
+    @torch.no_grad()
+    def strongest(self, points: Int[np.ndarray, "m"]) -> tuple[Int[np.ndarray, "m"], Float[np.ndarray, "m"]]:
+        window, position = np.divmod(points, self.windows.shape[1])
+        attended, weight = np.zeros(len(points), dtype=int), np.zeros(len(points))
+        unique, inverse = np.unique(window, return_inverse=True)
+        for start in range(0, len(unique), self.batch):
+            ids = torch.from_numpy(self.windows[unique[start:start + self.batch]])
+            pattern = attention_patterns(self.model, ids, 0)[:, self.head].float().numpy()
+            chosen = np.flatnonzero((inverse >= start) & (inverse < start + self.batch))
+            rows = pattern[inverse[chosen] - start, position[chosen]]
+            attended[chosen], weight[chosen] = rows.argmax(axis=1), rows.max(axis=1)
+        return attended, weight
 
 
-def example(point: int, tag: str, windows, entropy, texts: list[str], context: int) -> dict:
+def example_points(
+    members: Int[np.ndarray, "m"], windows, count: int, context: int, rng: np.random.Generator,
+) -> list[tuple[str, int]]:
+    """A few of the most confident points, then random ones, each with a context not shown already.
+
+    - `members` are sorted by entropy, so the first ones are the tree's most confident points."""
+    seen, chosen = set(), []
+    def take(tag: str, candidates) -> None:
+        for point in candidates:
+            window, position = divmod(int(point), windows.shape[1])
+            text = tuple(windows[window, max(0, position - context):position + 1])
+            if text not in seen and len(chosen) < count:
+                seen.add(text)
+                chosen.append((tag, int(point)))
+    take("most confident", members[:200])
+    del chosen[count // 4:]
+    take("random", rng.permutation(members)[:50 * count])
+    return chosen
+
+
+def example(point: int, tag: str, windows, entropy, texts: list[str], context: int,
+            attended: int | None = None, weight: float = 0.0) -> dict:
     window, position = divmod(point, windows.shape[1])
-    first = max(0, position - context)
-    tokens = [{"text": texts[t], "current": i == position, "previous": i == position - 1}
+    first = max(0, min(position - context, attended if attended is not None else position) - 2)
+    tokens = [{"text": texts[t], "current": i == position, "previous": i == position - 1, "attended": i == attended}
               for i, t in zip(range(first, position + 1), windows[window, first:position + 1])]
+    if attended is not None:
+        tag = f"{tag} · attends {position - attended} back ({100 * weight:.0f}%)"
     return {"tag": tag, "window": window, "position": position, "entropy": float(entropy[point]), "tokens": tokens}
 
 
-def card(tree: int, stats: TreeStats, windows, previous, entropy, texts, config: HeadBlockReportConfig, rng) -> str:
+def attention_chips(members, windows, attention: Attention, texts, sample: int, rng) -> tuple[list, list]:
+    points = rng.choice(members, size=min(sample, len(members)), replace=False)
+    attended, _ = attention.strongest(points)
+    window, position = np.divmod(points, windows.shape[1])
+    return (top_tokens(windows[window, attended], texts),
+            [TokenChip(text=f"{d} back", share=s.share) for d, s in
+             ((int(c.text), c) for c in top_tokens(position - attended, [str(i) for i in range(windows.shape[1])]))])
+
+
+def card(tree: int, stats: TreeStats, windows, previous, entropy, texts, config: HeadBlockReportConfig, rng,
+         attention: Attention | None) -> str:
     members = stats.order[stats.starts[tree]:stats.starts[tree + 1]]
+    picked = example_points(members, windows, config.examples, config.context, rng)
+    points = np.array([p for _, p in picked])
+    attended, weight = attention.strongest(points) if attention else ([None] * len(points), np.zeros(len(points)))
+    chips = attention_chips(members, windows, attention, texts, config.attention_sample, rng) if attention else ([], [])
     body = render_template(
         "head_block_cluster.html",
         share=stats.sizes[tree] / len(entropy), median_entropy=float(stats.median_entropy[tree]),
         confident=float(stats.confident[tree]),
         previous=top_tokens(previous[members], texts), current=top_tokens(windows.reshape(-1)[members], texts),
         pairs=top_pairs(previous[members], windows.reshape(-1)[members], texts),
-        examples=[example(p, tag, windows, entropy, texts, config.context)
-                  for tag, p in example_points(members, config.examples, rng)],
+        attended_tokens=chips[0], attended_offsets=chips[1],
+        examples=[example(p, tag, windows, entropy, texts, config.context, a, w)
+                  for (tag, p), a, w in zip(picked, attended, weight)],
     )
     return cluster_section(tree, int(stats.sizes[tree]), int(stats.sizes[tree]), body)
 
@@ -245,7 +303,7 @@ def main() -> None:
     name = f"neuron{config.neuron}_head{config.head}_n{config.size}_{config.kind}"
     tree = np.load(config.results_dir / f"tree_{name}.npy")
     entropy = np.load(config.results_dir / f"entropy_{name}.npy").astype(np.float64)
-    _, tokenizer = load_trained_attn_only(config.checkpoint_dir)
+    model, tokenizer = load_trained_attn_only(config.checkpoint_dir)
     tokens = np.load(config.checkpoint_dir / TOKENS_FILE.format(split="train"), mmap_mode="r")
     seq_len = 256
     starts = story_starts(tokens, tokenizer.convert_tokens_to_ids(BOS_TOKEN), seq_len)
@@ -259,6 +317,7 @@ def main() -> None:
     pair_key = (previous.astype(np.int64) + 1) * 8192 + flat
     pairs, by_previous, by_current = (key_stats(tree, k, len(stats.sizes)) for k in (pair_key, previous, flat))
     rng = np.random.default_rng(config.seed)
+    attention = Attention(model.eval(), windows, config.head) if config.attention else None
     largest = np.argsort(-stats.sizes)[:config.cards]
 
     tiles = [("points", f"{len(tree):,}"), ("trees", f"{len(stats.sizes):,}"),
@@ -270,7 +329,8 @@ def main() -> None:
     body = "".join([
         f"<h1>Neuron {config.neuron}, head {config.head} block</h1>",
         f'<p class="meta">Layer 0 o_proj. Every position of {len(windows):,} TinyStories windows is a point. '
-        "Underlined: the previous token. Outlined: the current token.</p>",
+        "Underlined: the previous token. Outlined: the current token. Shaded: the token this head attends to "
+        "most from the current position.</p>",
         stats_html,
         section("Tree sizes", "Each tree is a cluster. Sizes on log axes, largest first.", embed(size_figure(stats), "45vh")),
         section("Entropy over trees", f"Per point. Confident is below {config.confident_bits} bits.",
@@ -282,7 +342,7 @@ def main() -> None:
                 tree_table(stats, windows, previous, texts, config.table_rows)),
         f'<h2 class="clusters-head">The {len(largest)} largest trees</h2>',
         cluster_nav([ClusterLink(cluster_id=int(t), n_hits=int(stats.sizes[t])) for t in largest]),
-        *[card(int(t), stats, windows, previous, entropy, texts, config, rng) for t in largest],
+        *[card(int(t), stats, windows, previous, entropy, texts, config, rng, attention) for t in largest],
     ])
     out = config.out or config.results_dir / f"report_{name}.html"
     out.write_text(page(f"Neuron {config.neuron} head {config.head}", body, PLOTLY_JS))
