@@ -87,3 +87,33 @@ def test_a_partial_probe_still_builds_one_forest_with_copies():
     denser = forest.parent >= 0
     assert (forest.density_rank[forest.parent[denser]] > forest.density_rank[denser]).all()
     assert len(forest_trees(forest).roots) >= 1
+
+
+@pytest.mark.parametrize("distance", ["euclidean", "weighted_jaccard"])
+def test_cell_search_over_every_list_finds_what_the_exhaustive_search_finds(distance):
+    rows = ivf_forest.Rows(clustered_points(np.random.default_rng(8)), distance, False, "cpu")
+    lists = ivf_forest.build_lists(rows, 9, seed=0)
+    queries = torch.arange(len(rows))
+    by_cell = ivf_forest.cell_search(rows, lists, queries, 9, 6)
+    exhaustive = ivf_forest.exhaustive_search(rows, queries, 6, None)
+    assert torch.equal(by_cell[0], exhaustive[0])
+    assert torch.allclose(by_cell[1], exhaustive[1])
+
+
+def test_cell_search_respects_the_allowed_pairs():
+    rows = ivf_forest.Rows(clustered_points(np.random.default_rng(9)), "weighted_jaccard", False, "cpu")
+    lists = ivf_forest.build_lists(rows, 9, seed=0)
+    queries = torch.arange(0, len(rows), 7)
+    only_higher: ivf_forest.AllowedPairs = lambda q, m: m[None, :] > q[:, None]  # noqa: E731
+    by_cell = ivf_forest.cell_search(rows, lists, queries, 9, 3, only_higher)
+    exhaustive = ivf_forest.exhaustive_search(rows, queries, 3, only_higher)
+    assert torch.equal(by_cell[0], exhaustive[0])
+
+
+def test_a_partial_cell_probe_still_builds_one_forest():
+    points = clustered_points(np.random.default_rng(10), 400)
+    settings = IvfSettings(n_lists=16, n_probe=3, peak_probe=5, n_list_neighbours=8, probe_by="cell")
+    forest, _ = ivf_density_peak_forest(points, settings, k=4, normalise=False, device="cpu")
+    assert (forest.parent == -1).sum() == 1
+    denser = forest.parent >= 0
+    assert (forest.density_rank[forest.parent[denser]] > forest.density_rank[denser]).all()
