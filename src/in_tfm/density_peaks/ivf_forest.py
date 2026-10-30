@@ -56,23 +56,25 @@ class SearchStats(BaseModel):
 
 
 class Rows:
-    """Signed rows in float32 for every compared pair, and in float64 for the few pairs that set values.
+    """Signed rows in float32 on the device for every compared pair, and in float64 on the CPU for the few pairs that
+    set values.
 
-    - Float32 rows alone move kth distances by about 1e-6, which swaps near-tied density ranks."""
+    - Float32 rows alone move kth distances by about 1e-6, which swaps near-tied density ranks.
+    - The float64 rows stay on the CPU, since at 16M points they would take a quarter of a T4."""
 
     def __init__(self, points: Float[np.ndarray, "n dim"], distance: PeakDistance, normalise: bool, device: str,
                  chunk: int = 2**20):
         exact, exact_sums = [], []
         for start in range(0, len(points), chunk):
             parts = torch.from_numpy(comparable_rows(points[start:start + chunk].astype(np.float64), distance,
-                                                     normalise)).to(device)
+                                                     normalise))
             exact.append(signed_rows(parts) if distance == "weighted_jaccard" else parts)
             exact_sums.append(parts.sum(dim=1))
         self.distance = distance
         self.exact = torch.cat(exact)
         self.exact_sums = torch.cat(exact_sums) if distance == "weighted_jaccard" else None
-        self.signed = self.exact.float()
-        self.sums = self.exact_sums.float() if self.exact_sums is not None else None
+        self.signed = self.exact.float().to(device)
+        self.sums = self.exact_sums.float().to(device) if self.exact_sums is not None else None
 
     def __len__(self) -> int:
         return len(self.signed)
@@ -82,8 +84,12 @@ class Rows:
         sums_b = self.sums[b] if self.sums is not None else None
         return float32_distances(self.signed[a], self.signed[b], sums_a, sums_b, self.distance)
 
-    def exact_pairs(self, a: Int[torch.Tensor, "m"], b: Int[torch.Tensor, "m"]) -> Float[torch.Tensor, "m"]:
-        """The float64 distance between a[i] and b[i], for each i."""
+    def exact_pairs(self, a: Int[torch.Tensor, "m"], b: Int[torch.Tensor, "m"], chunk: int = 2**22) -> Float[torch.Tensor, "m"]:
+        """The float64 distance between a[i] and b[i], for each i, on the device of `a`."""
+        parts = [self.exact_chunk(a_part.cpu(), b_part.cpu()) for a_part, b_part in zip(a.split(chunk), b.split(chunk))]
+        return (torch.cat(parts) if parts else torch.empty(0, dtype=torch.float64)).to(a.device)
+
+    def exact_chunk(self, a: Int[torch.Tensor, "m"], b: Int[torch.Tensor, "m"]) -> Float[torch.Tensor, "m"]:
         diff = self.exact[a] - self.exact[b]
         if self.distance == "euclidean":
             return diff.square().sum(dim=1).sqrt()
