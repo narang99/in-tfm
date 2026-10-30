@@ -4,6 +4,7 @@
 <p class="meta">{{ "%.2f"|format(100 * share) }}% of points &middot; median entropy {{ "%.2f"|format(median_entropy) }} bits &middot; {{ "%.0f"|format(100 * confident) }}% confident</p>
 {{ token_chips("previous token", previous) }}
 {{ token_chips("current token", current) }}
+{{ token_chips("pair", pairs) }}
 {% for example in examples %}
 <div class="hit">
 <div class="hit-tag">{{ example.tag }} &middot; window {{ example.window }} &middot; position {{ example.position }} &middot; {{ "%.2f"|format(example.entropy) }} bits</div>
