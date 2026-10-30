@@ -131,9 +131,17 @@ class IvfLists(BaseModel):
 def nearest_centroids(
     rows: Float[torch.Tensor, "n dim"], centroids: Float[torch.Tensor, "c dim"], n: int,
 ) -> Int[torch.Tensor, "n n_nearest"]:
+    """Ranks by ‖c‖² − 2 r·c, one matrix multiply, since ‖r‖² is the same for every centroid of a row.
+
+    - `cdist` took a square root of every distance, and `topk` with n = 1 was slower than `argmin`."""
+    squared = (centroids * centroids).sum(dim=1)
     size = max(1, BLOCK_ELEMENTS // len(centroids))
-    return torch.cat([torch.topk(torch.cdist(rows[s:s + size], centroids), n, dim=1, largest=False).indices
-                      for s in range(0, len(rows), size)])
+    parts = []
+    for start in range(0, len(rows), size):
+        score = torch.addmm(squared[None, :], rows[start:start + size], centroids.T, alpha=-2.0)
+        parts.append(score.argmin(dim=1, keepdim=True) if n == 1 else
+                     torch.topk(score, n, dim=1, largest=False).indices)
+    return torch.cat(parts)
 
 
 def kmeans_centroids(rows: Float[torch.Tensor, "n dim"], n_lists: int, generator: torch.Generator):
