@@ -48,15 +48,26 @@ def frontier_geodesic_entropy(
     batch = max(1, STATE_ELEMENTS // max(1, steps.n))
     for first in range(0, len(cores), batch):
         distance = batch_distances(steps, cores[first:first + batch], margin_steps, device)
-        tree, point = torch.nonzero(torch.isfinite(distance), as_tuple=True)
-        past = distance[tree, point].double()
-        weight = torch.exp(-past)
-        total_weight.index_add_(0, point, weight)
-        weighted_steps.index_add_(0, point, weight * past)
+        add_weights(distance, total_weight, weighted_steps)
+        del distance
     nats = torch.zeros(steps.n, dtype=torch.float64, device=device)
     reachable = total_weight > 0
     nats[reachable] = torch.log(total_weight[reachable]) + weighted_steps[reachable] / total_weight[reachable]
     return (nats / np.log(2)).cpu().numpy()
+
+
+def add_weights(
+    distance: Float[torch.Tensor, "batch n"], total_weight: Float[torch.Tensor, "n"],
+    weighted_steps: Float[torch.Tensor, "n"], rows: int = 16,
+) -> None:
+    """Dense, a few trees at a time, since indexing the reached states took more memory than the states.
+
+    - exp(-inf) is 0, so a tree out of reach adds nothing. Its steps are zeroed so inf * 0 makes no NaN."""
+    for start in range(0, len(distance), rows):
+        past = distance[start:start + rows]
+        weight = torch.exp(-past)
+        total_weight += weight.sum(dim=0, dtype=torch.float64)
+        weighted_steps += (weight * torch.nan_to_num(past, posinf=0.0)).sum(dim=0, dtype=torch.float64)
 
 
 def batch_distances(
