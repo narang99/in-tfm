@@ -1,6 +1,7 @@
 """The implementation callers use. `naive.py` computes the same things one point at a time."""
 
 import multiprocessing
+from collections.abc import Callable
 
 import numpy as np
 import scipy.sparse as sp
@@ -97,16 +98,31 @@ _FORKED: tuple[sp.csr_matrix, list[np.ndarray], float, int] | None = None
 def _tree_sums(
     steps: sp.csr_matrix, cores: list[np.ndarray], margin_steps: float, workers: int
 ) -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:
-    global _FORKED
     if workers <= 1:
         return _sums_over(steps, cores, margin_steps)
+    return _start_tree_sums(steps, cores, margin_steps, workers)()
+
+
+def _start_tree_sums(
+    steps: sp.csr_matrix, cores: list[np.ndarray], margin_steps: float, workers: int
+) -> Callable[[], tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]]:
+    """Starts the workers and returns a call that waits for their sums, so the caller can work meanwhile."""
+    global _FORKED
     _FORKED = (steps, cores, margin_steps, workers)
-    try:
-        with multiprocessing.get_context("fork").Pool(workers) as pool:
-            parts = pool.map(_forked_sums, range(workers))
-    finally:
-        _FORKED = None
-    return sum(p[0] for p in parts), sum(p[1] for p in parts)
+    pool = multiprocessing.get_context("fork").Pool(workers)
+    pending = pool.map_async(_forked_sums, range(workers))
+
+    def finish() -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+        global _FORKED
+        try:
+            parts = pending.get()
+        finally:
+            pool.close()
+            pool.join()
+            _FORKED = None
+        return sum(p[0] for p in parts), sum(p[1] for p in parts)
+
+    return finish
 
 
 def _forked_sums(worker: int) -> tuple[Float[np.ndarray, "n"], Float[np.ndarray, "n"]]:

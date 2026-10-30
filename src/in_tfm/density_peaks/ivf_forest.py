@@ -12,10 +12,16 @@
 - Copies are not merged. Each point is its own row, with a count of 1.
   - Exact copies tie on density, and `density_ranks` puts the lower index as sparser.
 - With `n_probe` equal to `n_lists` every pair is compared, so the forest is exact. The tests use that.
+- `probe_by` decides who chooses the probed lists.
+  - "point": each point probes the lists nearest to itself. A loop over (chunk of points, list) pairs, each merged
+    into the points' running lists. At 32M points that was about 690k small steps and 18 minutes on an A100.
+  - "cell": the points of one list share its probes, the lists nearest its centroid. One distance block and one
+    top-k per list, with no merging. A point near its list's edge can miss neighbours its own probes would find.
 """
 
 import time
 from collections.abc import Callable, Iterator
+from typing import Literal
 
 import numpy as np
 import torch
@@ -46,6 +52,7 @@ class IvfSettings(BaseModel):
     seed: int = 0
     exact_on_device: bool = False
     """Float64 rows on the device too. At 16M points they took a quarter of a T4, but an A100 has room."""
+    probe_by: Literal["point", "cell"] = "point"
 
 
 class SearchStats(BaseModel):
@@ -112,6 +119,7 @@ class IvfLists(BaseModel):
     """Point ids, grouped by list."""
     starts: Int[torch.Tensor, "n_lists_plus_one"]
     """List l holds members[starts[l]:starts[l + 1]]."""
+    list_of_point: Int[torch.Tensor, "n"]
 
 
 def nearest_centroids(
@@ -141,7 +149,7 @@ def build_lists(rows: Rows, n_lists: int, seed: int) -> IvfLists:
     members = torch.argsort(list_of_point, stable=True)
     counts = torch.bincount(list_of_point, minlength=n_lists)
     starts = torch.cat([counts.new_zeros(1), torch.cumsum(counts, dim=0)])
-    return IvfLists(centroids=centroids, members=members, starts=starts)
+    return IvfLists(centroids=centroids, members=members, starts=starts, list_of_point=list_of_point)
 
 
 def closest_first(
@@ -191,11 +199,13 @@ def exhaustive_search(
 
 def ivf_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
-    allowed: AllowedPairs | None = None,
+    allowed: AllowedPairs | None = None, probe_by: Literal["point", "cell"] = "point",
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
     """The n closest points to each query among the lists it probes, closest first. Never the query itself."""
     if n_probe >= len(lists.centroids):
         return exhaustive_search(rows, queries, n, allowed)
+    if probe_by == "cell":
+        return cell_search(rows, lists, queries, n_probe, n, allowed)
     return probed_search(rows, lists, queries, n_probe, n, allowed)
 
 
@@ -222,6 +232,54 @@ def probed_search(
                     torch.cat([nearest[part], found], dim=1), torch.cat([distance[part], found_distance], dim=1), n,
                 )
     return nearest, distance
+
+
+def cell_search(
+    rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
+    allowed: AllowedPairs | None = None,
+) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
+    """Like `probed_search`, but the queries of one list share its probes, so each list is one block."""
+    device = rows.signed.device
+    nearest = torch.full((len(queries), n), -1, dtype=torch.int64, device=device)
+    distance = torch.full((len(queries), n), torch.inf, dtype=torch.float32, device=device)
+    probes = nearest_centroids(lists.centroids, lists.centroids, min(n_probe, len(lists.centroids))).cpu()
+    starts = lists.starts.cpu()
+    list_of_query = lists.list_of_point[queries]
+    order = torch.argsort(list_of_query, stable=True)
+    present, counts = torch.unique_consecutive(list_of_query[order], return_counts=True)
+    for list_id, at in zip(present.tolist(), torch.split(order, counts.tolist())):
+        candidates = probed_members(lists, starts, probes[list_id])
+        size = max(1, BLOCK_ELEMENTS // max(1, len(candidates)))
+        for part in torch.split(at, size):
+            nearest[part], distance[part] = search_block(rows, queries[part], candidates, n, allowed)
+    return nearest, distance
+
+
+def probed_members(lists: IvfLists, starts: Int[torch.Tensor, "l1"], probed: Int[torch.Tensor, "p"]) -> Int[torch.Tensor, "m"]:
+    """The points of the probed lists, as one index, built from list offsets on the CPU."""
+    first, lengths = starts[probed], starts[probed + 1] - starts[probed]
+    shift = torch.repeat_interleave(first - (torch.cumsum(lengths, 0) - lengths), lengths)
+    return lists.members[(torch.arange(int(lengths.sum())) + shift).to(lists.members.device)]
+
+
+def search_block(
+    rows: Rows, queries: Int[torch.Tensor, "q"], candidates: Int[torch.Tensor, "m"], n: int,
+    allowed: AllowedPairs | None,
+) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
+    """One more than n is kept, so the query can be dropped after the top-k instead of masked in the whole block."""
+    distance = rows.between(queries, candidates)
+    if allowed is not None:
+        distance = torch.where(allowed(queries, candidates), distance, torch.inf)
+    distance, column = torch.topk(distance, min(n + 1, len(candidates)), dim=1, largest=False)
+    found = candidates[column]
+    distance = torch.where(found == queries[:, None], torch.inf, distance)
+    found = torch.where(torch.isinf(distance), -1, found)
+    found, distance = closest_first(found, distance, n)
+    if found.shape[1] < n:
+        pad = n - found.shape[1]
+        found = torch.cat([found, found.new_full((len(found), pad), -1)], dim=1)
+        distance = torch.cat([distance, distance.new_full((len(distance), pad), torch.inf)], dim=1)
+    return found, distance
 
 
 def first_denser(
@@ -294,7 +352,7 @@ def ivf_density_peak_forest(
     clock.lap("lists")
     own = torch.arange(len(rows), device=rows.signed.device)
     list_length = min(max(settings.n_list_neighbours, k), len(rows) - 1)
-    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length)
+    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length, probe_by=settings.probe_by)
     kth = kth_from_list(rows, nearest, k)
     counts = np.ones(len(rows), dtype=int)
     ranks_np = density_ranks(kth.cpu().numpy(), counts)
@@ -304,7 +362,7 @@ def ivf_density_peak_forest(
     parent = first_denser(nearest, ranks)
     peaks = own[parent < 0]
     denser_only: AllowedPairs = lambda q, m: ranks[m][None, :] > ranks[q][:, None]  # noqa: E731
-    second, _ = ivf_search(rows, lists, peaks, settings.peak_probe, 1, denser_only)
+    second, _ = ivf_search(rows, lists, peaks, settings.peak_probe, 1, denser_only, settings.probe_by)
     parent[peaks] = second[:, 0]
     clock.lap("peaks")
     unresolved = own[parent < 0]
