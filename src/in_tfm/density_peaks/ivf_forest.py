@@ -12,16 +12,10 @@
 - Copies are not merged. Each point is its own row, with a count of 1.
   - Exact copies tie on density, and `density_ranks` puts the lower index as sparser.
 - With `n_probe` equal to `n_lists` every pair is compared, so the forest is exact. The tests use that.
-- `search="cuvs"` finds each list's candidates with cuVS's brute-force L1 search instead, in the first search only.
-  - cuVS fuses the distance and the top-k, where the torch path writes every distance block out first.
-  - Weighted Jaccard is 2 L1 / (Sa + Sb + L1), so the L1 order is the Jaccard order only when Sa + Sb is fixed.
-    - So it keeps `l1_oversample` times more candidates by L1, then ranks them by the exact Jaccard.
-    - With normalised rows every sum is 1, and the two orders agree.
 """
 
 import time
 from collections.abc import Callable, Iterator
-from typing import Literal
 
 import numpy as np
 import torch
@@ -50,9 +44,8 @@ class IvfSettings(BaseModel):
     n_list_neighbours: int = 32
     """The length of each point's closest-first list. Longer lists leave fewer local peaks."""
     seed: int = 0
-    search: Literal["torch", "cuvs"] = "torch"
-    l1_oversample: int = 4
-    """With cuVS, the L1 candidates kept per list, as a multiple of the list length."""
+    exact_on_device: bool = False
+    """Float64 rows on the device too. At 16M points they took a quarter of a T4, but an A100 has room."""
 
 
 class SearchStats(BaseModel):
@@ -69,10 +62,10 @@ class Rows:
     set values.
 
     - Float32 rows alone move kth distances by about 1e-6, which swaps near-tied density ranks.
-    - The float64 rows stay on the CPU, since at 16M points they would take a quarter of a T4."""
+    - The float64 rows stay on the CPU unless `exact_on_device`, since at 16M points they would take a quarter of a T4."""
 
     def __init__(self, points: Float[np.ndarray, "n dim"], distance: PeakDistance, normalise: bool, device: str,
-                 chunk: int = 2**20):
+                 chunk: int = 2**20, exact_on_device: bool = False):
         exact, exact_sums = [], []
         for start in range(0, len(points), chunk):
             parts = torch.from_numpy(comparable_rows(points[start:start + chunk].astype(np.float64), distance,
@@ -84,6 +77,9 @@ class Rows:
         self.exact_sums = torch.cat(exact_sums) if distance == "weighted_jaccard" else None
         self.signed = self.exact.float().to(device)
         self.sums = self.exact_sums.float().to(device) if self.exact_sums is not None else None
+        if exact_on_device:
+            self.exact = self.exact.to(device)
+            self.exact_sums = self.exact_sums.to(device) if self.exact_sums is not None else None
 
     def __len__(self) -> int:
         return len(self.signed)
@@ -95,7 +91,9 @@ class Rows:
 
     def exact_pairs(self, a: Int[torch.Tensor, "m"], b: Int[torch.Tensor, "m"], chunk: int = 2**22) -> Float[torch.Tensor, "m"]:
         """The float64 distance between a[i] and b[i], for each i, on the device of `a`."""
-        parts = [self.exact_chunk(a_part.cpu(), b_part.cpu()) for a_part, b_part in zip(a.split(chunk), b.split(chunk))]
+        exact_device = self.exact.device
+        parts = [self.exact_chunk(a_part.to(exact_device), b_part.to(exact_device))
+                 for a_part, b_part in zip(a.split(chunk), b.split(chunk))]
         return (torch.cat(parts) if parts else torch.empty(0, dtype=torch.float64)).to(a.device)
 
     def exact_chunk(self, a: Int[torch.Tensor, "m"], b: Int[torch.Tensor, "m"]) -> Float[torch.Tensor, "m"]:
@@ -180,24 +178,6 @@ def search_list(
     return torch.where(torch.isinf(distance), -1, members[column]), distance
 
 
-def search_list_l1(
-    rows: Rows, queries: Int[torch.Tensor, "q"], members: Int[torch.Tensor, "m"], n: int, oversample: int,
-) -> tuple[Int[torch.Tensor, "q n_found"], Float[torch.Tensor, "q n_found"]]:
-    """The query can be among the members, so one more candidate is asked for."""
-    from cuvs.neighbors import brute_force
-
-    assert rows.sums is not None, "the L1 candidates are ranked by weighted Jaccard"
-    asked = min(oversample * n + 1, len(members))
-    index = brute_force.build(rows.signed[members].contiguous(), metric="l1")
-    l1, column = brute_force.search(index, rows.signed[queries].contiguous(), asked)
-    l1 = torch.as_tensor(l1, device=queries.device)
-    candidates = members[torch.as_tensor(column, device=queries.device).long()]
-    distance = weighted_jaccard_from_l1(l1, rows.sums[queries][:, None] + rows.sums[candidates])
-    distance = torch.where(candidates == queries[:, None], torch.inf, distance)
-    distance, column = torch.topk(distance, min(n, asked), dim=1, largest=False)
-    return torch.where(torch.isinf(distance), -1, candidates.gather(1, column)), distance
-
-
 def exhaustive_search(
     rows: Rows, queries: Int[torch.Tensor, "q"], n: int, allowed: AllowedPairs | None,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
@@ -211,21 +191,18 @@ def exhaustive_search(
 
 def ivf_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
-    allowed: AllowedPairs | None = None, l1_oversample: int | None = None,
+    allowed: AllowedPairs | None = None,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
-    """The n closest points to each query among the lists it probes, closest first. Never the query itself.
-
-    - With `l1_oversample`, candidates come from cuVS. It has no per-pair filter, so `allowed` must be None then."""
-    if n_probe >= len(lists.centroids) and l1_oversample is None:
+    """The n closest points to each query among the lists it probes, closest first. Never the query itself."""
+    if n_probe >= len(lists.centroids):
         return exhaustive_search(rows, queries, n, allowed)
-    return probed_search(rows, lists, queries, n_probe, n, allowed, l1_oversample)
+    return probed_search(rows, lists, queries, n_probe, n, allowed)
 
 
 def probed_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
-    allowed: AllowedPairs | None = None, l1_oversample: int | None = None,
+    allowed: AllowedPairs | None = None,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
-    assert l1_oversample is None or allowed is None
     device = rows.signed.device
     nearest = torch.full((len(queries), n), -1, dtype=torch.int64, device=device)
     distance = torch.full((len(queries), n), torch.inf, dtype=torch.float32, device=device)
@@ -240,10 +217,7 @@ def probed_search(
                 continue
             size = max(1, BLOCK_ELEMENTS // len(members))
             for part in torch.split(positions + chunk_start, size):
-                found, found_distance = (
-                    search_list(rows, queries[part], members, n, allowed) if l1_oversample is None
-                    else search_list_l1(rows, queries[part], members, n, l1_oversample)
-                )
+                found, found_distance = search_list(rows, queries[part], members, n, allowed)
                 nearest[part], distance[part] = closest_first(
                     torch.cat([nearest[part], found], dim=1), torch.cat([distance[part], found_distance], dim=1), n,
                 )
@@ -315,13 +289,12 @@ def ivf_density_peak_forest(
     device: str = "cuda",
 ) -> tuple[DensityPeakForest, SearchStats]:
     clock = StageClock(device)
-    rows = Rows(points, distance, normalise, device)
+    rows = Rows(points, distance, normalise, device, exact_on_device=settings.exact_on_device)
     lists = build_lists(rows, settings.n_lists, settings.seed)
     clock.lap("lists")
     own = torch.arange(len(rows), device=rows.signed.device)
     list_length = min(max(settings.n_list_neighbours, k), len(rows) - 1)
-    oversample = settings.l1_oversample if settings.search == "cuvs" else None
-    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length, l1_oversample=oversample)
+    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length)
     kth = kth_from_list(rows, nearest, k)
     counts = np.ones(len(rows), dtype=int)
     ranks_np = density_ranks(kth.cpu().numpy(), counts)
