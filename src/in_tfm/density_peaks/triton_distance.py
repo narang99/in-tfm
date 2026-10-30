@@ -12,6 +12,9 @@ from jaxtyping import Float
 
 from .forest import PeakDistance
 
+COLUMN_CHUNK = 2**20
+"""Columns per launch. The grid's second axis takes at most 65,535 blocks, which is about 2M columns of 32."""
+
 TILE_CONFIGS = [
     triton.Config({"BM": 32, "BN": 32, "BK": 8}, num_warps=4),
     triton.Config({"BM": 64, "BN": 32, "BK": 4}, num_warps=4),
@@ -68,8 +71,12 @@ def triton_distances(
     jaccard = distance == "weighted_jaccard"
     sums_a = sums_a.contiguous() if jaccard else a
     sums_b = sums_b.contiguous() if jaccard else b
-    grid = lambda meta: (triton.cdiv(len(a), meta["BM"]), triton.cdiv(len(b), meta["BN"]))  # noqa: E731
-    distance_kernel[grid](
-        a, b, sums_a, sums_b, out, len(a), len(b), a.shape[1], a.stride(0), b.stride(0), out.stride(0), JACCARD=jaccard,
-    )
+    for start in range(0, len(b), COLUMN_CHUNK):
+        b_part, sums_part = b[start:start + COLUMN_CHUNK], sums_b[start:start + COLUMN_CHUNK]
+        out_part = out[:, start:start + COLUMN_CHUNK]
+        grid = lambda meta: (triton.cdiv(len(a), meta["BM"]), triton.cdiv(len(b_part), meta["BN"]))  # noqa: E731
+        distance_kernel[grid](
+            a, b_part, sums_a, sums_part, out_part, len(a), len(b_part), a.shape[1], a.stride(0), b_part.stride(0),
+            out_part.stride(0), JACCARD=jaccard,
+        )
     return out
