@@ -35,3 +35,11 @@ def test_the_fused_search_keeps_only_denser_points():
     denser_only = lambda q, m: ranks[m][None, :] > ranks[q][:, None]  # noqa: E731
     torch_path = ivf_forest.probed_search(rows, lists, queries, 8, 1, denser_only)
     assert torch.equal(fused[0], torch_path[0])
+
+
+def test_one_probe_needs_no_second_pass():
+    rows, lists = rows_and_lists(2, 3000, "weighted_jaccard")
+    queries = torch.arange(len(rows), device="cuda")
+    fused = ivf_forest.fused_search(rows, lists, queries, 1, 8, None)
+    torch_path = ivf_forest.probed_search(rows, lists, queries, 1, 8)
+    assert torch.allclose(fused[1], torch_path[1], atol=1e-5)
