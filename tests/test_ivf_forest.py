@@ -135,3 +135,14 @@ def test_a_pool_of_every_centroid_gives_each_point_its_nearest_centroids():
     from_pool = ivf_forest.probes_from_pool(rows.signed, lists, pool, 5)
     direct = ivf_forest.nearest_centroids(rows.signed, lists.centroids, 5)
     assert torch.equal(torch.sort(from_pool, dim=1).values, torch.sort(direct, dim=1).values)
+
+
+def test_copies_of_rows_leave_no_empty_lists_and_every_point_its_neighbours():
+    rng = np.random.default_rng(13)
+    points = np.repeat(clustered_points(rng, 30), 40, axis=0)
+    rows = ivf_forest.Rows(points, "weighted_jaccard", False, "cpu")
+    lists = ivf_forest.build_lists(rows, 60, seed=0)
+    assert (lists.starts[1:] > lists.starts[:-1]).all()
+    settings = IvfSettings(n_lists=60, n_probe=4, peak_probe=8, n_list_neighbours=8)
+    forest, _ = ivf_density_peak_forest(points, settings, k=4, normalise=False, device="cpu")
+    assert (forest.neighbours >= 0).all()
