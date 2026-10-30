@@ -126,3 +126,12 @@ def test_the_union_of_probes_finds_at_least_what_each_point_finds():
     by_union = ivf_forest.cell_search(rows, lists, queries, 3, 6, union=True)
     by_point = ivf_forest.probed_search(rows, lists, queries, 3, 6)
     assert (by_union[1] <= by_point[1] + FLOAT32_TOLERANCE).all()
+
+
+def test_a_pool_of_every_centroid_gives_each_point_its_nearest_centroids():
+    rows = ivf_forest.Rows(clustered_points(np.random.default_rng(12), 300), "weighted_jaccard", False, "cpu")
+    lists = ivf_forest.build_lists(rows, 16, seed=0)
+    pool = torch.arange(16).repeat(len(rows), 1)
+    from_pool = ivf_forest.probes_from_pool(rows.signed, lists, pool, 5)
+    direct = ivf_forest.nearest_centroids(rows.signed, lists.centroids, 5)
+    assert torch.equal(torch.sort(from_pool, dim=1).values, torch.sort(direct, dim=1).values)

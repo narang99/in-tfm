@@ -23,7 +23,9 @@ TOP = 32
 """Keys kept per (query, list). Also the tile width, since the sort joins two blocks of the same shape."""
 BLOCK_PAIRS = 32
 CHUNK_PAIRS = 2**21
-"""(query, probe slot) pairs per launch. Their keys take CHUNK_PAIRS * TOP * 8 bytes, 512 MB."""
+"""(query, probe slot) pairs per launch. Their keys take CHUNK_PAIRS * TOP * 8 bytes, 512 MB.
+
+- The probe pool takes CHUNK_PAIRS * POOL_PER_PROBE * dim * 4 bytes, 1 GB at 32 dims."""
 EMPTY = torch.iinfo(torch.int64).max
 
 
