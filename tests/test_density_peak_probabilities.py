@@ -172,3 +172,24 @@ def test_a_narrow_margin_only_lowers_the_entropy():
 def test_entropy_over_several_workers_matches_one(forest, trees):
     expected = vectorized.geodesic_entropy(forest, trees, 0.8, 2.5)
     assert np.allclose(vectorized.geodesic_entropy(forest, trees, 0.8, 2.5, workers=3), expected)
+
+
+@pytest.mark.parametrize("forest, trees", forests())
+@pytest.mark.parametrize("margin_steps", [0.5, 2.5, 1000.0])
+def test_frontier_entropy_matches_the_dijkstra_version(forest, trees, margin_steps):
+    from in_tfm.density_peaks.probabilities import frontier_entropy
+
+    expected = vectorized.geodesic_entropy(forest, trees, 0.8, margin_steps)
+    found = frontier_entropy.frontier_geodesic_entropy(forest, trees, 0.8, margin_steps, device="cpu")
+    assert np.allclose(found, expected, atol=1e-5)
+
+
+def test_frontier_entropy_splits_trees_and_edges_into_batches(monkeypatch):
+    from in_tfm.density_peaks.probabilities import frontier_entropy
+
+    forest, trees = blob_forest(1)
+    monkeypatch.setattr(frontier_entropy, "STATE_ELEMENTS", len(forest.kth_distance))
+    monkeypatch.setattr(frontier_entropy, "EDGES_PER_STEP", 7)
+    expected = vectorized.geodesic_entropy(forest, trees, 0.8, 2.5)
+    found = frontier_entropy.frontier_geodesic_entropy(forest, trees, 0.8, 2.5, device="cpu")
+    assert np.allclose(found, expected, atol=1e-5)

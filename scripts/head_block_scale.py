@@ -70,7 +70,7 @@ class HeadBlockScaleConfig(BaseSettings):
     entropy_quantiles: list[float] = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
     histogram_bin_bits: float = 0.25
     entropy: bool = True
-    entropy_backend: Literal["scipy", "cugraph", "hybrid"] = "scipy"
+    entropy_backend: Literal["scipy", "cugraph", "hybrid", "frontier"] = "scipy"
     entropy_workers: int = 1
     gpu_share: float = 0.45
     """With the hybrid backend, the share of trees on the GPU. The rest go to the CPU workers."""
@@ -152,6 +152,10 @@ def tree_entropy(forest: DensityPeakForest, trees: ForestTrees, config: HeadBloc
         from in_tfm.density_peaks.probabilities.cugraph_entropy import gpu_geodesic_entropy
 
         return gpu_geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)
+    if config.entropy_backend == "frontier":
+        from in_tfm.density_peaks.probabilities.frontier_entropy import frontier_geodesic_entropy
+
+        return frontier_geodesic_entropy(forest, trees, config.peak_share, config.margin_steps, config.device)
     if config.entropy_backend == "hybrid":
         from in_tfm.density_peaks.probabilities.cugraph_entropy import hybrid_geodesic_entropy
 
