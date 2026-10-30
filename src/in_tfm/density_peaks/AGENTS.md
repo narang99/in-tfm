@@ -20,6 +20,10 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
   - `tests/test_torch_forest.py` checks its trees and parents against `vectorized.py` on torch's CPU device.
     - The Triton kernel only runs on CUDA, so `scripts/bench_forest.py` compares it with a saved forest on Colab.
   - A change to the forest's rules changes it too, in the same commit.
+- `ivf_forest.py` builds the forest from approximate neighbours, for more points than an all-pairs pass can take.
+  - Each point is compared only with the points in a few IVF lists, and copies are not merged.
+  - With every list probed it is exact. `tests/test_ivf_forest.py` checks that against `vectorized.py`.
+  - It has no naive mirror. Its reference is the exact forest.
 - `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
   - It builds on the forest's stored neighbours.
   - It has its own naive and vectorized split. See its AGENTS.md.
