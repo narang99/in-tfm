@@ -39,11 +39,12 @@ def peak_cores(forest: DensityPeakForest, trees: ForestTrees, peak_share: float)
 
     - Density is 1 / kth distance, so the cut is a kth distance at most the root's divided by the share.
     - The root always qualifies, so no tree is left without a peak."""
-    cores = []
-    for tree, root in enumerate(trees.roots):
-        points = np.flatnonzero(trees.tree == tree)
-        cores.append(points[forest.kth_distance[points] <= forest.kth_distance[root] / peak_share])
-    return cores
+    in_core = forest.kth_distance <= (forest.kth_distance[trees.roots] / peak_share)[trees.tree]
+    points = np.flatnonzero(in_core)
+    # a stable sort keeps each core's points in index order
+    points = points[np.argsort(trees.tree[points], kind="stable")]
+    sizes = np.bincount(trees.tree[points], minlength=len(trees.roots))
+    return np.split(points, np.cumsum(sizes)[:-1])
 
 
 def knn_graph(forest: DensityPeakForest) -> sp.csr_matrix:
