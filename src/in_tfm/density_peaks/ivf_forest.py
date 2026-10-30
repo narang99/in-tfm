@@ -218,10 +218,18 @@ def probed_search(
 
 
 def first_denser(
-    nearest: Int[torch.Tensor, "n c"], ranks: Int[torch.Tensor, "n"],
+    nearest: Int[torch.Tensor, "n c"], ranks: Int[torch.Tensor, "n"], chunk: int = 2**20,
 ) -> Int[torch.Tensor, "n"]:
     """The first denser point in each closest-first list, or -1."""
-    denser = (nearest >= 0) & (ranks[nearest.clamp(min=0)] > ranks[:, None])
+    return torch.cat([first_denser_chunk(part, ranks, start) for start, part in
+                      zip(range(0, len(nearest), chunk), nearest.split(chunk))])
+
+
+def first_denser_chunk(
+    nearest: Int[torch.Tensor, "m c"], ranks: Int[torch.Tensor, "n"], start: int,
+) -> Int[torch.Tensor, "m"]:
+    own_ranks = ranks[start:start + len(nearest), None]
+    denser = (nearest >= 0) & (ranks[nearest.clamp(min=0)] > own_ranks)
     first = denser.int().argmax(dim=1)
     return torch.where(denser.any(dim=1), nearest.gather(1, first[:, None])[:, 0], -1)
 
