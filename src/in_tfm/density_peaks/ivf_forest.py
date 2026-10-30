@@ -33,7 +33,7 @@ from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel, ConfigDict
 
 from .forest import DensityPeakForest, PeakDistance, comparable_rows
-from .torch_forest import float32_distances, signed_rows, weighted_jaccard_from_l1
+from .torch_forest import HAS_TRITON, float32_distances, signed_rows, weighted_jaccard_from_l1
 from .vectorized import density_ranks
 
 BLOCK_ELEMENTS = 2**26
@@ -57,6 +57,8 @@ class IvfSettings(BaseModel):
     exact_on_device: bool = False
     """Float64 rows on the device too. At 16M points they took a quarter of a T4, but an A100 has room."""
     probe_by: Literal["point", "cell", "union"] = "point"
+    fused: bool = True
+    """On CUDA, probe by point with `triton_ivf`, whose kernel does the distances and the top-k together."""
 
 
 class SearchStats(BaseModel):
@@ -204,13 +206,32 @@ def exhaustive_search(
 def ivf_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
     allowed: AllowedPairs | None = None, probe_by: Literal["point", "cell", "union"] = "point",
+    fused: bool = False, denser_ranks: Int[torch.Tensor, "n"] | None = None,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
-    """The n closest points to each query among the lists it probes, closest first. Never the query itself."""
+    """The n closest points to each query among the lists it probes, closest first. Never the query itself.
+
+    - `denser_ranks` is the fused kernel's form of a denser-only `allowed`, which it cannot call."""
     if n_probe >= len(lists.centroids):
         return exhaustive_search(rows, queries, n, allowed)
+    if fused and probe_by == "point" and rows.signed.is_cuda and HAS_TRITON and (allowed is None or denser_ranks is not None):
+        return fused_search(rows, lists, queries, n_probe, n, denser_ranks)
     if probe_by != "point":
         return cell_search(rows, lists, queries, n_probe, n, allowed, union=probe_by == "union")
     return probed_search(rows, lists, queries, n_probe, n, allowed)
+
+
+def fused_search(
+    rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
+    denser_ranks: Int[torch.Tensor, "n"] | None,
+) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
+    from .triton_ivf import CHUNK_PAIRS, fused_probed_search
+
+    found = []
+    for part in torch.split(queries, max(1, CHUNK_PAIRS // n_probe)):
+        probes = nearest_centroids(rows.signed[part], lists.centroids, n_probe)
+        found.append(fused_probed_search(rows.signed, rows.sums, lists.members, lists.starts, part, probes, n,
+                                         denser_ranks))
+    return torch.cat([f[0] for f in found]), torch.cat([f[1] for f in found])
 
 
 def probed_search(
@@ -364,7 +385,8 @@ def ivf_density_peak_forest(
     clock.lap("lists")
     own = torch.arange(len(rows), device=rows.signed.device)
     list_length = min(max(settings.n_list_neighbours, k), len(rows) - 1)
-    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length, probe_by=settings.probe_by)
+    nearest, _ = ivf_search(rows, lists, own, settings.n_probe, list_length, probe_by=settings.probe_by,
+                            fused=settings.fused)
     kth = kth_from_list(rows, nearest, k)
     counts = np.ones(len(rows), dtype=int)
     ranks_np = density_ranks(kth.cpu().numpy(), counts)
@@ -374,7 +396,8 @@ def ivf_density_peak_forest(
     parent = first_denser(nearest, ranks)
     peaks = own[parent < 0]
     denser_only: AllowedPairs = lambda q, m: ranks[m][None, :] > ranks[q][:, None]  # noqa: E731
-    second, _ = ivf_search(rows, lists, peaks, settings.peak_probe, 1, denser_only, settings.probe_by)
+    second, _ = ivf_search(rows, lists, peaks, settings.peak_probe, 1, denser_only, settings.probe_by,
+                           settings.fused, ranks)
     parent[peaks] = second[:, 0]
     clock.lap("peaks")
     unresolved = own[parent < 0]
