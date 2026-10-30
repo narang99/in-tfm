@@ -14,7 +14,6 @@
   - Up to `compare_dense_up_to` it is checked against the entropy of the full table.
   - Each run saves every point's entropy, so later plots need no new run.
   - `entropy_backend="cugraph"` computes it on the GPU. Up to `compare_dense_up_to` it is also checked against scipy.
-- `search="cuvs"` takes the approximate forest's candidates from cuVS. The exact forest always uses torch.
 """
 
 import json
@@ -61,8 +60,9 @@ class HeadBlockScaleConfig(BaseSettings):
     entropy_quantiles: list[float] = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
     histogram_bin_bits: float = 0.25
     entropy_backend: Literal["scipy", "cugraph"] = "scipy"
-    search: Literal["torch", "cuvs"] = "torch"
-    l1_oversample: int = 4
+    entropy_workers: int = 1
+    """Processes for the scipy entropy. Each tree's search is independent."""
+    exact_on_device: bool = False
     seed: int = 0
     batch_size: int = 256
     device: str = "cuda"
@@ -111,7 +111,7 @@ def settings_for(n: int, config: HeadBlockScaleConfig, exact: bool) -> IvfSettin
     return IvfSettings(
         n_lists=n_lists, n_probe=n_lists if exact else config.n_probe,
         peak_probe=n_lists if exact else config.peak_probe, n_list_neighbours=config.n_list_neighbours,
-        seed=config.seed, search="torch" if exact else config.search, l1_oversample=config.l1_oversample,
+        seed=config.seed, exact_on_device=config.exact_on_device,
     )
 
 
@@ -136,12 +136,13 @@ def tree_entropy(forest: DensityPeakForest, trees: ForestTrees, config: HeadBloc
         from in_tfm.density_peaks.probabilities.cugraph_entropy import gpu_geodesic_entropy
 
         return gpu_geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)
-    return geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)
+    return geodesic_entropy(forest, trees, config.peak_share, config.margin_steps, config.entropy_workers)
 
 
 def scipy_check(forest: DensityPeakForest, trees: ForestTrees, entropy, config: HeadBlockScaleConfig) -> dict:
     began = time.perf_counter()
-    reference = geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)[forest.distinct_of_hit]
+    reference = geodesic_entropy(forest, trees, config.peak_share, config.margin_steps,
+                                 config.entropy_workers)[forest.distinct_of_hit]
     return {"scipy_seconds": time.perf_counter() - began,
             "scipy_max_difference": float(np.abs(reference - entropy).max()),
             "scipy_mean_difference": float((reference - entropy).mean())}
@@ -191,7 +192,7 @@ def run_forest(points: BlockPoints, n: int, config: HeadBlockScaleConfig, exact:
     seconds = time.perf_counter() - began
     summary, tree, entropy = forest_summary(forest, points, n, config)
     row = {"n": n, "exact": exact, "n_lists": settings.n_lists, "n_probe": settings.n_probe,
-           "peak_probe": settings.peak_probe, "margin_steps": config.margin_steps, "search": settings.search,
+           "peak_probe": settings.peak_probe, "margin_steps": config.margin_steps,
            "entropy_backend": config.entropy_backend, "forest_seconds": seconds,
            **stats.model_dump(), **summary}
     save_entropy(entropy, n, exact, config)
@@ -199,7 +200,7 @@ def run_forest(points: BlockPoints, n: int, config: HeadBlockScaleConfig, exact:
 
 
 def save_entropy(entropy: Float[np.ndarray, "n"], n: int, exact: bool, config: HeadBlockScaleConfig) -> None:
-    kind = "exact" if exact else f"probe{config.n_probe}_{config.search}"
+    kind = "exact" if exact else f"probe{config.n_probe}"
     path = config.out.parent / f"entropy_neuron{config.neuron}_head{config.head}_n{n}_{kind}.npy"
     np.save(path, entropy.astype(np.float32))
 
