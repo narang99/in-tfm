@@ -2,6 +2,10 @@
 """One HTML page for one head block of one neuron, from a `head_block_scale.py` run's saved points.
 
     python scripts/head_block_report.py --neuron 0 --head 3 --size 32000000 --run-size 32000000
+    python scripts/head_block_report.py --neurons '[0,1]' --heads '[0,1,2,3,4,5,6,7]' --size 4000000 --run-size 4000000
+
+- With `neurons` and `heads` it writes a page per pair whose arrays exist, and an index page linking them.
+  - The model, the windows and the token table load once for all pairs. Pages already written are skipped.
 
 - It reads `tree_*.npy` and `entropy_*.npy`, and rebuilds the run's windows from its seed, so no model runs.
   - `run_size` is the largest size of that run. The windows were drawn for it, and smaller sizes are prefixes.
@@ -53,6 +57,8 @@ class HeadBlockReportConfig(BaseSettings):
     attention_sample: int = 300
     """Points per card whose most-attended token is counted."""
     out: Path | None = None
+    neurons: list[int] | None = None
+    heads: list[int] | None = None
 
 
 class TreeStats(BaseModel):
@@ -298,26 +304,44 @@ def section(title: str, lede: str, body: str) -> str:
     return f'<section class="page-section"><h2>{title}</h2><p class="meta">{lede}</p>{body}</section>'
 
 
-def main() -> None:
-    config = HeadBlockReportConfig()
-    name = f"neuron{config.neuron}_head{config.head}_n{config.size}_{config.kind}"
-    tree = np.load(config.results_dir / f"tree_{name}.npy")
-    entropy = np.load(config.results_dir / f"entropy_{name}.npy").astype(np.float64)
+class Shared(BaseModel):
+    """What every pair's page reads: the same windows, so the same tokens at every point."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    model: object
+    windows: Int[np.ndarray, "w seq"]
+    previous: Int[np.ndarray, "n"]
+    texts: list[str]
+
+
+def shared_inputs(config: HeadBlockReportConfig) -> Shared:
     model, tokenizer = load_trained_attn_only(config.checkpoint_dir)
     tokens = np.load(config.checkpoint_dir / TOKENS_FILE.format(split="train"), mmap_mode="r")
     seq_len = 256
     starts = story_starts(tokens, tokenizer.convert_tokens_to_ids(BOS_TOKEN), seq_len)
     windows, _ = draw_windows(tokens, starts, -(-config.run_size // seq_len), seq_len,
                               np.random.default_rng(config.seed))
-    windows = windows[:config.size // seq_len]
-    previous = np.concatenate([np.full((len(windows), 1), -1), windows[:, :-1]], axis=1).reshape(-1)
-    texts = token_table(tokenizer)
+    windows = windows[:-(-config.size // seq_len)]
+    previous = np.concatenate([np.full((len(windows), 1), -1), windows[:, :-1]], axis=1).reshape(-1)[:config.size]
+    return Shared(model=model.eval(), windows=windows, previous=previous, texts=token_table(tokenizer))
+
+
+def pair_name(config: HeadBlockReportConfig, neuron: int, head: int) -> str:
+    return f"neuron{neuron}_head{head}_n{config.size}_{config.kind}"
+
+
+def build_report(config: HeadBlockReportConfig, neuron: int, head: int, shared: Shared) -> Path:
+    name = pair_name(config, neuron, head)
+    tree = np.load(config.results_dir / f"tree_{name}.npy")
+    entropy = np.load(config.results_dir / f"entropy_{name}.npy").astype(np.float64)
+    windows, previous, texts = shared.windows, shared.previous, shared.texts
     stats = tree_stats(tree, entropy, config.confident_bits)
-    flat = windows.reshape(-1)
+    flat = windows.reshape(-1)[:len(tree)]
     pair_key = (previous.astype(np.int64) + 1) * 8192 + flat
     pairs, by_previous, by_current = (key_stats(tree, k, len(stats.sizes)) for k in (pair_key, previous, flat))
     rng = np.random.default_rng(config.seed)
-    attention = Attention(model.eval(), windows, config.head) if config.attention else None
+    attention = Attention(shared.model, windows, head) if config.attention else None
     largest = np.argsort(-stats.sizes)[:config.cards]
 
     tiles = [("points", f"{len(tree):,}"), ("trees", f"{len(stats.sizes):,}"),
@@ -327,7 +351,7 @@ def main() -> None:
     stats_html = '<div class="stats">' + "".join(f"<div class='stat'><b>{v}</b><span>{k}</span></div>"
                                                 for k, v in tiles) + "</div>"
     body = "".join([
-        f"<h1>Neuron {config.neuron}, head {config.head} block</h1>",
+        f"<h1>Neuron {neuron}, head {head} block</h1>",
         f'<p class="meta">Layer 0 o_proj. Every position of {len(windows):,} TinyStories windows is a point. '
         "Underlined: the previous token. Outlined: the current token. Shaded: the token this head attends to "
         "most from the current position.</p>",
@@ -345,8 +369,49 @@ def main() -> None:
         *[card(int(t), stats, windows, previous, entropy, texts, config, rng, attention) for t in largest],
     ])
     out = config.out or config.results_dir / f"report_{name}.html"
-    out.write_text(page(f"Neuron {config.neuron} head {config.head}", body, PLOTLY_JS))
-    print(out)
+    out.write_text(page(f"Neuron {neuron} head {head}", body, PLOTLY_JS))
+    return out
+
+
+def index_page(config: HeadBlockReportConfig, neurons: list[int], heads: list[int]) -> Path:
+    """A neuron x head grid of confident shares, each linking to its page."""
+    header = "<tr><th>neuron</th>" + "".join(f"<th>head {h}</th>" for h in heads) + "</tr>"
+    rows = []
+    for neuron in neurons:
+        cells = []
+        for head in heads:
+            name = pair_name(config, neuron, head)
+            path = config.results_dir / f"entropy_{name}.npy"
+            if not path.exists():
+                cells.append("<td>&mdash;</td>")
+                continue
+            entropy = np.load(path)
+            trees = int(np.load(config.results_dir / f"tree_{name}.npy").max()) + 1
+            share = (entropy < config.confident_bits).mean()
+            cells.append(f"<td style='background:rgba(0,165,80,{share:.2f})'><a href='report_{name}.html'>"
+                         f"{100 * share:.0f}%</a><br><small>{trees:,} trees</small></td>")
+        rows.append(f"<tr><td>{neuron}</td>{''.join(cells)}</tr>")
+    body = (f"<h1>Head blocks, {config.size:,} points</h1><p class='meta'>Each cell is the share of points with "
+            f"entropy below {config.confident_bits} bits, and links to that pair's page.</p>"
+            f"<table class='borders'>{header}{''.join(rows)}</table>")
+    out = config.results_dir / "index.html"
+    out.write_text(page("Head blocks", body))
+    return out
+
+
+def main() -> None:
+    config = HeadBlockReportConfig()
+    neurons, heads = config.neurons or [config.neuron], config.heads or [config.head]
+    batch = config.neurons is not None or config.heads is not None
+    todo = [(n, h) for n in neurons for h in heads
+            if (config.results_dir / f"tree_{pair_name(config, n, h)}.npy").exists()
+            and not (batch and (config.results_dir / f"report_{pair_name(config, n, h)}.html").exists())]
+    if todo:
+        shared = shared_inputs(config)
+        for neuron, head in todo:
+            print(build_report(config, neuron, head, shared), flush=True)
+    if batch:
+        print(index_page(config, neurons, heads))
 
 
 if __name__ == "__main__":
