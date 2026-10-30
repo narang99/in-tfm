@@ -28,8 +28,8 @@ from .vectorized import density_ranks
 
 BLOCK_ELEMENTS = 2**26
 """The cap on one block of distances. Tests pass a small value to force several blocks."""
-QUERY_CHUNK = 2**21
-"""Queries searched together. Their probe pairs are held on the device at once."""
+PROBE_PAIRS = 2**25
+"""The cap on (query, probed list) pairs held on the device at once."""
 TRAIN_PER_LIST = 64
 KMEANS_ITERATIONS = 20
 
@@ -165,17 +165,37 @@ def search_list(
     return torch.where(torch.isinf(distance), -1, members[column]), distance
 
 
+def exhaustive_search(
+    rows: Rows, queries: Int[torch.Tensor, "q"], n: int, allowed: AllowedPairs | None,
+) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
+    """Every point compared, without the probe bookkeeping that probing every list would hold."""
+    every = torch.arange(len(rows), device=queries.device)
+    found = [search_list(rows, part, every, n, allowed) for part in torch.split(queries, max(1, BLOCK_ELEMENTS // len(rows)))]
+    nearest = torch.cat([f[0] for f in found]) if found else queries.new_empty((0, n))
+    distance = torch.cat([f[1] for f in found]) if found else queries.new_empty((0, n), dtype=torch.float32)
+    return closest_first(nearest, distance, n)
+
+
 def ivf_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
     allowed: AllowedPairs | None = None,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
     """The n closest points to each query among the lists it probes, closest first. Never the query itself."""
+    if n_probe >= len(lists.centroids):
+        return exhaustive_search(rows, queries, n, allowed)
+    return probed_search(rows, lists, queries, n_probe, n, allowed)
+
+
+def probed_search(
+    rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
+    allowed: AllowedPairs | None = None,
+) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
     device = rows.signed.device
     nearest = torch.full((len(queries), n), -1, dtype=torch.int64, device=device)
     distance = torch.full((len(queries), n), torch.inf, dtype=torch.float32, device=device)
-    n_probe = min(n_probe, len(lists.centroids))
-    for chunk_start in range(0, len(queries), QUERY_CHUNK):
-        chunk = queries[chunk_start:chunk_start + QUERY_CHUNK]
+    query_chunk = max(1, PROBE_PAIRS // n_probe)
+    for chunk_start in range(0, len(queries), query_chunk):
+        chunk = queries[chunk_start:chunk_start + query_chunk]
         probes = nearest_centroids(rows.signed[chunk], lists.centroids, n_probe)
         for list_id, positions in probe_segments(probes):
             members = lists.members[lists.starts[list_id]:lists.starts[list_id + 1]]
