@@ -190,6 +190,7 @@ def test_frontier_entropy_splits_trees_and_edges_into_batches(monkeypatch):
     forest, trees = blob_forest(1)
     monkeypatch.setattr(frontier_entropy, "STATE_ELEMENTS", len(forest.kth_distance))
     monkeypatch.setattr(frontier_entropy, "EDGES_PER_STEP", 7)
+    monkeypatch.setattr(frontier_entropy, "SCAN_STATES", 5)
     expected = vectorized.geodesic_entropy(forest, trees, 0.8, 2.5)
     found = frontier_entropy.frontier_geodesic_entropy(forest, trees, 0.8, 2.5, device="cpu")
     assert np.allclose(found, expected, atol=1e-5)
