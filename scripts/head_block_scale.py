@@ -10,7 +10,9 @@
     pass per point, which millions of points cannot afford.
 - At sizes up to `exact_up_to`, the forest is also built with every list probed, which compares every pair.
   - Comparing the two measures what the approximate search loses.
-- Probabilities are a points x trees table, so they are skipped when that table would be too large.
+- Entropy over trees comes from `geodesic_entropy`, which needs no points x trees table.
+  - Up to `compare_dense_up_to` it is checked against the entropy of the full table.
+  - Each run saves every point's entropy, so later plots need no new run.
 """
 
 import json
@@ -25,8 +27,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sklearn.metrics import adjusted_rand_score
 
 from head_block_forests import draw_windows, entropy_bits
-from in_tfm.density_peaks import DensityPeakForest, calculate_probs, forest_trees
+from in_tfm.density_peaks import DensityPeakForest, ForestTrees, calculate_probs, forest_trees
 from in_tfm.density_peaks.ivf_forest import IvfSettings, ivf_density_peak_forest
+from in_tfm.density_peaks.probabilities import geodesic_entropy
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, load_trained_attn_only
 from in_tfm.tiny_attn_only_training import TOKENS_FILE, story_starts
 
@@ -48,7 +51,12 @@ class HeadBlockScaleConfig(BaseSettings):
     peak_probe: int = 64
     n_list_neighbours: int = 32
     exact_up_to: int = 256_000
-    max_probability_cells: float = 2e9
+    margin_steps: float = 10.0
+    """Trees this many steps of tau past a point's nearest peak are left out of its entropy."""
+    compare_dense_up_to: int = 256_000
+    confident_thresholds: list[float] = [0.1, 0.5, 1.0, 2.0]
+    entropy_quantiles: list[float] = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+    histogram_bin_bits: float = 0.25
     seed: int = 0
     batch_size: int = 256
     device: str = "cuda"
@@ -101,7 +109,32 @@ def settings_for(n: int, config: HeadBlockScaleConfig, exact: bool) -> IvfSettin
     )
 
 
-def forest_summary(forest: DensityPeakForest, points: BlockPoints, n: int, config: HeadBlockScaleConfig) -> dict:
+def entropy_distribution(entropy: Float[np.ndarray, "n"], n_trees: int, config: HeadBlockScaleConfig) -> dict:
+    """Bits, and bits over log2(trees), since more trees allow more entropy."""
+    normalised = entropy / max(np.log2(n_trees), 1e-12)
+    edges = np.arange(0, np.log2(n_trees) + 2 * config.histogram_bin_bits, config.histogram_bin_bits)
+    return {
+        "median_entropy": float(np.median(entropy)),
+        "confident": float((entropy < config.confident_bits).mean()),
+        "confident_at": {str(t): float((entropy < t).mean()) for t in config.confident_thresholds},
+        "entropy_quantiles": dict(zip(map(str, config.entropy_quantiles),
+                                      np.quantile(entropy, config.entropy_quantiles).tolist())),
+        "normalised_quantiles": dict(zip(map(str, config.entropy_quantiles),
+                                         np.quantile(normalised, config.entropy_quantiles).tolist())),
+        "histogram_bin_bits": config.histogram_bin_bits, "histogram": np.histogram(entropy, edges)[0].tolist(),
+    }
+
+
+def dense_check(forest: DensityPeakForest, trees: ForestTrees, entropy, config: HeadBlockScaleConfig) -> dict:
+    began = time.perf_counter()
+    dense = entropy_bits(calculate_probs(forest, trees, config.peak_share)[forest.distinct_of_hit])
+    return {"dense_seconds": time.perf_counter() - began, "dense_max_difference": float(np.abs(dense - entropy).max()),
+            "dense_mean_difference": float((dense - entropy).mean()),
+            "dense_median_entropy": float(np.median(dense)),
+            "dense_confident": float((dense < config.confident_bits).mean())}
+
+
+def forest_summary(forest: DensityPeakForest, points: BlockPoints, n: int, config: HeadBlockScaleConfig):
     began = time.perf_counter()
     trees = forest_trees(forest)
     tree = trees.tree[forest.distinct_of_hit]
@@ -109,13 +142,12 @@ def forest_summary(forest: DensityPeakForest, points: BlockPoints, n: int, confi
         "trees": len(trees.roots), "largest_tree": float(np.bincount(tree).max() / n),
         "purity_previous": purity(tree, points.previous[:n]), "purity_current": purity(tree, points.current[:n]),
     }
-    if n * len(trees.roots) <= config.max_probability_cells:
-        probabilities = calculate_probs(forest, trees, config.peak_share)[forest.distinct_of_hit]
-        entropy = entropy_bits(probabilities)
-        summary |= {"median_entropy": float(np.median(entropy)),
-                    "confident": float((entropy < config.confident_bits).mean())}
+    entropy = geodesic_entropy(forest, trees, config.peak_share, config.margin_steps)[forest.distinct_of_hit]
+    summary |= entropy_distribution(entropy, len(trees.roots), config)
     summary["summary_seconds"] = time.perf_counter() - began
-    return summary, tree
+    if n <= config.compare_dense_up_to:
+        summary |= dense_check(forest, trees, entropy, config)
+    return summary, tree, entropy
 
 
 def agreement(approximate: DensityPeakForest, exact: DensityPeakForest, tree_a, tree_e) -> dict:
@@ -133,10 +165,18 @@ def run_forest(points: BlockPoints, n: int, config: HeadBlockScaleConfig, exact:
     forest, stats = ivf_density_peak_forest(points.rows[:n], settings, config.k, "weighted_jaccard", False,
                                             config.device)
     seconds = time.perf_counter() - began
-    summary, tree = forest_summary(forest, points, n, config)
+    summary, tree, entropy = forest_summary(forest, points, n, config)
     row = {"n": n, "exact": exact, "n_lists": settings.n_lists, "n_probe": settings.n_probe,
-           "peak_probe": settings.peak_probe, "forest_seconds": seconds, **stats.model_dump(), **summary}
+           "peak_probe": settings.peak_probe, "margin_steps": config.margin_steps, "forest_seconds": seconds,
+           **stats.model_dump(), **summary}
+    save_entropy(entropy, n, exact, config)
     return row, forest, tree
+
+
+def save_entropy(entropy: Float[np.ndarray, "n"], n: int, exact: bool, config: HeadBlockScaleConfig) -> None:
+    kind = "exact" if exact else f"probe{config.n_probe}"
+    path = config.out.parent / f"entropy_neuron{config.neuron}_head{config.head}_n{n}_{kind}.npy"
+    np.save(path, entropy.astype(np.float32))
 
 
 def main() -> None:
