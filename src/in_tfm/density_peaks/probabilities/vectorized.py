@@ -60,6 +60,56 @@ def geodesic_distances(graph: sp.csr_matrix, cores: list[np.ndarray]) -> Float[n
     return np.stack([dijkstra(graph, directed=False, indices=core, min_only=True) for core in cores], axis=1)
 
 
+def geodesic_entropy(
+    forest: DensityPeakForest, trees: ForestTrees, peak_share: float, margin_steps: float
+) -> Float[np.ndarray, "n_distinct"]:
+    """The entropy in bits of each point's probabilities over trees, without the points x trees table.
+
+    - Trees more than `margin_steps` steps of τ past a point's nearest peak are left out.
+      - Their weight is below exp(-margin_steps) of the nearest tree's, so they barely change the entropy.
+    - Each tree's Dijkstra runs on `past_nearest_peak` edges, with `margin_steps` as its limit.
+      - A path's length there is how far it runs past the nearest peak, and it never shrinks along the path.
+      - So the search stops at the points the tree still counts for, and the cost follows the kept entries.
+    - The entropy comes from two running sums, so no point keeps its trees.
+      - With e the steps past the nearest peak, a tree's weight is w = exp(-e).
+      - Then the entropy in nats is log(sum w) + sum(w e) / sum w.
+    - A point out of reach of every peak gets 0, as its own tree gets all of its probability."""
+    graph = knn_graph(forest)
+    cores = peak_cores(forest, trees, peak_share)
+    tau = step_length(forest)
+    nearest = dijkstra(graph, directed=False, indices=np.concatenate(cores), min_only=True) / tau
+    steps = _past_nearest_peak(graph / tau, nearest)
+    total_weight = np.zeros(len(nearest))
+    weighted_steps = np.zeros(len(nearest))
+    for core in cores:
+        past = dijkstra(steps, directed=True, indices=core, min_only=True, limit=margin_steps)
+        reached = np.flatnonzero(np.isfinite(past))
+        weight = np.exp(-past[reached])
+        total_weight[reached] += weight
+        weighted_steps[reached] += weight * past[reached]
+    nats = np.zeros(len(nearest))
+    reachable = total_weight > 0
+    nats[reachable] = np.log(total_weight[reachable]) + weighted_steps[reachable] / total_weight[reachable]
+    return nats / np.log(2)
+
+
+def _past_nearest_peak(graph: sp.csr_matrix, nearest: Float[np.ndarray, "n"]) -> sp.csr_matrix:
+    """Each edge u -> v made length + nearest[u] - nearest[v], which is Johnson's reweighting.
+
+    - Nearest-peak distance moves by at most the edge's length, so no edge goes negative.
+      - Rounding can still take one just below 0, and sparse matrices drop exact zeros.
+      - So a length is kept at least the smallest float.
+    - Edges out of points that reach no peak, and edges of infinite length, are dropped.
+      - Their new length would be inf - inf."""
+    coo = graph.tocoo()
+    with np.errstate(invalid="ignore"):
+        length = coo.data + nearest[coo.row] - nearest[coo.col]
+    keep = np.isfinite(length)
+    return sp.csr_matrix(
+        (np.maximum(length[keep], np.finfo(float).tiny), (coo.row[keep], coo.col[keep])), shape=graph.shape
+    )
+
+
 def step_length(forest: DensityPeakForest) -> float:
     """The median distance to the nearest other point, over those that are finite and positive. 1 when there are none."""
     nearest = forest.neighbour_distance[:, 0] if forest.neighbour_distance.shape[1] else np.zeros(0)

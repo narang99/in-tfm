@@ -11,6 +11,12 @@ A probability per tree for each point, from geodesic distance to each tree's pea
 - `step_length`: τ, the median distance to the nearest other point.
 - `softmax_over_trees`: a softmax of −distance / τ over the trees.
 - `geodesic_probabilities` runs them in that order. `calculate_probs` is the name the pipeline calls.
+- `geodesic_entropy` gives only each point's entropy, for forests too large for the points x trees table.
+  - It leaves out trees more than a margin of steps past a point's nearest peak.
+  - With a wide margin it equals the entropy of `geodesic_probabilities`.
+- `geodesic_entropy` gives only each point's entropy, for forests too large for the points x trees table.
+  - It leaves out trees more than a margin of steps past a point's nearest peak.
+  - With a wide margin it equals the entropy of `geodesic_probabilities`.
 
 ## Naive and vectorized mirrors
 
