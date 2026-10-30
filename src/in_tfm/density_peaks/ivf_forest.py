@@ -17,6 +17,10 @@
     into the points' running lists. At 32M points that was about 690k small steps and 18 minutes on an A100.
   - "cell": the points of one list share its probes, the lists nearest its centroid. One distance block and one
     top-k per list, with no merging. A point near its list's edge can miss neighbours its own probes would find.
+    - At 1M points on head 0 it found 86% of the exact neighbours, against 98% by point.
+  - "union": the points of one list search the union of their own probes, in one block per list.
+    - Each point sees at least what its own probes hold, so it finds at least what "point" finds.
+    - The union is larger than one point's probes, which is the price of no merging.
 """
 
 import time
@@ -52,7 +56,7 @@ class IvfSettings(BaseModel):
     seed: int = 0
     exact_on_device: bool = False
     """Float64 rows on the device too. At 16M points they took a quarter of a T4, but an A100 has room."""
-    probe_by: Literal["point", "cell"] = "point"
+    probe_by: Literal["point", "cell", "union"] = "point"
 
 
 class SearchStats(BaseModel):
@@ -199,13 +203,13 @@ def exhaustive_search(
 
 def ivf_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
-    allowed: AllowedPairs | None = None, probe_by: Literal["point", "cell"] = "point",
+    allowed: AllowedPairs | None = None, probe_by: Literal["point", "cell", "union"] = "point",
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
     """The n closest points to each query among the lists it probes, closest first. Never the query itself."""
     if n_probe >= len(lists.centroids):
         return exhaustive_search(rows, queries, n, allowed)
-    if probe_by == "cell":
-        return cell_search(rows, lists, queries, n_probe, n, allowed)
+    if probe_by != "point":
+        return cell_search(rows, lists, queries, n_probe, n, allowed, union=probe_by == "union")
     return probed_search(rows, lists, queries, n_probe, n, allowed)
 
 
@@ -236,23 +240,31 @@ def probed_search(
 
 def cell_search(
     rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int, n: int,
-    allowed: AllowedPairs | None = None,
+    allowed: AllowedPairs | None = None, union: bool = False,
 ) -> tuple[Int[torch.Tensor, "q n"], Float[torch.Tensor, "q n"]]:
-    """Like `probed_search`, but the queries of one list share its probes, so each list is one block."""
+    """Like `probed_search`, but the queries of one list share one set of probed lists, so each list is one block.
+
+    - The set is the lists nearest the list's centroid, or with `union` the union of each query's own nearest."""
     device = rows.signed.device
     nearest = torch.full((len(queries), n), -1, dtype=torch.int64, device=device)
     distance = torch.full((len(queries), n), torch.inf, dtype=torch.float32, device=device)
-    probes = nearest_centroids(lists.centroids, lists.centroids, min(n_probe, len(lists.centroids))).cpu()
+    n_probe = min(n_probe, len(lists.centroids))
+    probes = None if union else nearest_centroids(lists.centroids, lists.centroids, n_probe).cpu()
     starts = lists.starts.cpu()
     list_of_query = lists.list_of_point[queries]
     order = torch.argsort(list_of_query, stable=True)
     present, counts = torch.unique_consecutive(list_of_query[order], return_counts=True)
     for list_id, at in zip(present.tolist(), torch.split(order, counts.tolist())):
-        candidates = probed_members(lists, starts, probes[list_id])
+        probed = union_of_probes(rows, lists, queries[at], n_probe) if union else probes[list_id]
+        candidates = probed_members(lists, starts, probed)
         size = max(1, BLOCK_ELEMENTS // max(1, len(candidates)))
         for part in torch.split(at, size):
             nearest[part], distance[part] = search_block(rows, queries[part], candidates, n, allowed)
     return nearest, distance
+
+
+def union_of_probes(rows: Rows, lists: IvfLists, queries: Int[torch.Tensor, "q"], n_probe: int) -> Int[torch.Tensor, "p"]:
+    return torch.unique(nearest_centroids(rows.signed[queries], lists.centroids, n_probe)).cpu()
 
 
 def probed_members(lists: IvfLists, starts: Int[torch.Tensor, "l1"], probed: Int[torch.Tensor, "p"]) -> Int[torch.Tensor, "m"]:

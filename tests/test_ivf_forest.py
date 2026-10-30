@@ -117,3 +117,12 @@ def test_a_partial_cell_probe_still_builds_one_forest():
     assert (forest.parent == -1).sum() == 1
     denser = forest.parent >= 0
     assert (forest.density_rank[forest.parent[denser]] > forest.density_rank[denser]).all()
+
+
+def test_the_union_of_probes_finds_at_least_what_each_point_finds():
+    rows = ivf_forest.Rows(clustered_points(np.random.default_rng(11), 500), "weighted_jaccard", False, "cpu")
+    lists = ivf_forest.build_lists(rows, 16, seed=0)
+    queries = torch.arange(len(rows))
+    by_union = ivf_forest.cell_search(rows, lists, queries, 3, 6, union=True)
+    by_point = ivf_forest.probed_search(rows, lists, queries, 3, 6)
+    assert (by_union[1] <= by_point[1] + FLOAT32_TOLERANCE).all()
