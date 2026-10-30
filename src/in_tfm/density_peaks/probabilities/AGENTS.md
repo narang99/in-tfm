@@ -14,9 +14,8 @@ A probability per tree for each point, from geodesic distance to each tree's pea
 - `geodesic_entropy` gives only each point's entropy, for forests too large for the points x trees table.
   - It leaves out trees more than a margin of steps past a point's nearest peak.
   - With a wide margin it equals the entropy of `geodesic_probabilities`.
-- `geodesic_entropy` gives only each point's entropy, for forests too large for the points x trees table.
-  - It leaves out trees more than a margin of steps past a point's nearest peak.
-  - With a wide margin it equals the entropy of `geodesic_probabilities`.
+- `cugraph_entropy.gpu_geodesic_entropy` computes the same entropy on the GPU, with cuGraph.
+  - It has no naive mirror, and the tests cannot run it. Its reference is `geodesic_entropy`.
 
 ## Naive and vectorized mirrors
 
