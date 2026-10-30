@@ -111,12 +111,13 @@ def block_points(model, windows: Int[np.ndarray, "w seq"], neuron: int, head: in
 
 
 def purity(tree: Int[np.ndarray, "n"], labels: Int[np.ndarray, "n"]) -> float:
-    """The share of points that carry their tree's most common label, without a pass per tree."""
-    _, pair_counts = np.unique(np.stack([tree, labels]), axis=1, return_counts=True)
-    pairs, _ = np.unique(np.stack([tree, labels]), axis=1, return_inverse=True)
-    best = np.zeros(tree.max() + 1, dtype=np.int64)
-    np.maximum.at(best, pairs[0], pair_counts)
-    return float(best.sum() / len(tree))
+    """The share of points that carry their tree's most common label, from one count per (tree, label) pair.
+
+    - Labels start at -1 (no previous token), so they are shifted to start at 0."""
+    shifted = labels - labels.min()
+    width = int(shifted.max()) + 1
+    counts = np.bincount(tree.astype(np.int64) * width + shifted, minlength=(int(tree.max()) + 1) * width)
+    return float(counts.reshape(-1, width).max(axis=1).sum() / len(tree))
 
 
 def settings_for(n: int, config: HeadBlockScaleConfig, exact: bool) -> IvfSettings:
