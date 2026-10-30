@@ -52,7 +52,7 @@ class HeadBlockScaleConfig(BaseSettings):
     """n_lists is this times the square root of n, so a list holds about sqrt(n) / this points."""
     cell_size: int | None = None
     """When set, n_lists is n / cell_size instead, so the search grows with n rather than n^1.5."""
-    probe_by: Literal["point", "cell"] = "point"
+    probe_by: Literal["point", "cell", "union"] = "point"
     block_elements: int = 2**26
     """Distances in one block. An A100 takes 2^28 (1 GB of float32)."""
     n_probe: int = 16
