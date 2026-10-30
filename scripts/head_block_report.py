@@ -7,6 +7,9 @@
   - `run_size` is the largest size of that run. The windows were drawn for it, and smaller sizes are prefixes.
 - The full report pipeline wants a points x trees probability table, which millions of points cannot have.
   - So this page shows tree sizes, the entropy, a table of every tree, and cards for the largest trees.
+- "Merged pairs" asks whether a tree holds one (previous, current) token pair or several.
+  - A tree whose top pair is a minority, but whose top previous token is a majority, merges current tokens.
+  - A tree whose top previous token is itself a minority merges previous tokens.
 """
 
 from pathlib import Path
@@ -60,6 +63,15 @@ class TokenChip(BaseModel):
     share: float
 
 
+class PairStats(BaseModel):
+    """Per tree, the share of its points held by the most common key, and keys needed to cover 90% of it."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    top_share: Float[np.ndarray, "n_trees"]
+    keys_for_90: Int[np.ndarray, "n_trees"]
+
+
 def tree_stats(tree: Int[np.ndarray, "n"], entropy: Float[np.ndarray, "n"], confident_bits: float) -> TreeStats:
     order = np.lexsort((entropy, tree))
     sizes = np.bincount(tree)
@@ -70,6 +82,66 @@ def tree_stats(tree: Int[np.ndarray, "n"], entropy: Float[np.ndarray, "n"], conf
     return TreeStats(sizes=sizes, median_entropy=medians, confident=confident, order=order, starts=starts)
 
 
+def key_stats(tree: Int[np.ndarray, "n"], key: Int[np.ndarray, "n"], n_trees: int) -> PairStats:
+    """One sort of (tree, key) gives every tree's key counts. Keys are shifted to start at 0."""
+    key = key - key.min()
+    combined = tree.astype(np.int64) * (int(key.max()) + 1) + key
+    values, counts = np.unique(combined, return_counts=True)
+    owner = values // (int(key.max()) + 1)
+    order = np.lexsort((-counts, owner))
+    owner, counts = owner[order], counts[order]
+    sizes = np.bincount(owner, weights=counts, minlength=n_trees)
+    first = np.searchsorted(owner, np.arange(n_trees))
+    top = np.zeros(n_trees)
+    has = first < len(owner)
+    top[has] = counts[first[has]] / np.maximum(sizes[has], 1)
+    running = np.cumsum(counts) - np.repeat(np.cumsum(np.bincount(owner, weights=counts, minlength=n_trees))
+                                            - sizes, np.bincount(owner, minlength=n_trees))
+    within = running < 0.9 * sizes[owner]
+    return PairStats(top_share=top, keys_for_90=np.bincount(owner, weights=within, minlength=n_trees).astype(int) + 1)
+
+
+def merged_section(stats: TreeStats, pairs: PairStats, previous: PairStats, current: PairStats, tree_of, prev_ids,
+                   cur_ids, texts, limit: int = 40) -> str:
+    fig = go.Figure(go.Scattergl(
+        x=previous.top_share, y=pairs.top_share, mode="markers",
+        marker=dict(size=np.clip(np.log10(np.maximum(stats.sizes, 1)) * 4, 3, 20), opacity=0.5),
+        text=[f"c{t}, {stats.sizes[t]:,} points" for t in range(len(stats.sizes))],
+        hovertemplate="%{text}<br>top previous %{x:.0%}<br>top pair %{y:.0%}",
+    ))
+    fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dot"))
+    fig.update_xaxes(title="share of the tree's most common previous token", range=[0, 1.02])
+    fig.update_yaxes(title="share of the tree's most common (previous, current) pair", range=[0, 1.02])
+    weighted = lambda share: float((share * stats.sizes).sum() / stats.sizes.sum())  # noqa: E731
+    merged = np.flatnonzero(pairs.top_share < 0.5)
+    merged = merged[np.argsort(-stats.sizes[merged])][:limit]
+    rows = []
+    for tree in merged:
+        members = stats.order[stats.starts[tree]:stats.starts[tree + 1]]
+        keys = prev_ids[members].astype(np.int64) * 8192 + cur_ids[members]
+        values, counts = np.unique(keys, return_counts=True)
+        best = np.argsort(-counts)[:5]
+        chips = ", ".join(
+            f"<code>{escape(name(values[i] // 8192, texts))}</code>&rarr;<code>{escape(name(values[i] % 8192, texts))}</code>"
+            f" {100 * counts[i] / len(members):.0f}%" for i in best)
+        rows.append(f"<tr><td><a href='#cluster-{tree}'>c{tree}</a></td><td>{stats.sizes[tree]:,}</td>"
+                    f"<td>{100 * previous.top_share[tree]:.0f}%</td><td>{100 * current.top_share[tree]:.0f}%</td>"
+                    f"<td>{pairs.keys_for_90[tree]}</td><td>{chips}</td></tr>")
+    table = ("<div style='max-height:60vh;overflow:auto'><table class='borders'><tr><th>tree</th><th>points</th>"
+             "<th>top previous</th><th>top current</th><th>pairs for 90%</th><th>top pairs</th></tr>"
+             + "".join(rows) + "</table></div>")
+    lede = (f"Weighted by tree size, the most common pair holds {100 * weighted(pairs.top_share):.0f}% of a tree, "
+            f"the most common previous token {100 * weighted(previous.top_share):.0f}%, and the most common current "
+            f"token {100 * weighted(current.top_share):.0f}%. {int((pairs.top_share < 0.5).sum()):,} of "
+            f"{len(stats.sizes):,} trees have no majority pair. Below the diagonal, a tree keeps its previous token "
+            "but mixes current tokens. Far left, it mixes previous tokens too.")
+    return section("Merged pairs", lede, embed(fig, "55vh") + f"<h3>The largest trees with no majority pair</h3>{table}")
+
+
+def name(token: int, texts: list[str]) -> str:
+    return "(start)" if token < 0 or token >= len(texts) else texts[token]
+
+
 def token_table(tokenizer) -> list[str]:
     return [tokenizer.decode([i]) for i in range(len(tokenizer))]
 
@@ -78,6 +150,14 @@ def top_tokens(ids: Int[np.ndarray, "m"], texts: list[str], limit: int = 8) -> l
     values, counts = np.unique(ids, return_counts=True)
     best = np.argsort(-counts)[:limit]
     return [TokenChip(text="(start)" if values[i] < 0 else texts[values[i]], share=counts[i] / len(ids)) for i in best]
+
+
+def top_pairs(prev: Int[np.ndarray, "m"], cur: Int[np.ndarray, "m"], texts: list[str], limit: int = 8) -> list[TokenChip]:
+    keys = prev.astype(np.int64) * 8192 + cur
+    values, counts = np.unique(keys, return_counts=True)
+    best = np.argsort(-counts)[:limit]
+    return [TokenChip(text=f"{name(values[i] // 8192, texts)} → {name(values[i] % 8192, texts)}", share=counts[i] / len(prev))
+            for i in best]
 
 
 def example_points(members: Int[np.ndarray, "m"], count: int, rng: np.random.Generator) -> list[tuple[str, int]]:
@@ -103,6 +183,7 @@ def card(tree: int, stats: TreeStats, windows, previous, entropy, texts, config:
         share=stats.sizes[tree] / len(entropy), median_entropy=float(stats.median_entropy[tree]),
         confident=float(stats.confident[tree]),
         previous=top_tokens(previous[members], texts), current=top_tokens(windows.reshape(-1)[members], texts),
+        pairs=top_pairs(previous[members], windows.reshape(-1)[members], texts),
         examples=[example(p, tag, windows, entropy, texts, config.context)
                   for tag, p in example_points(members, config.examples, rng)],
     )
@@ -174,6 +255,9 @@ def main() -> None:
     previous = np.concatenate([np.full((len(windows), 1), -1), windows[:, :-1]], axis=1).reshape(-1)
     texts = token_table(tokenizer)
     stats = tree_stats(tree, entropy, config.confident_bits)
+    flat = windows.reshape(-1)
+    pair_key = (previous.astype(np.int64) + 1) * 8192 + flat
+    pairs, by_previous, by_current = (key_stats(tree, k, len(stats.sizes)) for k in (pair_key, previous, flat))
     rng = np.random.default_rng(config.seed)
     largest = np.argsort(-stats.sizes)[:config.cards]
 
@@ -193,6 +277,7 @@ def main() -> None:
                 embed(entropy_figure(entropy, config.confident_bits), "45vh")),
         section("Entropy by tree size", "Each dot is a tree, at its median point.",
                 embed(entropy_by_size_figure(stats), "50vh")),
+        merged_section(stats, pairs, by_previous, by_current, tree, previous, flat, texts),
         section("Every tree", f"The {min(config.table_rows, len(stats.sizes)):,} largest trees.",
                 tree_table(stats, windows, previous, texts, config.table_rows)),
         f'<h2 class="clusters-head">The {len(largest)} largest trees</h2>',
