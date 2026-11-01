@@ -17,6 +17,7 @@ Pages include this once and call `ConceptCards.stack(...)`. See `ov_graph.html` 
 .concept.collapsed .concept-head > :last-child { display:none; }
 .concept.collapsed .tokens { margin:0; font-size:0.72rem; line-height:1.6; }
 .concept.collapsed .tok { padding:1px 0; }
+.concept-dropped { font:0.7rem ui-monospace,Menlo,monospace; color:var(--muted); margin:2px 0 6px; }
 .concept.focus { outline:2px solid var(--fg); outline-offset:2px; }
 .concept-head { font:0.75rem ui-monospace,Menlo,monospace; display:flex; gap:14px; align-items:baseline; }
 .concept-head .concept-label { font-weight:700; font-size:0.75rem; color:var(--fg); }
@@ -72,6 +73,22 @@ const ConceptCards = (() => {
     return new Set(list.filter(c => Math.abs(c.value) > cutoff));
   }
 
+  /* Per sign, the fewest concepts, largest first, whose |values| reach `share` of that sign's total. */
+  function holdingShare(list, share) {
+    const kept = new Set();
+    for (const sign of [1, -1]) {
+      const side = list.filter(c => sign * c.value > 0).sort((x, y) => sign * (y.value - x.value));
+      const total = side.reduce((sum, c) => sum + Math.abs(c.value), 0);
+      let held = 0;
+      for (const c of side) {
+        if (held >= share * total) break;
+        kept.add(c);
+        held += Math.abs(c.value);
+      }
+    }
+    return kept;
+  }
+
   /* `view.tokens[i]` is position `view.offset + i`, and the last one is the current position.
      A concept's `outside` is the part of its value from positions before the shown tokens. */
   /* Brightness dims everything but the label, so the concept's name stays readable on a faint card. */
@@ -122,12 +139,14 @@ const ConceptCards = (() => {
 
   /* Appends the stage labels and the cards to `box`. Slots never move: W_E first, then heads in index order.
      Cards below the elbow of |contributions| are blacked out with `blackout`, or shrunk to one line of label and tokens
-     with `collapse`, which keeps the slot order but not the height. `focus` outlines the card with that label. */
-  function stack(box, concepts, view, scale, { blackout = true, collapse = false, focus = null } = {}) {
+     with `collapse`, which keeps the slot order but not the height. `focus` outlines the card with that label.
+     With `share`, only the cards holding that share of each sign's sum are drawn, and the rest are listed in one line. */
+  function stack(box, concepts, view, scale, { blackout = true, collapse = false, focus = null, share = null } = {}) {
     const aboveElbow = keptConcepts(concepts);
     const kept = blackout && !collapse ? aboveElbow : new Set(concepts);
+    const drawn = share === null ? new Set(concepts) : holdingShare(concepts, share);
     let stage = null;
-    for (const concept of concepts) {
+    for (const concept of concepts.filter(c => drawn.has(c))) {
       if (concept.stage !== stage) {
         stage = concept.stage;
         const label = document.createElement("div");
@@ -137,6 +156,13 @@ const ConceptCards = (() => {
       }
       box.appendChild(card(concept, view, scale, kept.has(concept), concept.label === focus,
         collapse && !aboveElbow.has(concept)));
+    }
+    const dropped = concepts.filter(c => !drawn.has(c));
+    if (dropped.length) {
+      const line = document.createElement("div");
+      line.className = "concept-dropped";
+      line.textContent = "not shown: " + dropped.map(c => `${c.label} ${fmt(c.value)}`).join(", ");
+      box.appendChild(line);
     }
   }
 
