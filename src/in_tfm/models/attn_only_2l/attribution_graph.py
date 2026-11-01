@@ -218,7 +218,10 @@ class GraphNode(BaseModel):
     value: float
     relevance: float
     kept_share: float
-    """The share of this node's relevance its kept parents carry. 1 for a leaf."""
+    """The share of this node's relevance its kept parents carry.
+    - 1 for an embedding leaf.
+    - 0 for a dead end, whose parent pieces all fell under the floor.
+    """
 
 
 class GraphEdge(BaseModel):
@@ -256,10 +259,16 @@ def build_graph(state: OvState, root: HeadBlock, rule: PruneRule) -> Attribution
     return AttributionGraph(
         root=root,
         nodes=[GraphNode(node=n, stage=stage(n), value=value(state, n), relevance=r,
-                         kept_share=carried[n] / r if n in carried else 1.0)
+                         kept_share=_kept_share(n, r, carried))
                for n, r in relevance.items()],
         edges=[GraphEdge(child=c, parent=p, relevance=r) for (c, p), r in edges.items()],
     )
+
+
+def _kept_share(node: Coordinate, node_relevance: float, carried: dict[Coordinate, float]) -> float:
+    if node in carried:
+        return carried[node] / node_relevance
+    return 1.0 if stage(node) == LAST_STAGE else 0.0
 
 
 def _drop_below_floor(relevance: dict, edges: dict, current: int, floor: float) -> list:

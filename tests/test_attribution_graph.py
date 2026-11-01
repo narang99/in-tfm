@@ -41,3 +41,11 @@ def test_without_pruning_the_leaves_hold_the_root(state):
     graph = build_graph(state, root, PruneRule(share=1.0, max_parents=10_000, floor=0.0))
     leaves = sum(n.relevance for n in graph.nodes if isinstance(n.node, Embed))
     assert leaves == pytest.approx(value(state, root), abs=1e-4)
+
+
+def test_a_dead_end_keeps_no_share(state):
+    root = HeadBlock(layer=1, pos=7, neuron=3, head=2)
+    graph = build_graph(state, root, PruneRule(share=0.8, max_parents=5, floor=0.05))
+    children = {e.child for e in graph.edges}
+    inner = [n for n in graph.nodes if not isinstance(n.node, Embed)]
+    assert all((n.kept_share == 0.0) == (n.node not in children) for n in inner)

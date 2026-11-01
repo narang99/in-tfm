@@ -8,6 +8,7 @@ body { max-width:none; }
 #ag-svg .stage-name { fill:var(--muted); font-size:11px; font-weight:600; }
 #ag-svg .node { cursor:pointer; stroke:var(--line); }
 #ag-svg .node.on { stroke:var(--fg); stroke-width:2; }
+#ag-svg .node.dead-end { stroke:var(--fg); stroke-dasharray:3 3; }
 #ag-svg .edge { fill:none; stroke-linecap:round; }
 #ag-svg .dim { opacity:0.05 !important; }
 .ag-card { font:0.75rem ui-monospace,Menlo,monospace; background:var(--bg); color:var(--fg); border:1px solid var(--line);
@@ -23,6 +24,7 @@ body { max-width:none; }
 <h1>Layer 1 neuron {{ neuron }}, head {{ head }}: {{ title }}</h1>
 <p class="ov-meta">Columns run from the root on the left to the embedding on the right. Every edge is an exact OV split with attention held fixed, and relevance flows to parents in proportion to their parts. Each node keeps the fewest parents holding {{ "%.0f"|format(100 * prune.share) }}% of each sign, at most {{ prune.max_parents }}, and nodes or edges under {{ "%.0f"|format(100 * prune.floor) }}% of the root are dropped. A column header shows its total relevance as a share of the root.</p>
 <p class="ov-meta">Green adds and red takes away. A node's fill and an edge's width follow |relevance| over the root's. Hover a node for its own AttnLRP on the tokens, which goes through QK too. Click to pin it below.</p>
+<p class="ov-meta">A dashed outline marks a dead end. The node itself is above the floor, but every piece it splits into is under it, so no edge survives. This is common at layer 0 o_proj, whose relevance spreads over 256 head dims.</p>
 <div class="ag-scroll"><svg id="ag-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
 <div id="ag-pinned"></div>
 <div id="ag-tip" class="ag-card"></div>
@@ -42,13 +44,16 @@ body { max-width:none; }
     return node;
   }
 
+  const isDeadEnd = n => n.stage < data.stages.length - 1 && n.keptShare === 0;
+
   function fillCard(card, i) {
     const n = data.nodes[i];
     card.innerHTML = "";
     card.style.setProperty("--c", signColor(n.relevance));
     const head = document.createElement("pre");
     head.textContent = `${n.label}\nvalue ${fmt(n.value, 4)}  ·  relevance ${fmt(n.relevance, 4)} (${pct(n.relevance / data.root)} of root)` +
-      (n.stage < data.stages.length - 1 ? `\nkept parents carry ${pct(n.keptShare)} of it` : "") +
+      (isDeadEnd(n) ? `\ndead end: every parent piece is under the floor` :
+       n.stage < data.stages.length - 1 ? `\nkept parents carry ${pct(n.keptShare)} of it` : "") +
       `\nAttnLRP of this node on the tokens:`;
     card.appendChild(head);
     const vmax = Math.max(...n.lrp.map(Math.abs), 1e-9);
@@ -113,7 +118,7 @@ body { max-width:none; }
 
   data.nodes.forEach((n, i) => {
     const { x, y } = place[i];
-    const rect = el("rect", { x, y, width: nodeWidth, height: nodeHeight, rx: 4, class: "node",
+    const rect = el("rect", { x, y, width: nodeWidth, height: nodeHeight, rx: 4, class: isDeadEnd(n) ? "node dead-end" : "node",
       fill: signColor(n.relevance), "fill-opacity": 0.12 + 0.75 * Math.min(1, Math.abs(n.relevance) / root) });
     el("text", { x: x + 5, y: y + 14 }).textContent = n.label.length > 30 ? n.label.slice(0, 29) + "…" : n.label;
     const show = ev => {
