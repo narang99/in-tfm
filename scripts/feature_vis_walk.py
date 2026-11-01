@@ -174,11 +174,17 @@ def place_query(ctx: Context, name: str, pixels: torch.Tensor, out_dir: Path) ->
 
 
 class ClimbConfig(BaseModel):
-    steps: int = 512
-    lr: float = 0.01
+    steps: int = 1024
+    lr: float = 0.002
+    """Small, so the path through the hits' activation range is sampled densely."""
     tv_weight: float = 1e4
     seeds: int = 4
-    snapshot_every: int = 4
+    snapshot_every: int = 2
+    stop_activation: float = 0.0
+    """Each seed's path is cut where it first reaches this. 0 means the median activation of the cat cores' hits.
+
+    - Past the hits' range, the unnormalised distance places every snapshot by its size alone.
+      - A first run went to about 6,000 against a hit range of about 200 to 1,000, and every snapshot landed on the same few large hits."""
 
 
 def climb(ctx: Context, start: torch.Tensor, row: int, col: int, config: ClimbConfig) -> tuple[torch.Tensor, list[torch.Tensor]]:
@@ -192,7 +198,7 @@ def climb(ctx: Context, start: torch.Tensor, row: int, col: int, config: ClimbCo
     images = start.repeat(config.seeds, 1, 1, 1).clone().requires_grad_(True)
     rngs = [random.Random(seed) for seed in range(config.seeds)]
     optimizer = torch.optim.Adam([images], lr=config.lr)
-    snapshots = [images.detach().clone()]
+    snapshots = [images.detach().to("cpu", copy=True)]
     for step in range(1, config.steps + 1):
         theta = seed_thetas(rngs, height, width, True, start.device)
         grid = ctx.reader(warp(images, theta, fill=BACKGROUND_GREY))
@@ -206,7 +212,7 @@ def climb(ctx: Context, start: torch.Tensor, row: int, col: int, config: ClimbCo
         with torch.no_grad():
             images.clamp_(0.0, 1.0)
         if step % config.snapshot_every == 0:
-            snapshots.append(images.detach().clone())
+            snapshots.append(images.detach().to("cpu", copy=True))
         if step % 128 == 0:
             print(f"  step {step}/{config.steps} median activation {activation.median().item():.1f}", flush=True)
     return images.detach(), snapshots
@@ -310,21 +316,34 @@ class StartImage(BaseModel, arbitrary_types_allowed=True):
     col: int
 
 
+def cut_at(activation: np.ndarray, stop: float) -> int:
+    """The first snapshot at or above `stop`, or the last one when none reaches it."""
+    reached = np.flatnonzero(activation >= stop)
+    return int(reached[0]) if len(reached) else len(activation) - 1
+
+
 def run_climb(ctx: Context, start: StartImage, config: ClimbConfig, out_dir: Path) -> list[dict]:
-    print(f"climb from {start.name} at cell ({start.row}, {start.col})", flush=True)
-    final, snapshots = climb(ctx, start.pixels, start.row, start.col, config)
-    stacked = torch.stack(snapshots)  # (n_snapshots, seeds, 3, h, w)
+    print(f"climb from {start.name} at cell ({start.row}, {start.col}), stop at {config.stop_activation:.0f}", flush=True)
+    _, snapshots = climb(ctx, start.pixels, start.row, start.col, config)
+    stacked = torch.stack(snapshots)  # (n_snapshots, seeds, 3, h, w), on the CPU
     runs: list[Trajectory] = []
+    cut_strips: list[torch.Tensor] = []
     for seed in range(config.seeds):
-        optimised = vectors_at(ctx.reader, stacked[:, seed], start.row, start.col)
+        full = vectors_at(ctx.reader, stacked[:, seed].to(ctx.device), start.row, start.col)
+        end = cut_at(full.sum(axis=1) + float(ctx.reader.bias), config.stop_activation)
+        optimised = full[: end + 1]
+        final = stacked[end, seed : seed + 1].to(ctx.device)
         runs.append(trajectory(ctx, "optimised", seed, optimised))
-        alpha = torch.linspace(0, 1, len(snapshots), device=ctx.device)[:, None, None, None]
-        blended = (1 - alpha) * start.pixels + alpha * final[seed : seed + 1]
+        alpha = torch.linspace(0, 1, end + 1, device=ctx.device)[:, None, None, None]
+        blended = (1 - alpha) * start.pixels + alpha * final
         runs.append(trajectory(ctx, "pixel_lerp", seed, vectors_at(ctx.reader, blended, start.row, start.col)))
-        runs.append(trajectory(ctx, "hadamard_lerp", seed, lerp_vectors(optimised[0], optimised[-1], len(snapshots))))
-        to_image(final[seed]).save(out_dir / f"{start.name}_final_seed{seed}.png")
+        runs.append(trajectory(ctx, "hadamard_lerp", seed, lerp_vectors(optimised[0], optimised[-1], end + 1)))
+        to_image(final[0]).save(out_dir / f"{start.name}_final_seed{seed}.png")
+        cut_strips.append(stacked[: end + 1, seed])
+        print(f"  seed {seed}: cut at snapshot {end} (step {end * config.snapshot_every})", flush=True)
     to_image(start.pixels[0]).save(out_dir / f"{start.name}_start.png")
-    climb_strip(ctx, [s for s in stacked], runs[0], start.row, start.col).save(out_dir / f"{start.name}_strip_seed0.png")
+    seed0 = [snapshot[None] for snapshot in cut_strips[0]]
+    climb_strip(ctx, seed0, runs[0], start.row, start.col).save(out_dir / f"{start.name}_strip_seed0.png")
     plot_climb(runs, ctx.graph.space.threshold, f"climb from {start.name}", out_dir / f"{start.name}_curves.png")
     (out_dir / f"{start.name}_trajectories.json").write_text(json.dumps([r.model_dump() for r in runs]))
     return [summarise(r, ctx.graph.space.threshold) | {"start": start.name} for r in runs]
@@ -395,6 +414,10 @@ def main() -> None:
     climb_dir = args.out / "climb"
     climb_dir.mkdir(parents=True, exist_ok=True)
     climb_config = ClimbConfig(**{field: getattr(args, f"climb_{field}") for field in ClimbConfig.model_fields})
+    if climb_config.stop_activation <= 0:
+        cat_hits = ctx.graph.first_hit_of[ctx.graph.core_points(ctx.cat_trees)]
+        climb_config.stop_activation = float(np.median(space.activation[cat_hits]))
+    print(f"hit activations {space.activation.min():.0f} to {space.activation.max():.0f}, climbs stop at {climb_config.stop_activation:.0f}")
     grey = StartImage(name="grey", pixels=torch.full((1, 3, 224, 224), BACKGROUND_GREY, device=device), row=7, col=7)
     starts = [grey] + background_starts(ctx, args.background_tree, args.background_starts)
     summaries = [row for start in starts for row in run_climb(ctx, start, climb_config, climb_dir)]
