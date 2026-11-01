@@ -14,20 +14,27 @@ Output:
 import argparse
 import json
 from pathlib import Path
+from typing import Literal, get_args, get_origin
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
 
 from in_tfm.device import default_device
 from in_tfm.sparse_feature_vis import (
     ChannelReader,
+    HadamardObjective,
+    HadamardReader,
+    MapObjective,
+    PeakHadamard,
     SparseTarget,
     SparseVisConfig,
     build_target,
     channel_maps,
     load_lucent_inceptionv1,
     optimise_all_seeds,
+    peak_hadamard,
 )
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
@@ -114,7 +121,14 @@ def process_image(read_channel: ChannelReader, image_path: Path, config: SparseV
         return summary
 
     target = sparse_target.target
-    images = optimise_all_seeds(read_channel, reference, target, config)
+    if config.objective == "hadamard":
+        read_hadamard = HadamardReader(read_channel.model, config.hadamard_conv, read_channel.channel)
+        peak = peak_hadamard(read_hadamard, reference)
+        summary["hadamard_peak"] = {"row": peak.row, "col": peak.col, "activation": peak.activation}
+        objective = HadamardObjective(read_hadamard, peak, config.hadamard_weight)
+    else:
+        objective = MapObjective(read_channel, target)
+    images = optimise_all_seeds(objective, reference, config)
     maps = channel_maps(read_channel, images, config.seed_batch)
     save_seeds(images, maps, target[0, 0].cpu().numpy(), work_dir / "seeds")
 
@@ -132,8 +146,32 @@ def process_image(read_channel: ChannelReader, image_path: Path, config: SparseV
         "exact_zero_frac": (mean_image.amax(0) == 0).float().mean().item(),
         "mean_abs": mean_image.abs().mean().item(),
     }
+    if config.objective == "hadamard":
+        add_hadamard_rows(summary, read_hadamard, peak, images, mean_image, config.seed_batch)
     (work_dir / "summary.json").write_text(json.dumps(summary, indent=1))
     return summary
+
+
+def hadamard_fit(read_hadamard: HadamardReader, peak: PeakHadamard, images: torch.Tensor, batch_size: int) -> list[dict]:
+    rows = []
+    with torch.no_grad():
+        for start in range(0, len(images), batch_size):
+            vectors = read_hadamard(images[start : start + batch_size])[:, :, peak.row, peak.col]
+            for vector in vectors:
+                rows.append({
+                    "hadamard_mse": ((vector - peak.target) ** 2).mean().item(),
+                    "hadamard_cosine": F.cosine_similarity(vector, peak.target, dim=0).item(),
+                    "peak_activation": (vector.sum() + read_hadamard.bias).item(),
+                })
+    return rows
+
+
+def add_hadamard_rows(
+    summary: dict, read_hadamard: HadamardReader, peak: PeakHadamard, images: torch.Tensor, mean_image: torch.Tensor, batch_size: int
+) -> None:
+    for seed_row, fit_row in zip(summary["seeds"], hadamard_fit(read_hadamard, peak, images, batch_size)):
+        seed_row.update(fit_row)
+    summary["mean_image"].update(hadamard_fit(read_hadamard, peak, mean_image[None], 1)[0])
 
 
 def find_images(inputs: list[Path]) -> list[Path]:
@@ -166,7 +204,11 @@ def parse_args() -> tuple[argparse.Namespace, SparseVisConfig]:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--device", default=default_device())
     for field, info in SparseVisConfig.model_fields.items():
-        parser.add_argument(f"--{field.replace('_', '-')}", type=info.annotation, default=info.default)
+        flag = f"--{field.replace('_', '-')}"
+        if get_origin(info.annotation) is Literal:
+            parser.add_argument(flag, choices=get_args(info.annotation), default=info.default)
+        else:
+            parser.add_argument(flag, type=info.annotation, default=info.default)
     args = parser.parse_args()
     config = SparseVisConfig(**{field: getattr(args, field) for field in SparseVisConfig.model_fields})
     return args, config
