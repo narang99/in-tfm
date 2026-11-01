@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from in_tfm.device import default_device
 from in_tfm.hit_space import HitGraph, HitSpace
+from in_tfm.weighted_jaccard.vectorized import weighted_jaccard_block
 from in_tfm.sparse_feature_vis import (
     BACKGROUND_GREY,
     HadamardReader,
@@ -239,13 +240,17 @@ class Trajectory(BaseModel):
     geodesic_to_snout: list[float]
     hops: list[int]
     """Edges between consecutive different nearest hits, in the order the trajectory meets them."""
+    direction_nearest_tree: list[int]
+    direction_distance: list[float]
 
 
 def trajectory(ctx: Context, kind: str, seed: int, vectors: np.ndarray) -> Trajectory:
     nearest, distance = ctx.graph.nearest(vectors)
     changes = np.flatnonzero(np.diff(nearest) != 0)
     hops = ctx.graph.hops_between(nearest[changes], nearest[changes + 1])
+    by_direction, direction_distance = ctx.graph.nearest_by_direction(vectors)
     return Trajectory(
+        direction_nearest_tree=ctx.graph.trees.tree[by_direction].tolist(), direction_distance=direction_distance.tolist(),
         kind=kind, seed=seed, activation=(vectors.sum(axis=1) + float(ctx.reader.bias)).tolist(),
         nearest=nearest.tolist(), nearest_tree=ctx.graph.trees.tree[nearest].tolist(),
         distance_over_tau=(distance / ctx.graph.tau).tolist(),
@@ -279,6 +284,9 @@ def summarise(run: Trajectory, threshold: float) -> dict:
         "share_of_changes_to_a_graph_neighbour": float((hops == 1).mean()) if len(hops) else None,
         "final_geodesic_to_cat": run.geodesic_to_cat[-1], "final_geodesic_to_snout": run.geodesic_to_snout[-1],
         "trees_visited": list(dict.fromkeys(run.nearest_tree)),
+        "direction_trees_visited": list(dict.fromkeys(run.direction_nearest_tree)),
+        "final_direction_tree": run.direction_nearest_tree[-1],
+        "final_direction_distance": run.direction_distance[-1],
     }
 
 
@@ -356,7 +364,22 @@ def run_climb(ctx: Context, start: StartImage, config: ClimbConfig, out_dir: Pat
     climb_strip(ctx, seed0, runs[0], start.row, start.col).save(out_dir / f"{start.name}_strip_seed0.png")
     plot_climb(runs, ctx.graph.space.threshold, f"climb from {start.name}", out_dir / f"{start.name}_curves.png")
     (out_dir / f"{start.name}_trajectories.json").write_text(json.dumps([r.model_dump() for r in runs]))
-    return [summarise(r, ctx.graph.space.threshold) | {"start": start.name} for r in runs]
+    cat = set(ctx.cat_trees)
+    return [
+        summarise(r, ctx.graph.space.threshold)
+        | {"start": start.name, "share_direction_in_cat_trees": float(np.mean([t in cat for t in r.direction_nearest_tree]))}
+        for r in runs
+    ]
+
+
+def direction_reference(ctx: Context, sample: int = 500) -> float:
+    """The median distance from a hit to its nearest other hit, by direction. A snapshot's direction distance reads against it."""
+    graph = ctx.graph
+    hits = np.random.default_rng(0).choice(len(graph.space.activation), size=min(sample, len(graph.space.activation)), replace=False)
+    graph.nearest_by_direction(graph.space.hadamard[hits[:1]])
+    distances = weighted_jaccard_block(graph.direction_rows[graph.forest.distinct_of_hit[hits]], graph.direction_rows)
+    distances[np.arange(len(hits)), graph.forest.distinct_of_hit[hits]] = np.inf
+    return float(np.median(distances.min(axis=1)))
 
 
 def background_starts(ctx: Context, tree: int, count: int) -> list[StartImage]:
@@ -432,7 +455,9 @@ def main() -> None:
     starts = [grey] + background_starts(ctx, args.background_tree, args.background_starts)
     summaries = [row for start in starts for row in run_climb(ctx, start, climb_config, climb_dir)]
     (climb_dir / "summary.json").write_text(json.dumps(summaries, indent=1))
-    (args.out / "run.json").write_text(json.dumps({"args": {k: str(v) for k, v in vars(args).items()}, "tau": ctx.graph.tau}, indent=1))
+    reference = {"tau": ctx.graph.tau, "direction_nearest_median": direction_reference(ctx), "stop_activation": climb_config.stop_activation}
+    print(f"direction reference: median nearest-hit distance {reference['direction_nearest_median']:.4f}", flush=True)
+    (args.out / "run.json").write_text(json.dumps({"args": {k: str(v) for k, v in vars(args).items()}} | reference, indent=1))
     print("done", flush=True)
 
 

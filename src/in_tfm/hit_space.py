@@ -97,6 +97,17 @@ class HitGraph:
         nearest = distances.argmin(axis=1)
         return nearest, distances[np.arange(len(nearest)), nearest]
 
+    def nearest_by_direction(self, vectors: Float[np.ndarray, "n dim"]) -> tuple[Int[np.ndarray, "n"], Float[np.ndarray, "n"]]:
+        """The nearest point when every row is L1-normalised first, so size no longer counts.
+
+        - The forest's own distance counts size, so a vector far larger than every hit lands on the largest hits.
+          - Comparing directions tells whether its make-up still resembles a tree's, whatever its size."""
+        if not hasattr(self, "direction_rows"):
+            self.direction_rows = comparable_rows(self.space.hadamard[self.first_hit_of].astype(np.float64), "weighted_jaccard", True)
+        distances = weighted_jaccard_block(comparable_rows(vectors.astype(np.float64), "weighted_jaccard", True), self.direction_rows)
+        nearest = distances.argmin(axis=1)
+        return nearest, distances[np.arange(len(nearest)), nearest]
+
     def ascent(self, point: int) -> list[int]:
         """Parent links from `point` up to its tree's root, the forest's own path uphill in density."""
         root = self.trees.roots[self.trees.tree[point]]
