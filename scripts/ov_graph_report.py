@@ -28,6 +28,8 @@ class OvGraphReportConfig(BaseSettings):
     checkpoint_dir: Path = Path("checkpoints/tiny_attn_only_2l_v4")
     text: str = "Once upon a time, there was a little girl named Lily. She"
     layer: int = 0
+    neuron: int | None = None
+    """The residual dim the page opens on. By default, the largest |value| at the last position."""
     out: Path = Path("reports/ov_graph/report.html")
 
 
@@ -50,6 +52,7 @@ def main() -> None:
         "valueScores": rounded(flows.value_scores),
         "outputs": rounded(flows.outputs),
         "embeds": rounded(model.model.embed_tokens.weight[input_ids[0]].detach()),
+        "neuron": config.neuron,
     }
     body = render_template(
         "ov_graph.html",

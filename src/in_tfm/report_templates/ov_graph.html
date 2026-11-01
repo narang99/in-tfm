@@ -30,7 +30,7 @@ body { max-width:1100px; }
   const data = {{ graph_data|tojson }};
   const { fmt, signColor } = ConceptCards;
   const nHeads = data.pattern.length, seq = data.tokens.length;
-  const state = { position: seq - 1, neuron: null };
+  const state = { position: seq - 1, neuron: data.neuron };
   const tokLabel = s => JSON.stringify(data.tokens[s]) + " @" + s;
   const residual = (t, n) => data.embeds[t][n] + data.outputs[t][n];
 
@@ -86,7 +86,7 @@ body { max-width:1100px; }
     const t = state.position;
     const values = data.embeds[t].map((_, n) => residual(t, n));
     const order = values.map((v, n) => n).sort((a, b) => Math.abs(values[b]) - Math.abs(values[a]));
-    if (pickTop || state.neuron === null) state.neuron = order[0];
+    if ((pickTop && data.neuron === null) || state.neuron === null) state.neuron = order[0];
     const box = document.getElementById("ov-neurons");
     box.innerHTML = "";
     for (const n of order) {
@@ -101,6 +101,6 @@ body { max-width:1100px; }
     draw();
   }
 
-  drawNeurons(true);
+  drawNeurons(false);
 })();
 </script>
