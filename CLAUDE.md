@@ -20,6 +20,17 @@ These should be strictly adhered to in both code, documentation, readmes, PR, co
 - Don't use matplotlib for non-interactive work (batch image saving, report generation, etc.) - it's slow for this. Prefer compositing with PIL directly.
   - Reserve matplotlib for interactive/exploratory plotting (notebook `show_*` helpers).
 
+# Relevance heatmaps
+
+- Use the diverging colormaps in `src/in_tfm/colormaps.py` for any signed relevance or Hadamard heatmap.
+  - Green is positive and red is negative.
+  - Grids and images: `rd_wht_gn` in light mode, `rd_bk_gn` in dark mode, as `viz.py` does.
+  - Running text: `token_cmap_light` and `token_cmap_dark`, centred on the page colour.
+  - Scale each map symmetrically around 0, so 0 always maps to the neutral colour.
+- HTML reports support dark mode.
+  - Ship both light and dark colours on each element as CSS variables, and let the stylesheet pick.
+    - `presenters/text/colored_tokens.diverging_colors` builds both.
+
 # Running experiments on Colab
 
 Measured on a T4, 2026-09-20. Details and timings in `COLAB_PLAN.md`.

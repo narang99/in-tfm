@@ -1,0 +1,46 @@
+{% macro css_vars(colors) -%}
+--bg-l:{{ colors.bg_light }};--fg-l:{{ colors.fg_light }};--bg-d:{{ colors.bg_dark }};--fg-d:{{ colors.fg_dark }}
+{%- endmacro %}
+{% macro token_row(tokens) -%}
+<div class="tokens">{% for tok in tokens %}<span class="tok{% if tok.current %} tok-firing{% endif %}" title="{{ '%+.4f'|format(tok.relevance) }}" style="{{ css_vars(tok.colors) }}">{{ tok.text }}</span>{% endfor %}</div>
+{%- endmacro %}
+{% include "theme_toggle.html" %}
+<style>
+.ov-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(520px, 1fr)); gap:14px; }
+.ov-panel { border:1px solid var(--line); border-radius:4px; padding:10px; background:var(--panel); }
+.ov-hadamard { display:grid; grid-template-columns:36px repeat(32, 1fr); gap:1px; margin:8px 0; }
+.ov-cell { height:12px; background:var(--bg-l); }
+@media (prefers-color-scheme: dark) { .ov-cell { background:var(--bg-d); } }
+:root[data-theme="light"] .ov-cell { background:var(--bg-l); color:var(--fg-l); }
+:root[data-theme="dark"] .ov-cell { background:var(--bg-d); color:var(--fg-d); }
+.ov-label { font-size:0.6rem; color:var(--muted); line-height:12px; }
+.ov-meta { font-size:0.75rem; color:var(--muted); }
+</style>
+<h1>Predicted {{ "%r"|format(predicted) }}, logit {{ "%.3f"|format(logit) }}</h1>
+<p class="ov-meta">Text: {{ text }}</p>
+<p class="ov-meta">AttnLRP of the logit on the input tokens. Not on the tokens: {{ "%+.3f"|format(token_gap) }}. This is position embeddings, biases and the softmax rule's loss.</p>
+{{ token_row(input_tokens) }}
+<p class="ov-meta">AttnLRP gives half of each attention output's relevance to the values and half to the attention weights. So v_proj holds half of o_proj. The QK half is not shown yet.</p>
+<p class="ov-meta">Green adds and red takes away. Each Hadamard grid and token row is scaled to its own largest |value|. Hover for values.</p>
+
+{% for group in groups %}
+<details{% if group.panels %} open{% endif %}>
+<summary><h2 style="display:inline">{{ group.title }}, {{ group.sign }}</h2>
+<span class="ov-meta">{{ group.n_units }} units above the elbow at {{ "%.4f"|format(group.cutoff) }}, holding {{ "%.0f"|format(100 * group.total_share) }}% of this sign's relevance</span></summary>
+<div class="ov-grid">
+{% for panel in group.panels %}
+<div class="ov-panel">
+<div class="hit-tag">neuron {{ panel.unit.neuron }}{% if panel.unit.projection == "v" %} (head {{ panel.head }}, dim {{ panel.unit.neuron % 32 }}){% endif %} &middot; position {{ panel.unit.position }} {{ "%r"|format(panel.tokens[panel.unit.position].text) }}</div>
+<div class="ov-meta">logit relevance {{ "%+.4f"|format(panel.logit_relevance) }} &middot; activation {{ "%+.3f"|format(panel.activation) }} &middot; bias {{ "%+.3f"|format(panel.bias) }}</div>
+<div class="ov-hadamard">
+{% for row in panel.rows %}
+<span class="ov-label">{{ panel.row_labels[loop.index0] }}</span>{% for cell in row %}<span class="ov-cell" title="{{ '%+.4f'|format(cell.value) }}" style="{{ css_vars(cell.colors) }}"></span>{% endfor %}
+{% endfor %}
+</div>
+<div class="ov-meta">Input relevance of this unit. Not on the tokens: {{ "%+.3f"|format(panel.token_gap) }}.</div>
+{{ token_row(panel.tokens) }}
+</div>
+{% endfor %}
+</div>
+</details>
+{% endfor %}

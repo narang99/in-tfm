@@ -4,7 +4,9 @@ from .model import (
     AttnOnlyForCausalLM,
     AttnOnlyModel,
     attention_patterns,
+    ValueSplit,
     load_attn_only_2l,
+    value_split,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "AttnOnlyForCausalLM",
     "AttnOnlyModel",
     "attention_patterns",
+    "ValueSplit",
     "load_attn_only_2l",
+    "value_split",
 ]

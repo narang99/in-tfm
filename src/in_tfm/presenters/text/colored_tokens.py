@@ -71,10 +71,14 @@ def token_views(
 
 
 def _token_colors(value: float, vmax: float) -> TokenColors:
+    return diverging_colors(value, vmax, token_cmap_light, token_cmap_dark)
+
+
+def diverging_colors(value: float, vmax: float, light_cmap: Colormap, dark_cmap: Colormap) -> TokenColors:
     """Light and dark colors both, since a media query cannot reach into an inline `background`.
     The template ships both on the element as custom properties and the stylesheet chooses."""
-    light = _hex(token_cmap_light, value, vmax)
-    dark = _hex(token_cmap_dark, value, vmax)
+    light = _hex(light_cmap, value, vmax)
+    dark = _hex(dark_cmap, value, vmax)
     return TokenColors(
         bg_light=light, fg_light=_readable_fg(light), bg_dark=dark, fg_dark=_readable_fg(dark)
     )

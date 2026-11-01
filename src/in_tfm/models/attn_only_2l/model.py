@@ -23,6 +23,7 @@ from pathlib import Path
 import torch
 from huggingface_hub import hf_hub_download
 from jaxtyping import Bool, Float, Int
+from pydantic import BaseModel
 from torch import nn
 from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerFast
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutput
@@ -257,12 +258,57 @@ def attention_patterns(
     applied.
     """
     attn = model.model.layers[layer_idx].self_attn
+    captured = _projection_outputs(model, input_ids, layer_idx, ("q", "k"))
+    query, key = (attn._to_heads(captured[name]) for name in ("q", "k"))
+    return _softmax_pattern(attn, query, key)
+
+
+class ValueSplit(BaseModel):
+    """`parts[b, t, s]` is source token s's part of one neuron's head block value at position t."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    pattern: Float[torch.Tensor, "batch seq seq"]
+    parts: Float[torch.Tensor, "batch seq seq"]
+    values: Float[torch.Tensor, "batch seq head_dim"]
+    """The head's value vectors, so a source's full part A[t, s] (v_s * w) can be rebuilt where it is needed."""
+
+
+def value_split(
+    model: AttnOnlyForCausalLM,
+    input_ids: Int[torch.Tensor, "batch seq"],
+    layer_idx: int,
+    head: int,
+    block_weights: Float[torch.Tensor, "head_dim"],
+) -> ValueSplit:
+    """The block value is z_t . w, with z_t = sum_s A[t, s] v_s, so source s adds A[t, s] (v_s . w).
+
+    - v_s . w is the sum of the Hadamard product v_s * w, so each source needs one number.
+    - With the attention held fixed the parts add up to the block value exactly. This is the
+      LRP-0 rule on the A @ V product, and it needs no rule choice.
+    - The v_proj bias sits inside each v_s, and each attention row sums to 1, so it is counted too.
+    """
+    attn = model.model.layers[layer_idx].self_attn
+    captured = _projection_outputs(model, input_ids, layer_idx, ("q", "k", "v"))
+    query, key, value = (attn._to_heads(captured[name])[:, head] for name in ("q", "k", "v"))
+    pattern = _softmax_pattern(attn, query, key)
+    value_score = value @ block_weights.to(value.dtype)
+    return ValueSplit(pattern=pattern, parts=pattern * value_score[:, None, :], values=value)
+
+
+def _projection_outputs(
+    model: AttnOnlyForCausalLM,
+    input_ids: Int[torch.Tensor, "batch seq"],
+    layer_idx: int,
+    names: tuple[str, ...],
+) -> dict[str, Float[torch.Tensor, "batch seq inner"]]:
+    attn = model.model.layers[layer_idx].self_attn
     captured: dict[str, torch.Tensor] = {}
     handles = [
-        proj.register_forward_hook(
+        getattr(attn, f"{name}_proj").register_forward_hook(
             lambda _module, _inp, out, name=name: captured.__setitem__(name, out)
         )
-        for name, proj in (("q", attn.q_proj), ("k", attn.k_proj))
+        for name in names
     ]
     try:
         with torch.no_grad():
@@ -270,10 +316,16 @@ def attention_patterns(
     finally:
         for handle in handles:
             handle.remove()
+    return captured
 
-    query, key = (attn._to_heads(captured[name]) for name in ("q", "k"))
-    scores = torch.matmul(query, key.transpose(2, 3)) * attn.scaling
-    mask = causal_additive_mask(None, input_ids.shape[1], scores)
+
+def _softmax_pattern(
+    attn: AttnOnlyAttention,
+    query: Float[torch.Tensor, "*batch seq head_dim"],
+    key: Float[torch.Tensor, "*batch seq head_dim"],
+) -> Float[torch.Tensor, "*batch seq seq"]:
+    scores = torch.matmul(query, key.transpose(-1, -2)) * attn.scaling
+    mask = causal_additive_mask(None, query.shape[-2], scores)[0, 0]
     return (scores + mask).softmax(dim=-1)
 
 
