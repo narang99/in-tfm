@@ -39,7 +39,7 @@ class Layer1NeuronConfig(BaseSettings):
     text: str = "Once upon a time, there was a little girl named Lily. She"
     neuron: int | None = None
     """A layer 1 o_proj neuron. By default, the one with the largest |value| at the last position."""
-    share: float = 0.3
+    share: float = 0.7
     out: Path = Path("reports/layer1_neuron/report.html")
 
 
