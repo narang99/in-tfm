@@ -18,9 +18,9 @@ body { max-width:1500px; }
 <h1>Layer 1 neuron {{ neuron }}, head {{ head }}: attribution graphs</h1>
 <p class="ov-meta">The query is the last position of: {{ text }}</p>
 <p class="ov-meta">Neighbours are the {{ summaries|length - 1 }} positions, out of {{ n_positions }} in training windows, whose Hadamard product for this head block is nearest to the query's in euclidean distance, one per window. The strip is the 32 terms z[h, j] W<sub>O</sub>[n, hj], on one colour scale for all rows. Green adds and red takes away.</p>
-<p class="ov-meta">Pruning: the fewest parents holding {{ "%.0f"|format(100 * prune.share) }}% of each sign, at most {{ prune.max_parents }}, and a floor of {{ "%.0f"|format(100 * prune.floor) }}% of the root. The stage shares say how much of the root each column still holds after pruning.</p>
+<p class="ov-meta">Pruning: each node keeps its largest positive parents until they hold {{ "%.0f"|format(100 * prune.share) }}% of its own positive sum.</p>
 <table class="ag-table">
-<tr><th>example</th><th>distance</th><th>root</th><th>Hadamard terms</th><th>last tokens</th><th>stage shares of root</th><th>top layer 1 value neurons</th><th>top leaf tokens (offset from root)</th></tr>
+<tr><th>example</th><th>distance</th><th>root</th><th>Hadamard terms</th><th>last tokens</th><th>nodes per stage</th><th>top layer 1 value neurons</th><th>top leaf tokens (offset from root)</th></tr>
 {% for s in summaries %}
 <tr>
 <td><a href="{{ s.name }}.html">{{ s.title }}</a><br><span class="ov-meta">{{ s.n_nodes }} nodes</span></td>
@@ -28,7 +28,7 @@ body { max-width:1500px; }
 <td class="num">{{ "%+.3f"|format(s.root_value) }}</td>
 <td><div class="ag-strip">{% for c in s.hadamard %}<span class="ag-cell" title="{{ '%+.4f'|format(c.value) }}" style="--bg-l:{{ c.colors.bg_light }};--bg-d:{{ c.colors.bg_dark }}"></span>{% endfor %}</div></td>
 <td class="ag-context">{{ s.context|join("") }}</td>
-<td class="num">{% for share in s.stage_relevance %}{{ "%.0f"|format(100 * share / s.root_value) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+<td class="num">{{ s.stage_counts|join(" · ") }}</td>
 <td><ul class="ag-list">{% for line in s.top_sources %}<li>{{ line }}</li>{% endfor %}</ul></td>
 <td><ul class="ag-list">{% for line in s.top_leaves %}<li>{{ line }}</li>{% endfor %}</ul></td>
 </tr>

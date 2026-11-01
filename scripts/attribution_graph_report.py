@@ -11,7 +11,9 @@
     - A position whose last `distinct_tokens` tokens match the query's, or an earlier pick's, is skipped.
   - Raw rows, not normalised, so a neighbour matches the size of each term as well as its shape.
 - Each example gets a graph page, and an index page lines them up for comparison.
-- Graph edges are exact OV splits with attention held fixed. Hovering a node shows its own AttnLRP on the tokens.
+- Graph edges are exact OV splits with attention held fixed.
+  - Each node keeps its largest positive parents up to 70% of its own positive sum, so the full graph is large.
+  - The page walks it one node at a time instead of drawing it, with each node's own AttnLRP on the tokens.
 """
 
 from collections import defaultdict
@@ -28,8 +30,8 @@ from in_tfm.device import default_device
 from in_tfm.html_report import page, render_template
 from in_tfm.models.attn_only_2l.adapter import patch_attn_only_for_attn_lrp
 from in_tfm.models.attn_only_2l.attribution_graph import (
-    AttributionGraph, Coordinate, Embed, HeadBlock, HeadOut, OProjOut, PruneRule, Resid, ValueNeuron, build_graph,
-    ov_state, value,
+    AttributionGraph, Coordinate, Embed, GraphNode, HeadBlock, HeadOut, OProjOut, OvState, PruneRule, Resid, ValueNeuron,
+    build_graph, ov_state, parts, value,
 )
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, AttnOnlyForCausalLM, load_trained_attn_only
 from in_tfm.models.attn_only_2l.node_attnlrp import node_token_relevance
@@ -85,7 +87,7 @@ class ExampleSummary(BaseModel):
     root_value: float
     context: list[str]
     hadamard: list[Cell]
-    stage_relevance: list[float]
+    stage_counts: list[int]
     top_sources: list[str]
     top_leaves: list[str]
     n_nodes: int
@@ -162,31 +164,50 @@ def shown_range(graph: AttributionGraph, t: int) -> tuple[int, int]:
     return low, t + 1
 
 
-def graph_page_data(model: AttnOnlyForCausalLM, example: Example, graph: AttributionGraph, tokens: list[str]) -> dict:
+def positive_relevance(state: OvState, node: GraphNode) -> float:
+    """What the node's positive pieces hold, the total its kept parents are measured against."""
+    if not node.value:
+        return 0.0
+    scale = node.relevance / node.value
+    return sum(max(0.0, part * scale) for _, part in parts(state, node.node))
+
+
+def graph_page_data(model: AttnOnlyForCausalLM, state: OvState, example: Example, graph: AttributionGraph,
+                    tokens: list[str]) -> dict:
     t = len(example.input_ids) - 1
     low, high = shown_range(graph, t)
-    lrp = node_token_relevance(model, torch.tensor([example.input_ids]), [n.node for n in graph.nodes])
+    lrp = node_token_relevance(model, torch.tensor([example.input_ids]),
+                               [n.node for n in graph.nodes if not isinstance(n.node, Embed)])
     index = {n.node: i for i, n in enumerate(graph.nodes)}
+    parents, children = defaultdict(list), defaultdict(list)
+    for e in sorted(graph.edges, key=lambda e: -e.relevance):
+        parents[index[e.child]].append([index[e.parent], round(e.relevance, 6)])
+        children[index[e.parent]].append([index[e.child], round(e.relevance, 6)])
     return {
         "tokens": tokens[low:high],
         "offset": low,
         "root": graph.nodes[index[graph.root]].relevance,
         "stages": STAGE_NAMES,
-        "nodes": [{"stage": n.stage, "label": node_label(n.node, tokens), "value": round(n.value, 5),
-                   "relevance": round(n.relevance, 5), "keptShare": round(n.kept_share, 4), "pos": n.node.pos,
-                   "lrp": [round(float(x), 5) for x in lrp[n.node][low:high]],
-                   "lrpOutside": round(float(lrp[n.node][:low].sum()), 5)} for n in graph.nodes],
-        "edges": [{"child": index[e.child], "parent": index[e.parent], "relevance": round(e.relevance, 5)}
-                  for e in graph.edges],
+        "nodes": [node_data(state, n, tokens, lrp.get(n.node), low, high) | {"parents": parents[i], "children": children[i]}
+                  for i, n in enumerate(graph.nodes)],
     }
+
+
+def node_data(state: OvState, n: GraphNode, tokens: list[str], lrp: np.ndarray | None, low: int, high: int) -> dict:
+    data = {"stage": n.stage, "label": node_label(n.node, tokens), "value": round(n.value, 5),
+            "relevance": round(n.relevance, 6), "pos": n.node.pos, "nParts": len(parts(state, n.node)),
+            "positiveSum": round(positive_relevance(state, n), 6), "lrp": None, "lrpOutside": 0.0}
+    if lrp is not None:
+        data |= {"lrp": [round(float(x), 5) for x in lrp[low:high]], "lrpOutside": round(float(lrp[:low].sum()), 5)}
+    return data
 
 
 def summary(example: Example, graph: AttributionGraph, tokens: list[str], hadamard: np.ndarray,
             vmax: float) -> ExampleSummary:
     t = len(example.input_ids) - 1
-    by_stage = defaultdict(float)
+    by_stage = defaultdict(int)
     for n in graph.nodes:
-        by_stage[n.stage] += n.relevance
+        by_stage[n.stage] += 1
     sources = sorted((n for n in graph.nodes if isinstance(n.node, ValueNeuron) and n.node.layer == LAYER),
                      key=lambda n: -abs(n.relevance))
     leaves = defaultdict(float)
@@ -199,7 +220,7 @@ def summary(example: Example, graph: AttributionGraph, tokens: list[str], hadama
         root_value=graph.nodes[0].relevance,
         context=tokens[max(0, t - 15):t + 1],
         hadamard=hadamard_cells(hadamard, vmax),
-        stage_relevance=[by_stage[s] for s in range(len(STAGE_NAMES))],
+        stage_counts=[by_stage[s] for s in range(len(STAGE_NAMES))],
         top_sources=[f"{node_label(n.node, tokens)} {n.relevance:+.3f}" for n in sources[:4]],
         top_leaves=[f"{tok!r}@{pos} ({pos - t:+d}) {r:+.3f}" for (pos, tok), r in top_leaves],
         n_nodes=len(graph.nodes),
@@ -246,11 +267,12 @@ def main() -> None:
     for example, row in zip(examples, rows):
         token_texts = [display_text(tokenizer.decode([tok])) for tok in example.input_ids]
         root = HeadBlock(layer=LAYER, pos=len(example.input_ids) - 1, neuron=config.neuron, head=head)
-        graph = build_graph(ov_state(model, torch.tensor([example.input_ids])), root, config.prune)
+        state = ov_state(model, torch.tensor([example.input_ids]))
+        graph = build_graph(state, root, config.prune)
         summaries.append(summary(example, graph, token_texts, row, vmax))
         body = render_template(
             "attribution_graph.html", title=example.title, neuron=config.neuron, head=head, prune=config.prune,
-            graph_data=graph_page_data(model, example, graph, token_texts), **concept_card_context(),
+            graph_data=graph_page_data(model, state, example, graph, token_texts), **concept_card_context(),
         )
         (out_dir / f"{example.name}.html").write_text(page(f"Graph n{config.neuron} h{head} {example.name}", body))
         print(f"{example.name}: distance {example.distance:.3f}, root {graph.nodes[0].relevance:+.3f}, "

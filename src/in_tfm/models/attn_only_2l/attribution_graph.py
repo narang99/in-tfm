@@ -191,25 +191,31 @@ def _o_block(state: OvState, layer: int, neuron: int, head: int) -> Float[torch.
 
 
 class PruneRule(BaseModel):
-    share: float = 0.8
-    """Per sign, the fewest parents whose relevance reaches this share of that sign's total."""
-    max_parents: int = 5
-    floor: float = 0.01
+    share: float = 0.7
+    """The fewest parents whose relevance reaches this share of the node's own total, per kept sign."""
+    positive_only: bool = True
+    max_parents: int | None = None
+    floor: float = 0.0
     """Nodes and edges under this share of the root's |relevance| are dropped."""
 
 
 def kept_parents(edge_relevance: list[tuple[Coordinate, float]], rule: PruneRule) -> list[tuple[Coordinate, float]]:
     kept: list[tuple[Coordinate, float]] = []
-    for sign in (1, -1):
-        side = sorted((e for e in edge_relevance if sign * e[1] > 0), key=lambda e: -abs(e[1]))
-        total = sum(abs(r) for _, r in side)
-        held = 0.0
-        for edge in side:
-            if held >= rule.share * total:
-                break
-            kept.append(edge)
-            held += abs(edge[1])
+    for sign in (1,) if rule.positive_only else (1, -1):
+        kept += _largest_reaching_share([e for e in edge_relevance if sign * e[1] > 0], rule.share)
     return sorted(kept, key=lambda e: -abs(e[1]))[:rule.max_parents]
+
+
+def _largest_reaching_share(side: list[tuple[Coordinate, float]], share: float) -> list[tuple[Coordinate, float]]:
+    side = sorted(side, key=lambda e: -abs(e[1]))
+    total = sum(abs(r) for _, r in side)
+    kept, held = [], 0.0
+    for edge in side:
+        if held >= share * total:
+            break
+        kept.append(edge)
+        held += abs(edge[1])
+    return kept
 
 
 class GraphNode(BaseModel):

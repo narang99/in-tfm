@@ -1,142 +1,157 @@
 {% include "theme_toggle.html" %}
 {% include "concept_cards.html" %}
 <style>
-body { max-width:none; }
+body { max-width:1200px; }
 .ov-meta { font-size:0.75rem; color:var(--muted); }
-.ag-scroll { overflow-x:auto; border:1px solid var(--line); border-radius:4px; background:var(--panel); }
-#ag-svg text { fill:var(--fg); font:10px ui-monospace,Menlo,monospace; pointer-events:none; }
-#ag-svg .stage-name { fill:var(--muted); font-size:11px; font-weight:600; }
-#ag-svg .node { cursor:pointer; stroke:var(--line); }
-#ag-svg .node.on { stroke:var(--fg); stroke-width:2; }
-#ag-svg .node.dead-end { stroke:var(--fg); stroke-dasharray:3 3; }
-#ag-svg .edge { fill:none; stroke-linecap:round; }
-#ag-svg .dim { opacity:0.05 !important; }
-.ag-card { font:0.75rem ui-monospace,Menlo,monospace; background:var(--bg); color:var(--fg); border:1px solid var(--line);
-  border-left:5px solid var(--c); border-radius:4px; padding:6px 10px; max-width:760px; }
-.ag-card .tokens { margin:6px 0 2px; }
+.ag-crumbs { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font:0.75rem ui-monospace,Menlo,monospace; margin:10px 0; }
+.ag-crumbs a { color:var(--fg); text-decoration:none; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+.ag-crumbs a:hover { border-color:var(--fg); }
+.ag-crumbs .here { font-weight:700; border-color:var(--fg); }
+.ag-crumbs .sep { color:var(--muted); }
+.ag-card { font:0.75rem ui-monospace,Menlo,monospace; border:1px solid var(--line); border-left:5px solid var(--c);
+  border-radius:4px; padding:8px 12px; background:var(--panel); }
 .ag-card pre { margin:0; white-space:pre-wrap; }
-#ag-tip { position:fixed; pointer-events:none; z-index:20; display:none; box-shadow:0 2px 10px rgba(0,0,0,0.35); }
-#ag-pinned { display:grid; grid-template-columns:repeat(auto-fill, minmax(420px, 1fr)); gap:10px; margin-top:14px; }
-#ag-pinned .ag-card { position:relative; }
-#ag-pinned .close { position:absolute; top:4px; right:8px; cursor:pointer; color:var(--muted); }
+.ag-card .tokens { margin:6px 0 2px; }
+.ag-section { margin-top:16px; font-size:0.8rem; font-weight:600; }
+.ag-rows { border-collapse:collapse; width:100%; font:0.75rem ui-monospace,Menlo,monospace; }
+.ag-rows td { border-bottom:1px solid var(--line); padding:3px 6px; vertical-align:middle; }
+.ag-rows tr.go { cursor:pointer; }
+.ag-rows tr.go:hover { background:var(--bg); }
+.ag-rows td.num { text-align:right; white-space:nowrap; }
+.ag-rows td.ag-label { white-space:nowrap; }
+.ag-bar { height:10px; border-radius:2px; background:var(--c); min-width:1px; }
+.ag-rows .tok { font-size:0.7rem; }
 </style>
 <p><a href="index.html">&larr; all examples</a></p>
 <h1>Layer 1 neuron {{ neuron }}, head {{ head }}: {{ title }}</h1>
-<p class="ov-meta">Columns run from the root on the left to the embedding on the right. Every edge is an exact OV split with attention held fixed, and relevance flows to parents in proportion to their parts. Each node keeps the fewest parents holding {{ "%.0f"|format(100 * prune.share) }}% of each sign, at most {{ prune.max_parents }}, and nodes or edges under {{ "%.0f"|format(100 * prune.floor) }}% of the root are dropped. A column header shows its total relevance as a share of the root.</p>
-<p class="ov-meta">Green adds and red takes away. A node's fill and an edge's width follow |relevance| over the root's. Hover a node for its own AttnLRP on the tokens, which goes through QK too. Click to pin it below.</p>
-<p class="ov-meta">A dashed outline marks a dead end. The node itself is above the floor, but every piece it splits into is under it, so no edge survives. This is common at layer 0 o_proj, whose relevance spreads over 256 head dims.</p>
-<div class="ag-scroll"><svg id="ag-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
-<div id="ag-pinned"></div>
-<div id="ag-tip" class="ag-card"></div>
+<p class="ov-meta">Each node splits exactly into its parents, with attention held fixed. It keeps its largest positive parents until they hold {{ "%.0f"|format(100 * prune.share) }}% of its own positive sum. Click a parent to step into it. The trail and the browser's back button step out again.</p>
+<p class="ov-meta">A row's share is its piece of the current node. The tokens on a row are that parent's own AttnLRP, which goes through QK too, so they show where it reads from.</p>
+<div class="ag-crumbs" id="ag-crumbs"></div>
+<div class="ag-card" id="ag-current"></div>
+<div class="ag-section" id="ag-parents-title"></div>
+<table class="ag-rows" id="ag-parents"></table>
+<div class="ag-section" id="ag-children-title"></div>
+<table class="ag-rows" id="ag-children"></table>
 <script>
 (() => {
   const data = {{ graph_data|tojson }};
   const { fmt, pct, signColor, tokenStyle } = ConceptCards;
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.getElementById("ag-svg"), tip = document.getElementById("ag-tip");
-  const root = Math.abs(data.root) || 1e-9;
-  const colWidth = 200, nodeWidth = 178, nodeHeight = 20, rowGap = 6, top = 46, left = 12;
+  const TOP_TOKENS = 4;
+  let trail = [0];
 
-  function el(name, attrs, parent = svg) {
-    const node = document.createElementNS(NS, name);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    parent.appendChild(node);
-    return node;
+  function tokenChip(k, value, vmax, firing) {
+    const chip = document.createElement("span");
+    chip.className = "tok" + (firing ? " tok-firing" : "");
+    chip.style.cssText = tokenStyle(value, vmax);
+    chip.title = `${fmt(value, 4)} @${data.offset + k}`;
+    chip.textContent = data.tokens[k];
+    return chip;
   }
 
-  const isDeadEnd = n => n.stage < data.stages.length - 1 && n.keptShare === 0;
+  function allTokens(n) {
+    const row = document.createElement("div");
+    row.className = "tokens";
+    if (!n.lrp) {
+      row.appendChild(tokenChip(n.pos - data.offset, 1, 1, true));
+      return row;
+    }
+    const vmax = Math.max(...n.lrp.map(Math.abs), 1e-9);
+    n.lrp.forEach((v, k) => row.appendChild(tokenChip(k, v, vmax, data.offset + k === n.pos)));
+    return row;
+  }
 
-  function fillCard(card, i) {
-    const n = data.nodes[i];
+  function topTokens(n) {
+    const cell = document.createElement("td");
+    if (!n.lrp) {
+      cell.appendChild(tokenChip(n.pos - data.offset, 1, 1, true));
+      return cell;
+    }
+    const vmax = Math.max(...n.lrp.map(Math.abs), 1e-9);
+    n.lrp.map((v, k) => [v, k]).sort((a, b) => Math.abs(b[0]) - Math.abs(a[0])).slice(0, TOP_TOKENS)
+      .sort((a, b) => a[1] - b[1]).forEach(([v, k]) => cell.appendChild(tokenChip(k, v, vmax, data.offset + k === n.pos)));
+    return cell;
+  }
+
+  function renderCurrent(i) {
+    const n = data.nodes[i], card = document.getElementById("ag-current");
+    const kept = n.parents.reduce((a, [, r]) => a + r, 0);
     card.innerHTML = "";
     card.style.setProperty("--c", signColor(n.relevance));
     const head = document.createElement("pre");
-    head.textContent = `${n.label}\nvalue ${fmt(n.value, 4)}  ·  relevance ${fmt(n.relevance, 4)} (${pct(n.relevance / data.root)} of root)` +
-      (isDeadEnd(n) ? `\ndead end: every parent piece is under the floor` :
-       n.stage < data.stages.length - 1 ? `\nkept parents carry ${pct(n.keptShare)} of it` : "") +
-      `\nAttnLRP of this node on the tokens:`;
+    head.textContent = `${n.label}   (${data.stages[n.stage]})\n` +
+      `value ${fmt(n.value, 4)}  ·  relevance ${fmt(n.relevance, 4)}, ${pct(n.relevance / data.root)} of root` +
+      (n.nParts ? `\n${n.parents.length} of ${n.nParts} parents kept, holding ${pct(kept / (n.positiveSum || 1e-9))} of the positive sum ` +
+                  `(${pct(kept / n.relevance)} of the relevance)` : "\nleaf: an embedding dim");
     card.appendChild(head);
-    const vmax = Math.max(...n.lrp.map(Math.abs), 1e-9);
-    const row = document.createElement("div");
-    row.className = "tokens";
-    data.tokens.forEach((text, k) => {
-      const s = data.offset + k;
-      const chip = document.createElement("span");
-      chip.className = "tok" + (s === n.pos ? " tok-firing" : "");
-      chip.style.cssText = tokenStyle(n.lrp[k], vmax);
-      chip.title = `${fmt(n.lrp[k], 4)} @${s}`;
-      chip.textContent = text;
-      row.appendChild(chip);
-    });
-    card.appendChild(row);
-    const sum = n.lrp.reduce((a, b) => a + b, 0) + n.lrpOutside;
-    const foot = document.createElement("pre");
-    foot.textContent = `tokens sum to ${fmt(sum, 4)}` + (data.offset > 0 ? `, ${fmt(n.lrpOutside, 4)} from before the shown tokens` : "");
-    card.appendChild(foot);
+    card.appendChild(allTokens(n));
+    if (n.lrp) {
+      const foot = document.createElement("pre");
+      const sum = n.lrp.reduce((a, b) => a + b, 0) + n.lrpOutside;
+      foot.textContent = `AttnLRP tokens sum to ${fmt(sum, 4)}` + (data.offset > 0 ? `, ${fmt(n.lrpOutside, 4)} from before the shown tokens` : "");
+      card.appendChild(foot);
+    }
   }
 
-  function pin(i) {
-    const card = document.createElement("div");
-    card.className = "ag-card";
-    fillCard(card, i);
-    const close = document.createElement("span");
-    close.className = "close";
-    close.textContent = "×";
-    close.onclick = () => card.remove();
-    card.appendChild(close);
-    document.getElementById("ag-pinned").prepend(card);
+  function renderRows(tableId, titleId, title, links, base, onClick) {
+    const table = document.getElementById(tableId);
+    document.getElementById(titleId).textContent = links.length ? title : "";
+    table.innerHTML = "";
+    const widest = Math.max(...links.map(([, r]) => Math.abs(r)), 1e-9);
+    links.forEach(([j, r]) => {
+      const n = data.nodes[j], tr = document.createElement("tr");
+      tr.className = "go";
+      tr.onclick = () => onClick(j);
+      const label = document.createElement("td");
+      label.className = "ag-label";
+      label.textContent = n.label;
+      const share = document.createElement("td");
+      share.className = "num";
+      share.textContent = pct(r / base);
+      const barCell = document.createElement("td");
+      barCell.style.width = "140px";
+      const bar = document.createElement("div");
+      bar.className = "ag-bar";
+      bar.style.width = `${100 * Math.abs(r) / widest}%`;
+      bar.style.setProperty("--c", signColor(r));
+      barCell.appendChild(bar);
+      const more = document.createElement("td");
+      more.className = "num ov-meta";
+      more.textContent = n.parents.length ? `${n.parents.length} parents` : "";
+      tr.append(label, share, barCell, topTokens(n), more);
+      table.appendChild(tr);
+    });
   }
 
-  const columns = data.stages.map(() => []);
-  data.nodes.forEach((n, i) => columns[n.stage].push(i));
-  columns.forEach(col => col.sort((a, b) => Math.abs(data.nodes[b].relevance) - Math.abs(data.nodes[a].relevance)));
-  const place = {};
-  columns.forEach((col, stage) => col.forEach((i, row) => {
-    place[i] = { x: left + stage * colWidth, y: top + row * (nodeHeight + rowGap) };
-  }));
-  const tallest = Math.max(...columns.map(c => c.length));
-  svg.setAttribute("width", left * 2 + data.stages.length * colWidth);
-  svg.setAttribute("height", top + tallest * (nodeHeight + rowGap) + 20);
-
-  data.stages.forEach((name, stage) => {
-    const total = columns[stage].reduce((a, i) => a + data.nodes[i].relevance, 0);
-    el("text", { x: left + stage * colWidth, y: 16, class: "stage-name" }).textContent = name;
-    el("text", { x: left + stage * colWidth, y: 32, class: "stage-name" }).textContent =
-      `${columns[stage].length} nodes · ${pct(total / data.root)} of root`;
-  });
-
-  const edgeNodes = [];
-  [...data.edges].sort((a, b) => Math.abs(a.relevance) - Math.abs(b.relevance)).forEach(e => {
-    const from = place[e.child], to = place[e.parent];
-    const x1 = from.x + nodeWidth, y1 = from.y + nodeHeight / 2, x2 = to.x, y2 = to.y + nodeHeight / 2;
-    const mid = (x1 + x2) / 2;
-    const path = el("path", { d: `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`, class: "edge",
-      stroke: signColor(e.relevance), "stroke-width": 0.6 + 7 * Math.abs(e.relevance) / root, opacity: 0.55 });
-    path.dataset.child = e.child; path.dataset.parent = e.parent;
-    edgeNodes.push(path);
-  });
-
-  data.nodes.forEach((n, i) => {
-    const { x, y } = place[i];
-    const rect = el("rect", { x, y, width: nodeWidth, height: nodeHeight, rx: 4, class: isDeadEnd(n) ? "node dead-end" : "node",
-      fill: signColor(n.relevance), "fill-opacity": 0.12 + 0.75 * Math.min(1, Math.abs(n.relevance) / root) });
-    el("text", { x: x + 5, y: y + 14 }).textContent = n.label.length > 30 ? n.label.slice(0, 29) + "…" : n.label;
-    const show = ev => {
-      tip.style.display = "block";
-      fillCard(tip, i);
-      tip.style.left = Math.min(ev.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + "px";
-      tip.style.top = Math.min(ev.clientY + 14, window.innerHeight - tip.offsetHeight - 8) + "px";
-      edgeNodes.forEach(p => p.classList.toggle("dim", p.dataset.child != i && p.dataset.parent != i));
-      rect.classList.add("on");
-    };
-    rect.addEventListener("mouseover", show);
-    rect.addEventListener("mousemove", show);
-    rect.addEventListener("mouseleave", () => {
-      tip.style.display = "none";
-      edgeNodes.forEach(p => p.classList.remove("dim"));
-      rect.classList.remove("on");
+  function render() {
+    const i = trail[trail.length - 1], n = data.nodes[i];
+    const crumbs = document.getElementById("ag-crumbs");
+    crumbs.innerHTML = "";
+    trail.forEach((j, depth) => {
+      if (depth) crumbs.insertAdjacentHTML("beforeend", '<span class="sep">›</span>');
+      const a = document.createElement("a");
+      a.href = "#" + trail.slice(0, depth + 1).join(".");
+      a.textContent = data.nodes[j].label;
+      if (depth === trail.length - 1) a.className = "here";
+      crumbs.appendChild(a);
     });
-    rect.addEventListener("click", () => pin(i));
-  });
+    renderCurrent(i);
+    renderRows("ag-parents", "ag-parents-title", `Kept parents (${n.parents.length}), share of this node`,
+               n.parents, n.relevance, j => go([...trail, j]));
+    const otherChildren = n.children.filter(([j]) => j !== trail[trail.length - 2]);
+    renderRows("ag-children", "ag-children-title", `Other nodes this one feeds (${otherChildren.length}), share of what they send it`,
+               otherChildren, n.relevance, j => go([j]));
+  }
+
+  function go(path) { location.hash = path.join("."); }
+
+  function readHash() {
+    const path = location.hash.slice(1).split(".").map(Number).filter(j => Number.isInteger(j) && data.nodes[j]);
+    trail = path.length ? path : [0];
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  window.addEventListener("hashchange", readHash);
+  readHash();
 })();
 </script>
