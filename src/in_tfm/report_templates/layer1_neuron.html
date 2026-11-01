@@ -1,0 +1,94 @@
+{% include "theme_toggle.html" %}
+{% include "concept_cards.html" %}
+<style>
+body { max-width:1200px; }
+.ov-meta { font-size:0.75rem; color:var(--muted); }
+.l1-attr { border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:8px 12px; margin:12px 0; }
+.l1-heads { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 4px; position:sticky; top:0; z-index:5;
+  background:var(--bg); padding:8px 0; border-bottom:1px solid var(--line); }
+.l1-heads button { font:0.85rem ui-monospace,Menlo,monospace; padding:4px 12px; cursor:pointer;
+  border:1px solid var(--line); border-left:4px solid var(--c); border-radius:6px; background:var(--bg); color:var(--fg); }
+.l1-heads button.on { background:var(--fg); color:var(--bg); font-weight:700; }
+.l1-summary { font:0.8rem ui-monospace,Menlo,monospace; white-space:pre; margin:12px 0; }
+.l1-dim { border-top:2px solid var(--line); padding-top:8px; margin-top:16px; }
+.l1-dim-head { font:0.85rem ui-monospace,Menlo,monospace; font-weight:700; }
+.l1-dim-meta { font:0.75rem ui-monospace,Menlo,monospace; color:var(--muted); margin-bottom:4px; }
+</style>
+<h1>Layer 1 o_proj neuron {{ neuron }}</h1>
+<p class="ov-meta">Text: {{ text }} &middot; the model predicts {{ "%r"|format(predicted) }} at the last position, which is the position explained here.</p>
+<div class="l1-attr">
+<div class="ov-meta">The neuron's attribution on the input tokens, down both layers' OV paths with attention held fixed. It sums to the neuron exactly.</div>
+<div class="l1-summary" id="l1-value"></div>
+<div class="tokens" id="l1-attr-tokens"></div>
+</div>
+<p class="ov-meta">Pick a layer 1 head. The page takes its source with the largest positive part, its top value vector. It keeps the fewest positive dims of that vector holding {{ "%.0f"|format(100 * share) }}% of the vector's positive Hadamard sum A&middot;v[j]&middot;w[j].</p>
+<p class="ov-meta">Each kept dim is a layer 1 v_proj neuron, resid<sub>s</sub> &middot; W<sub>V1</sub>[j], shown as the 9 concept cards read along W<sub>V1</sub>[j]. The cards sum to the dim exactly. Green adds and red takes away. Card brightness is |contribution| over the largest card on this page. Tokens inside a card scale to that card.</p>
+<div class="l1-heads" id="l1-heads"></div>
+<div class="l1-summary" id="l1-head-summary"></div>
+<div id="l1-dims"></div>
+<script>
+(() => {
+  const data = {{ page_data|tojson }};
+  const { fmt, pct, signColor, tokenStyle } = ConceptCards;
+  const tokLabel = s => JSON.stringify(data.tokens[s]) + " @" + s;
+
+  function drawAttribution() {
+    const t = data.tokens.length - 1;
+    document.getElementById("l1-value").textContent =
+      `neuron ${fmt(data.value)} at ${tokLabel(t)}  ·  tokens sum to ${fmt(data.attribution.reduce((a, b) => a + b, 0))}`;
+    const vmax = Math.max(...data.attribution.map(Math.abs), 1e-9);
+    const row = document.getElementById("l1-attr-tokens");
+    data.tokens.forEach((text, s) => {
+      const chip = document.createElement("span");
+      chip.className = "tok" + (s === t ? " tok-firing" : "");
+      chip.style.cssText = tokenStyle(data.attribution[s], vmax);
+      chip.title = fmt(data.attribution[s], 4);
+      chip.textContent = text;
+      row.appendChild(chip);
+    });
+  }
+
+  function drawHead(head) {
+    const summary = document.getElementById("l1-head-summary");
+    const box = document.getElementById("l1-dims");
+    box.innerHTML = "";
+    if (head.source === null) {
+      summary.textContent = `head ${head.head} -> neuron: ${fmt(head.value)}\nno source adds positively`;
+      return;
+    }
+    summary.textContent = `head ${head.head} -> neuron: ${fmt(head.value)}\n` +
+      `top value vector: ${tokLabel(head.source)}, attention ${pct(head.source_attention)}, part ${fmt(head.source_part)}\n` +
+      `${head.dims.length} of 32 dims hold ${pct(head.dims.reduce((a, d) => a + d.share, 0))} of its positive sum ${fmt(head.positive_sum)}`;
+    const view = { tokens: data.tokens.slice(0, head.source + 1), offset: 0 };
+    for (const dim of head.dims) {
+      const node = document.createElement("div");
+      node.className = "l1-dim";
+      const title = document.createElement("div");
+      title.className = "l1-dim-head";
+      title.textContent = `value dim ${dim.dim}: term ${fmt(dim.term)}  (${pct(dim.share)} of the positive sum)`;
+      const meta = document.createElement("div");
+      meta.className = "l1-dim-meta";
+      meta.textContent = `v[${dim.dim}] = ${fmt(dim.value)} at ${tokLabel(head.source)}  ·  w[${dim.dim}] = ${fmt(dim.weight)}`;
+      node.append(title, meta);
+      ConceptCards.stack(node, dim.concepts, view, data.scale, { blackout: false });
+      box.appendChild(node);
+    }
+  }
+
+  const picker = document.getElementById("l1-heads");
+  const start = data.heads.reduce((best, h) => h.value > best.value ? h : best, data.heads[0]);
+  for (const head of data.heads) {
+    const button = document.createElement("button");
+    button.style.setProperty("--c", signColor(head.value));
+    button.textContent = `head ${head.head} ${fmt(head.value, 2)}`;
+    button.onclick = () => {
+      picker.querySelectorAll("button").forEach(b => b.classList.remove("on"));
+      button.classList.add("on");
+      drawHead(head);
+    };
+    picker.appendChild(button);
+    if (head === start) button.click();
+  }
+  drawAttribution();
+})();
+</script>

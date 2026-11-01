@@ -81,7 +81,7 @@ const ConceptCards = (() => {
     head.innerHTML = "<span class=\"concept-label\"></span><span class=\"value dimmed\"></span><span class=\"dimmed\"></span>";
     head.children[0].textContent = concept.label;
     head.children[1].textContent = fmt(concept.value);
-    head.children[2].textContent = `${pct(Math.abs(concept.value) / scale)} of this dim's largest`;
+    head.children[2].textContent = `${pct(Math.abs(concept.value) / scale)} of the largest card`;
     node.appendChild(head);
 
     const bySource = new Map(concept.parts.map(p => [p.s, p]));
@@ -132,6 +132,6 @@ const ConceptCards = (() => {
     }
   }
 
-  return { stack, fmt, pct, signColor };
+  return { stack, fmt, pct, signColor, tokenStyle };
 })();
 </script>

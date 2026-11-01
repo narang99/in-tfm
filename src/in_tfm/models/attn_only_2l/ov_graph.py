@@ -22,6 +22,8 @@ class OvFlows(BaseModel):
     value_scores: Float[torch.Tensor, "head seq out"]
     """v_{h,s} . W_O[n, block h]: what V (h, s) adds to neuron n at full attention."""
     outputs: Float[torch.Tensor, "seq out"]
+    values: Float[torch.Tensor, "head seq head_dim"]
+    """The heads' value vectors, so a value vector can be split over its own dims."""
 
 
 def ov_flows(model: AttnOnlyForCausalLM, input_ids: Int[torch.Tensor, "1 seq"], layer_idx: int) -> OvFlows:
@@ -32,4 +34,4 @@ def ov_flows(model: AttnOnlyForCausalLM, input_ids: Int[torch.Tensor, "1 seq"], 
     value_scores = torch.einsum("hsd,nhd->hsn", value, blocks)
     pattern = _softmax_pattern(attn, query, key)
     outputs = torch.einsum("hts,hsn->tn", pattern, value_scores)
-    return OvFlows(pattern=pattern, value_scores=value_scores, outputs=outputs)
+    return OvFlows(pattern=pattern, value_scores=value_scores, outputs=outputs, values=value)
