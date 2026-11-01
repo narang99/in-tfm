@@ -213,9 +213,19 @@ def climb(ctx: Context, start: torch.Tensor, row: int, col: int, config: ClimbCo
             images.clamp_(0.0, 1.0)
         if step % config.snapshot_every == 0:
             snapshots.append(images.detach().to("cpu", copy=True))
+            if all_reached(ctx, images, row, col, config.stop_activation):
+                print(f"  every seed reached {config.stop_activation:.0f} by step {step}", flush=True)
+                break
         if step % 128 == 0:
             print(f"  step {step}/{config.steps} median activation {activation.median().item():.1f}", flush=True)
     return images.detach(), snapshots
+
+
+def all_reached(ctx: Context, images: torch.Tensor, row: int, col: int, stop: float) -> bool:
+    """Read without the affine, at the cell itself. The run stops here, since only the path up to `stop` is kept."""
+    with torch.no_grad():
+        activation = ctx.reader.activation(ctx.reader(images))[:, row, col]
+    return bool((activation >= stop).all())
 
 
 class Trajectory(BaseModel):
