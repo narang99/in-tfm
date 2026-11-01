@@ -1,14 +1,15 @@
 #!/usr/bin/env python
-"""Concept cards for one layer 0 o_proj neuron, on examples sampled across its activation range.
+"""Concept cards for one layer 0 o_proj neuron, on examples sampled across each head's range.
 
     python scripts/residual_concepts_samples.py --neuron 215
 
 - Windows come from the training stream, one per story start, 256 tokens from BOS.
-- The binned value is the neuron's own value, the o_proj output, which is the sum of the heads.
+- The binned value is one head's block of the neuron: what that head adds to it.
+  - Every head is binned on its own, and the page picks the head.
 - Each sign gets its own equal-width buckets from 0 to its extreme, as `bucketed_sample` lays them out.
   - Buckets holding fewer than `per_bucket` positions merge into a neighbour, so a side can have fewer buckets.
-- Each bucket shows `per_bucket` examples, each from a different window, and no window repeats on the page.
-- The cards are the ones from `ov_graph_report.py`. The embedding card is context: it is not part of the binned value.
+- Each bucket shows `per_bucket` examples, each from a different window, and no window repeats within a head.
+- Every example shows all the cards, not only the binned head's. The cards are the ones from `ov_graph_report.py`.
 """
 
 from pathlib import Path
@@ -29,6 +30,7 @@ from in_tfm.presenters.text.concept_cards import concept_card_context
 from in_tfm.tiny_attn_only_training import TOKENS_FILE, story_starts
 
 LAYER = 0
+DIGITS = 4
 
 
 class SamplesConfig(BaseSettings):
@@ -67,6 +69,7 @@ class Concept(BaseModel):
 class Example(BaseModel):
     window: int
     position: int
+    head_value: float
     value: float
     residual: float
     tokens: list[str]
@@ -88,6 +91,11 @@ class Side(BaseModel):
     """Highest |value| first."""
 
 
+class HeadSamples(BaseModel):
+    head: int
+    sides: list[Side]
+
+
 class Pick(BaseModel):
     window: int
     position: int
@@ -100,16 +108,19 @@ def draw_windows(tokens: np.ndarray, bos: int, n: int, seq_len: int, rng: np.ran
 
 
 @torch.no_grad()
-def neuron_values(model: AttnOnlyForCausalLM, windows: np.ndarray, neuron: int, batch_size: int,
-                  device: str) -> Float[np.ndarray, "n seq"]:
-    o_proj = model.model.layers[LAYER].self_attn.o_proj
+def head_values(model: AttnOnlyForCausalLM, windows: np.ndarray, neuron: int, batch_size: int,
+                device: str) -> Float[np.ndarray, "n seq head"]:
+    """Each head's block of the neuron: its slice of the o_proj input times the same slice of the neuron's row."""
+    attn = model.model.layers[LAYER].self_attn
+    blocks = attn.o_proj.weight[neuron].view(attn.n_heads, attn.head_dim)
     captured = {}
-    handle = o_proj.register_forward_hook(lambda _m, _inp, out: captured.__setitem__("out", out[..., neuron]))
+    handle = attn.o_proj.register_forward_hook(lambda _m, inp, _out: captured.__setitem__("z", inp[0]))
     values = []
     try:
         for start in range(0, len(windows), batch_size):
             model(input_ids=torch.from_numpy(windows[start:start + batch_size]).to(device))
-            values.append(captured["out"].float().cpu().numpy())
+            z = captured["z"].view(*captured["z"].shape[:2], attn.n_heads, attn.head_dim)
+            values.append((z * blocks).sum(dim=-1).float().cpu().numpy())
     finally:
         handle.remove()
     return np.concatenate(values)
@@ -134,6 +145,8 @@ def side_picks(values: Float[np.ndarray, "n seq"], sign: int, config: SamplesCon
     """(low, high, size, picks) per bucket, highest |value| first, with low and high in signed units."""
     flat = sign * values.ravel()
     candidates = np.flatnonzero(flat > 0)
+    if len(candidates) == 0:
+        return []
     layout = plan_buckets(flat[candidates], config.n_buckets, 0.0, config.per_bucket)
     group_of = group_of_each_value(flat[candidates], layout)
     edges = layout.group_edges()
@@ -146,8 +159,12 @@ def side_picks(values: Float[np.ndarray, "n seq"], sign: int, config: SamplesCon
     return buckets
 
 
+def rounded(x: torch.Tensor | float) -> float:
+    return round(float(x), DIGITS)
+
+
 @torch.no_grad()
-def example(model: AttnOnlyForCausalLM, tokenizer, windows: np.ndarray, pick: Pick, neuron: int,
+def example(model: AttnOnlyForCausalLM, tokenizer, windows: np.ndarray, pick: Pick, neuron: int, head: int,
             context: int) -> Example:
     """The window is cut at the position, which changes nothing since attention is causal."""
     t = pick.position
@@ -155,45 +172,60 @@ def example(model: AttnOnlyForCausalLM, tokenizer, windows: np.ndarray, pick: Pi
     flows = ov_flows(model, ids, LAYER)
     offset = max(0, t - context)
     embed = float(model.model.embed_tokens.weight[ids[0, t], neuron])
-    concepts = [Concept(stage="embedding", label="W_E", value=embed, parts=[Part(s=t, a=1.0, vw=embed, part=embed)])]
-    for head in range(flows.pattern.shape[0]):
-        attention = flows.pattern[head, t]
-        value_score = flows.value_scores[head, :, neuron]
-        parts = attention * value_score
+    concepts = [Concept(stage="embedding", label="W_E", value=rounded(embed),
+                        parts=[Part(s=t, a=1.0, vw=rounded(embed), part=rounded(embed))])]
+    head_parts = flows.pattern[:, t] * flows.value_scores[:, :, neuron]
+    for h in range(head_parts.shape[0]):
         concepts.append(Concept(
-            stage=f"layer {LAYER} W_O", label=f"head {head}", value=float(parts.sum()),
-            parts=[Part(s=s, a=float(attention[s]), vw=float(value_score[s]), part=float(parts[s]))
-                   for s in range(offset, t + 1)],
-            outside=float(parts[:offset].sum()),
+            stage=f"layer {LAYER} W_O", label=f"head {h}", value=rounded(head_parts[h].sum()),
+            parts=[Part(s=s, a=rounded(flows.pattern[h, t, s]), vw=rounded(flows.value_scores[h, s, neuron]),
+                        part=rounded(head_parts[h, s])) for s in range(offset, t + 1)],
+            outside=rounded(head_parts[h, :offset].sum()),
         ))
     value = float(flows.outputs[t, neuron])
     return Example(
-        window=pick.window, position=t, value=value, residual=embed + value,
+        window=pick.window, position=t, head_value=float(head_parts[head].sum()), value=rounded(value),
+        residual=rounded(embed + value),
         tokens=[display_text(tokenizer.decode([tok])) for tok in windows[pick.window, offset:t + 1].tolist()],
         offset=offset, concepts=concepts,
     )
 
 
-def build_side(model, tokenizer, windows, values, sign: int, config: SamplesConfig, used_windows: set[int],
-               rng: np.random.Generator) -> Side:
+def build_side(model, tokenizer, windows, values: Float[np.ndarray, "n seq"], head: int, sign: int,
+               config: SamplesConfig, used_windows: set[int], rng: np.random.Generator) -> Side:
     buckets = [
         Bucket(low=low, high=high, n_positions=size,
-               examples=[example(model, tokenizer, windows, pick, config.neuron, config.context) for pick in picks])
+               examples=[example(model, tokenizer, windows, pick, config.neuron, head, config.context)
+                         for pick in picks])
         for low, high, size, picks in side_picks(values, sign, config, used_windows, rng)
     ]
     return Side(sign="positive" if sign > 0 else "negative", n_positions=int((sign * values > 0).sum()), buckets=buckets)
 
 
-def split_gap(sides: list[Side], values: Float[np.ndarray, "n seq"]) -> float:
+def build_head(model, tokenizer, windows, values: Float[np.ndarray, "n seq head"], head: int,
+               config: SamplesConfig, rng: np.random.Generator) -> HeadSamples:
+    used_windows: set[int] = set()
+    return HeadSamples(head=head, sides=[
+        build_side(model, tokenizer, windows, values[..., head], head, sign, config, used_windows, rng) for sign in (1, -1)
+    ])
+
+
+def examples_of(heads: list[HeadSamples]):
+    for head in heads:
+        for side in head.sides:
+            for bucket in side.buckets:
+                for ex in bucket.examples:
+                    yield head.head, ex
+
+
+def split_gap(heads: list[HeadSamples], values: Float[np.ndarray, "n seq head"]) -> float:
     """Examples are recomputed one at a time on the CPU, so this checks they match the batched scan."""
-    return max(abs(ex.value - float(values[ex.window, ex.position]))
-               for side in sides for bucket in side.buckets for ex in bucket.examples)
+    return max(abs(ex.head_value - float(values[ex.window, ex.position, head])) for head, ex in examples_of(heads))
 
 
-def largest_contribution(sides: list[Side]) -> float:
+def largest_contribution(heads: list[HeadSamples]) -> float:
     """Brightness is global for the dim, so every card on the page shares this scale."""
-    return max((abs(c.value) for side in sides for bucket in side.buckets for ex in bucket.examples
-                for c in ex.concepts), default=1e-9)
+    return max((abs(c.value) for _, ex in examples_of(heads) for c in ex.concepts), default=1e-9)
 
 
 def main() -> None:
@@ -204,26 +236,25 @@ def main() -> None:
     tokens = np.load(config.checkpoint_dir / TOKENS_FILE.format(split=config.split), mmap_mode="r")
     seq_len = model.config.max_position_embeddings
     windows = draw_windows(tokens, tokenizer.convert_tokens_to_ids(BOS_TOKEN), config.n_windows, seq_len, rng)
-    values = neuron_values(model.to(config.device), windows, config.neuron, config.batch_size, config.device)
+    values = head_values(model.to(config.device), windows, config.neuron, config.batch_size, config.device)
     model = model.cpu()
-    print(f"{values.size} positions: min {values.min():+.3f}, max {values.max():+.3f}")
+    print(f"{values.shape[0] * values.shape[1]} positions, {values.shape[2]} heads")
 
-    used_windows: set[int] = set()
-    sides = [build_side(model, tokenizer, windows, values, sign, config, used_windows, rng) for sign in (1, -1)]
-    for side in sides:
-        print(f"{side.sign}: {side.n_positions} positions, {len(side.buckets)} buckets, "
-              f"{sum(len(b.examples) for b in side.buckets)} examples")
-    print(f"largest gap between an example's split and its scanned value: {split_gap(sides, values):.2e}")
+    heads = [build_head(model, tokenizer, windows, values, head, config, rng) for head in range(values.shape[2])]
+    for head in heads:
+        print(f"head {head.head}: " + ", ".join(
+            f"{side.sign} {side.n_positions} positions in {len(side.buckets)} buckets" for side in head.sides))
+    print(f"largest gap between an example's split and its scanned value: {split_gap(heads, values):.2e}")
 
     body = render_template(
         "residual_concepts_samples.html",
         neuron=config.neuron,
         layer=LAYER,
-        n_positions=int(values.size),
+        n_positions=int(values.shape[0] * values.shape[1]),
         n_windows=config.n_windows,
         context=config.context,
-        sides=[side.model_dump() for side in sides],
-        scale=largest_contribution(sides),
+        heads=[head.model_dump() for head in heads],
+        scale=largest_contribution(heads),
         **concept_card_context(),
     )
     out = config.out or Path(f"reports/residual_concepts/neuron_{config.neuron}.html")

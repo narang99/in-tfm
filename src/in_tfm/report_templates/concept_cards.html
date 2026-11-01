@@ -12,8 +12,11 @@ Pages include this once and call `ConceptCards.stack(...)`. See `ov_graph.html` 
   padding:6px 10px; margin:0 0 8px; }
 .concept.off { background:#000; border-left-color:#000; }
 .concept.off > * { visibility:hidden; }
+.concept.focus { outline:2px solid var(--fg); outline-offset:2px; }
 .concept-head { font:0.75rem ui-monospace,Menlo,monospace; display:flex; gap:14px; align-items:baseline; }
+.concept-head .concept-label { font-weight:700; font-size:0.85rem; color:var(--fg); }
 .concept-head .value { font-weight:700; color:var(--c); }
+.concept .dimmed { opacity:var(--strength); }
 .concept .tokens { margin:4px 0; }
 .concept pre { white-space:pre; margin:0; font:0.7rem ui-monospace,Menlo,monospace; color:var(--muted); }
 </style>
@@ -66,15 +69,16 @@ const ConceptCards = (() => {
 
   /* `view.tokens[i]` is position `view.offset + i`, and the last one is the current position.
      A concept's `outside` is the part of its value from positions before the shown tokens. */
-  function card(concept, view, scale, kept) {
+  /* Brightness dims everything but the label, so the concept's name stays readable on a faint card. */
+  function card(concept, view, scale, kept, focused) {
     const node = document.createElement("div");
-    node.className = "concept" + (kept ? "" : " off");
+    node.className = "concept" + (kept ? "" : " off") + (focused ? " focus" : "");
     node.style.setProperty("--c", signColor(concept.value));
-    node.style.opacity = 0.2 + 0.8 * Math.abs(concept.value) / scale;
+    node.style.setProperty("--strength", 0.2 + 0.8 * Math.abs(concept.value) / scale);
 
     const head = document.createElement("div");
     head.className = "concept-head";
-    head.innerHTML = "<span></span><span class=\"value\"></span><span></span>";
+    head.innerHTML = "<span class=\"concept-label\"></span><span class=\"value dimmed\"></span><span class=\"dimmed\"></span>";
     head.children[0].textContent = concept.label;
     head.children[1].textContent = fmt(concept.value);
     head.children[2].textContent = `${pct(Math.abs(concept.value) / scale)} of this dim's largest`;
@@ -84,7 +88,7 @@ const ConceptCards = (() => {
     const vmax = Math.max(...concept.parts.map(p => Math.abs(p.part)), 1e-9);
     const current = view.offset + view.tokens.length - 1;
     const row = document.createElement("div");
-    row.className = "tokens";
+    row.className = "tokens dimmed";
     view.tokens.forEach((text, i) => {
       const s = view.offset + i, p = bySource.get(s);
       const chip = document.createElement("span");
@@ -104,15 +108,17 @@ const ConceptCards = (() => {
           `A ${pct(p.a).padStart(6)}  v.w ${fmt(p.vw)}  ${pct(Math.abs(p.part) / total).padStart(6)} of card`);
       if (view.offset > 0) lines.push(`earlier tokens      part ${fmt(outside)}  ${pct(Math.abs(outside) / total).padStart(6)} of card`);
       const detail = document.createElement("pre");
+      detail.className = "dimmed";
       detail.textContent = lines.join("\n");
       node.appendChild(detail);
     }
     return node;
   }
 
-  /* Appends the stage labels and the cards to `box`. Slots never move: W_E first, then heads in index order. */
-  function stack(box, concepts, view, scale) {
-    const kept = keptConcepts(concepts);
+  /* Appends the stage labels and the cards to `box`. Slots never move: W_E first, then heads in index order.
+     With `blackout`, cards below the elbow of |contributions| are blacked out. `focus` outlines the card with that label. */
+  function stack(box, concepts, view, scale, { blackout = true, focus = null } = {}) {
+    const kept = blackout ? keptConcepts(concepts) : new Set(concepts);
     let stage = null;
     for (const concept of concepts) {
       if (concept.stage !== stage) {
@@ -122,7 +128,7 @@ const ConceptCards = (() => {
         label.textContent = stage;
         box.appendChild(label);
       }
-      box.appendChild(card(concept, view, scale, kept.has(concept)));
+      box.appendChild(card(concept, view, scale, kept.has(concept), concept.label === focus));
     }
   }
 
