@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw
 from pydantic import BaseModel
 
 from feature_vis_walk import (
@@ -56,6 +56,8 @@ class StepConfig(BaseModel):
     """The last steps of each fit skip the affine, so the fit is judged on the image itself."""
     lr: float = 0.01
     tv_weight: float = 1e3
+    l1_weight: float = 0.0
+    """L1 on the pixels, as in the sparse runs. It pushes every pixel the target does not need to black."""
     seeds: int = 2
 
 
@@ -71,7 +73,8 @@ def fit_to(ctx: Context, images: torch.Tensor, row: int, col: int, target: np.nd
         transformed = step <= config.steps_per_point - config.fine_tune_steps
         theta = seed_thetas(rngs, height, width, transformed, ctx.device)
         fit = objective(warp(images, theta, fill=BACKGROUND_GREY), theta)
-        loss = (fit + config.tv_weight * total_variation_per_sample(images)).sum()
+        l1 = images.abs().mean(dim=(1, 2, 3))
+        loss = (fit + config.l1_weight * l1 + config.tv_weight * total_variation_per_sample(images)).sum()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -95,6 +98,9 @@ class Checkpoint(BaseModel):
     distance_over_tau: float
     pixel_step_rms: float
     """RMS pixel change from the previous checkpoint."""
+    exact_zero_share: float
+    """Pixels black in every channel."""
+    mean_pixel: float
 
 
 def checkpoint(ctx: Context, images: torch.Tensor, previous: torch.Tensor, row: int, col: int, point: int, target: np.ndarray) -> list[Checkpoint]:
@@ -112,6 +118,7 @@ def checkpoint(ctx: Context, images: torch.Tensor, previous: torch.Tensor, row: 
             nearest=int(nearest[seed]), nearest_tree=int(ctx.graph.trees.tree[nearest[seed]]),
             reached_target=bool(nearest[seed] == point), hops_to_target=int(hops[seed]),
             distance_over_tau=float(distance[seed] / ctx.graph.tau), pixel_step_rms=float(rms[seed]),
+            exact_zero_share=float((images[seed].amax(0) == 0).float().mean()), mean_pixel=float(images[seed].mean()),
         ))
     return rows
 
@@ -187,6 +194,21 @@ def walk_sheet(ctx: Context, start: StartImage, record: Walk, stepwise: list[tor
     return sheet
 
 
+def full_strip(start: StartImage, record: Walk, stepwise: list[torch.Tensor], direct: list[torch.Tensor], size: int = 160) -> Image.Image:
+    """Whole images: row 1 stepwise after each point, row 2 the direct fit at the same step count. The cell is boxed."""
+    columns = len(record.path)
+    sheet = Image.new("RGB", (size * columns, size * 2), "white")
+    scale = size / start.pixels.shape[-1]
+    box = [int((start.col * 16) * scale), int((start.row * 16) * scale), int((start.col * 16 + 16) * scale), int((start.row * 16 + 16) * scale)]
+    rows = [[start.pixels[0]] + [images[0] for images in stepwise], [start.pixels[0]] + [images[0] for images in direct]]
+    for row, frames in enumerate(rows):
+        for column, frame in enumerate(frames):
+            tile = to_image(frame).resize((size, size))
+            ImageDraw.Draw(tile).rectangle(box, outline="red")
+            sheet.paste(tile, (column * size, row * size))
+    return sheet
+
+
 def summarise(record: Walk) -> dict:
     def per_seed(rows: list[list[Checkpoint]], field: str) -> np.ndarray:
         return np.array([[getattr(c, field) for c in step] for step in rows])
@@ -211,6 +233,9 @@ def summarise(record: Walk) -> dict:
         "stepwise_final_tree": [c.nearest_tree for c in final_step],
         "direct_final_tree": [c.nearest_tree for c in final_direct],
         "direct_trees_on_the_way": list(dict.fromkeys(c.nearest_tree for step in record.direct for c in step[:1])),
+        "stepwise_final_zero_share": float(np.mean([c.exact_zero_share for c in final_step])),
+        "direct_final_zero_share": float(np.mean([c.exact_zero_share for c in final_direct])),
+        "stepwise_final_mean_pixel": float(np.mean([c.mean_pixel for c in final_step])),
     }
 
 
@@ -222,6 +247,7 @@ def main() -> None:
     parser.add_argument("--background-tree", type=int, default=0)
     parser.add_argument("--background-starts", type=int, default=3)
     parser.add_argument("--with-grey", action="store_true")
+    parser.add_argument("--only-starts", default="", help="comma-separated start names to keep, for example background_t0_0")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--device", default=default_device())
     for field, info in StepConfig.model_fields.items():
@@ -238,6 +264,9 @@ def main() -> None:
     starts = background_starts(ctx, args.background_tree, args.background_starts)
     if args.with_grey:
         starts.append(StartImage(name="grey", pixels=torch.full((1, 3, 224, 224), BACKGROUND_GREY, device=device), row=7, col=7))
+    if args.only_starts:
+        keep = set(args.only_starts.split(","))
+        starts = [start for start in starts if start.name in keep]
     args.out.mkdir(parents=True, exist_ok=True)
     summaries = []
     for start in starts:
@@ -246,6 +275,12 @@ def main() -> None:
             stem = f"{start.name}_to_{name}"
             (args.out / f"{stem}.json").write_text(record.model_dump_json())
             walk_sheet(ctx, start, record, stepwise, direct).save(args.out / f"{stem}.png")
+            full_strip(start, record, stepwise, direct).save(args.out / f"{stem}_full.png")
+            frames_dir = args.out / stem
+            frames_dir.mkdir(exist_ok=True)
+            for index, (moved, jumped) in enumerate(zip(stepwise, direct), start=1):
+                to_image(moved[0]).save(frames_dir / f"stepwise_{index:02d}.png")
+                to_image(jumped[0]).save(frames_dir / f"direct_{index:02d}.png")
             summaries.append(summarise(record))
             print(json.dumps(summaries[-1]), flush=True)
     (args.out / "summary.json").write_text(json.dumps(summaries, indent=1))
