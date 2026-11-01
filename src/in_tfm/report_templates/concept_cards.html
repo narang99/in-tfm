@@ -12,6 +12,7 @@ Pages include this once and call `ConceptCards.stack(...)`. See `ov_graph.html` 
   padding:6px 10px; margin:0 0 8px; }
 .concept.off { background:#000; border-left-color:#000; }
 .concept.off > * { visibility:hidden; }
+.concept.collapsed { padding:2px 10px; margin:0 0 3px; opacity:0.55; }
 .concept.focus { outline:2px solid var(--fg); outline-offset:2px; }
 .concept-head { font:0.75rem ui-monospace,Menlo,monospace; display:flex; gap:14px; align-items:baseline; }
 .concept-head .concept-label { font-weight:700; font-size:0.85rem; color:var(--fg); }
@@ -70,9 +71,9 @@ const ConceptCards = (() => {
   /* `view.tokens[i]` is position `view.offset + i`, and the last one is the current position.
      A concept's `outside` is the part of its value from positions before the shown tokens. */
   /* Brightness dims everything but the label, so the concept's name stays readable on a faint card. */
-  function card(concept, view, scale, kept, focused) {
+  function card(concept, view, scale, kept, focused, collapsed) {
     const node = document.createElement("div");
-    node.className = "concept" + (kept ? "" : " off") + (focused ? " focus" : "");
+    node.className = "concept" + (kept ? "" : " off") + (focused ? " focus" : "") + (collapsed ? " collapsed" : "");
     node.style.setProperty("--c", signColor(concept.value));
     node.style.setProperty("--strength", 0.2 + 0.8 * Math.abs(concept.value) / scale);
 
@@ -83,6 +84,7 @@ const ConceptCards = (() => {
     head.children[1].textContent = fmt(concept.value);
     head.children[2].textContent = `${pct(Math.abs(concept.value) / scale)} of the largest card`;
     node.appendChild(head);
+    if (collapsed) return node;
 
     const bySource = new Map(concept.parts.map(p => [p.s, p]));
     const vmax = Math.max(...concept.parts.map(p => Math.abs(p.part)), 1e-9);
@@ -116,9 +118,11 @@ const ConceptCards = (() => {
   }
 
   /* Appends the stage labels and the cards to `box`. Slots never move: W_E first, then heads in index order.
-     With `blackout`, cards below the elbow of |contributions| are blacked out. `focus` outlines the card with that label. */
-  function stack(box, concepts, view, scale, { blackout = true, focus = null } = {}) {
-    const kept = blackout ? keptConcepts(concepts) : new Set(concepts);
+     Cards below the elbow of |contributions| are blacked out with `blackout`, or shrunk to their label line with
+     `collapse`, which keeps the slot order but not the height. `focus` outlines the card with that label. */
+  function stack(box, concepts, view, scale, { blackout = true, collapse = false, focus = null } = {}) {
+    const aboveElbow = keptConcepts(concepts);
+    const kept = blackout && !collapse ? aboveElbow : new Set(concepts);
     let stage = null;
     for (const concept of concepts) {
       if (concept.stage !== stage) {
@@ -128,7 +132,8 @@ const ConceptCards = (() => {
         label.textContent = stage;
         box.appendChild(label);
       }
-      box.appendChild(card(concept, view, scale, kept.has(concept), concept.label === focus));
+      box.appendChild(card(concept, view, scale, kept.has(concept), concept.label === focus,
+        collapse && !aboveElbow.has(concept)));
     }
   }
 
