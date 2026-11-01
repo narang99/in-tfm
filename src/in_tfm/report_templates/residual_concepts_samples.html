@@ -1,0 +1,66 @@
+{% include "theme_toggle.html" %}
+{% include "concept_cards.html" %}
+<style>
+body { max-width:1500px; }
+.ov-meta { font-size:0.75rem; color:var(--muted); }
+.rc-columns { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; margin-top:16px; }
+@media (max-width:900px) { .rc-columns { grid-template-columns:1fr; } }
+.rc-side h2 { font-size:1.1rem; margin:0 0 6px; }
+.rc-buckets { display:flex; flex-wrap:wrap; gap:4px; margin:0 0 12px; }
+.rc-buckets button { font:0.72rem ui-monospace,Menlo,monospace; padding:2px 7px; cursor:pointer;
+  border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+.rc-buckets button.on { background:var(--fg); color:var(--bg); }
+.rc-example { border-top:2px solid var(--line); padding-top:8px; margin-top:14px; }
+.rc-example-head { font:0.8rem ui-monospace,Menlo,monospace; white-space:pre; }
+</style>
+<h1>Layer {{ layer }} o_proj neuron {{ neuron }}, sampled across its range</h1>
+<p class="ov-meta">{{ n_positions }} positions from {{ n_windows }} training windows, one per story. Buckets are equal-width in the neuron's value, from each side's extreme down to 0, with small buckets merged. Each example comes from a different window.</p>
+<p class="ov-meta">The binned value is the neuron, the sum of the heads. The W_E card is the rest of residual dim {{ neuron }}, shown as context. Cards show the {{ context }} tokens before the position, and "earlier tokens" holds the part from before that.</p>
+<p class="ov-meta">Green adds and red takes away. A card's brightness is its |contribution| over the largest |contribution| on this page. The tokens inside a card scale to that card's own largest |part|. Cards below the elbow of |contributions| are blacked out in place.</p>
+<div class="rc-columns" id="rc-columns"></div>
+<script>
+(() => {
+  const sides = {{ sides|tojson }};
+  const scale = {{ scale|tojson }};
+  const { fmt } = ConceptCards;
+
+  function drawExamples(box, bucket) {
+    box.innerHTML = "";
+    for (const ex of bucket.examples) {
+      const node = document.createElement("div");
+      node.className = "rc-example";
+      const head = document.createElement("div");
+      head.className = "rc-example-head";
+      head.textContent = `neuron ${fmt(ex.value)}  residual ${fmt(ex.residual)}  window ${ex.window}  position ${ex.position}`;
+      node.appendChild(head);
+      ConceptCards.stack(node, ex.concepts, { tokens: ex.tokens, offset: ex.offset }, scale);
+      box.appendChild(node);
+    }
+    if (!bucket.examples.length) box.textContent = "No unused window left for this bucket.";
+  }
+
+  function drawSide(side) {
+    const column = document.createElement("div");
+    column.className = "rc-side";
+    column.innerHTML = "<h2></h2><div class=\"ov-meta\"></div><div class=\"rc-buckets\"></div><div></div>";
+    column.children[0].textContent = side.sign;
+    column.children[1].textContent = `${side.n_positions} positions in ${side.buckets.length} buckets, highest |value| first`;
+    const buttons = column.children[2], examples = column.children[3];
+    side.buckets.forEach((bucket, i) => {
+      const button = document.createElement("button");
+      button.textContent = `${fmt(bucket.high, 2)} to ${fmt(bucket.low, 2)} (${bucket.n_positions})`;
+      button.onclick = () => {
+        buttons.querySelectorAll("button").forEach(b => b.classList.remove("on"));
+        button.classList.add("on");
+        drawExamples(examples, bucket);
+      };
+      buttons.appendChild(button);
+      if (i === 0) button.click();
+    });
+    return column;
+  }
+
+  const columns = document.getElementById("rc-columns");
+  sides.forEach(side => columns.appendChild(drawSide(side)));
+})();
+</script>

@@ -13,14 +13,13 @@
 from pathlib import Path
 
 import torch
-from matplotlib.colors import to_hex
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from in_tfm.colormaps import rd_bk_gn, rd_wht_gn, token_cmap_dark, token_cmap_light
 from in_tfm.html_report import page, render_template
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, load_trained_attn_only
 from in_tfm.models.attn_only_2l.ov_graph import ov_flows
 from in_tfm.presenters.text.colored_tokens import display_text
+from in_tfm.presenters.text.concept_cards import concept_card_context
 
 
 class OvGraphReportConfig(BaseSettings):
@@ -34,12 +33,6 @@ class OvGraphReportConfig(BaseSettings):
 
 def rounded(tensor: torch.Tensor) -> list:
     return torch.round(tensor, decimals=5).tolist()
-
-
-def sign_colors() -> dict[str, str]:
-    """The ends of the project's diverging maps, so an edge reads like a heatmap cell."""
-    return {"pos_light": to_hex(rd_wht_gn(1.0)), "neg_light": to_hex(rd_wht_gn(0.0)),
-            "pos_dark": to_hex(rd_bk_gn(1.0)), "neg_dark": to_hex(rd_bk_gn(0.0))}
 
 
 def main() -> None:
@@ -57,8 +50,6 @@ def main() -> None:
         "valueScores": rounded(flows.value_scores),
         "outputs": rounded(flows.outputs),
         "embeds": rounded(model.model.embed_tokens.weight[input_ids[0]].detach()),
-        "tokenLight": [to_hex(token_cmap_light(x)) for x in (0.0, 0.5, 1.0)],
-        "tokenDark": [to_hex(token_cmap_dark(x)) for x in (0.0, 0.5, 1.0)],
     }
     body = render_template(
         "ov_graph.html",
@@ -66,7 +57,7 @@ def main() -> None:
         layer=config.layer,
         predicted=tokenizer.decode([predicted]),
         graph_data=graph_data,
-        colors=sign_colors(),
+        **concept_card_context(),
     )
     config.out.parent.mkdir(parents=True, exist_ok=True)
     config.out.write_text(page(f"Residual concepts: {config.text}", body))

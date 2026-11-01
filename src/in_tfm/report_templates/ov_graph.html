@@ -1,9 +1,6 @@
 {% include "theme_toggle.html" %}
+{% include "concept_cards.html" %}
 <style>
-:root { --pos:{{ colors.pos_light }}; --neg:{{ colors.neg_light }}; }
-@media (prefers-color-scheme: dark) { :root { --pos:{{ colors.pos_dark }}; --neg:{{ colors.neg_dark }}; } }
-:root[data-theme="light"] { --pos:{{ colors.pos_light }}; --neg:{{ colors.neg_light }}; }
-:root[data-theme="dark"] { --pos:{{ colors.pos_dark }}; --neg:{{ colors.neg_dark }}; }
 body { max-width:1100px; }
 .ov-meta { font-size:0.75rem; color:var(--muted); }
 .ov-controls { display:grid; grid-template-columns:1fr; gap:10px; margin:12px 0; }
@@ -15,15 +12,6 @@ body { max-width:1100px; }
   border:1px solid var(--line); border-left:4px solid var(--c); border-radius:4px; background:var(--bg); color:var(--fg); }
 .ov-neurons button.on { background:var(--fg); color:var(--bg); }
 .ov-totals { font:0.8rem ui-monospace,Menlo,monospace; margin:14px 0 8px; white-space:pre; }
-.ov-stage { font-size:0.7rem; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--muted); margin:14px 0 6px; }
-.concept { border:1px solid var(--line); border-left:6px solid var(--c); border-radius:4px; background:var(--panel);
-  padding:6px 10px; margin:0 0 8px; }
-.concept.off { background:#000; border-left-color:#000; }
-.concept.off > * { visibility:hidden; }
-.concept-head { font:0.75rem ui-monospace,Menlo,monospace; display:flex; gap:14px; align-items:baseline; }
-.concept-head .value { font-weight:700; color:var(--c); }
-.concept .tokens { margin:4px 0; }
-.concept pre { white-space:pre; margin:0; font:0.7rem ui-monospace,Menlo,monospace; color:var(--muted); }
 </style>
 <h1>Residual stream after layer {{ layer }}</h1>
 <p class="ov-meta">Text: {{ text }} &middot; the model predicts {{ "%r"|format(predicted) }} at the last position.</p>
@@ -40,34 +28,11 @@ body { max-width:1100px; }
 <script>
 (() => {
   const data = {{ graph_data|tojson }};
+  const { fmt, signColor } = ConceptCards;
   const nHeads = data.pattern.length, seq = data.tokens.length;
   const state = { position: seq - 1, neuron: null };
-  const fmt = (x, d = 3) => (x >= 0 ? "+" : "") + x.toFixed(d);
-  const pct = x => (100 * x).toFixed(1) + "%";
-  const signColor = x => x >= 0 ? "var(--pos)" : "var(--neg)";
   const tokLabel = s => JSON.stringify(data.tokens[s]) + " @" + s;
   const residual = (t, n) => data.embeds[t][n] + data.outputs[t][n];
-
-  function hexToRgb(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
-  function rgbToHex(rgb) { return "#" + rgb.map(c => Math.round(c).toString(16).padStart(2, "0")).join(""); }
-
-  /* Linear in RGB between the map's three stops, which is how a three-colour LinearSegmentedColormap interpolates. */
-  function mapColor(stops, value, vmax) {
-    const x = vmax > 0 ? Math.min(Math.max((value + vmax) / (2 * vmax), 0), 1) : 0.5;
-    const [lo, hi, f] = x < 0.5 ? [stops[0], stops[1], x * 2] : [stops[1], stops[2], (x - 0.5) * 2];
-    const a = hexToRgb(lo), b = hexToRgb(hi);
-    return rgbToHex(a.map((c, i) => c + (b[i] - c) * f));
-  }
-
-  function readableFg(hex) {
-    const [r, g, b] = hexToRgb(hex).map(c => c / 255);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.55 ? "#111" : "#fff";
-  }
-
-  function tokenStyle(value, vmax) {
-    const light = mapColor(data.tokenLight, value, vmax), dark = mapColor(data.tokenDark, value, vmax);
-    return `--bg-l:${light};--fg-l:${readableFg(light)};--bg-d:${dark};--fg-d:${readableFg(dark)}`;
-  }
 
   function headParts(t, n, h) {
     return [...Array(t + 1).keys()].map(s => {
@@ -86,25 +51,6 @@ body { max-width:1100px; }
     return [embed, ...heads];
   }
 
-  /* Kneedle, as in `hit_selection.strategies.elbow.find_elbow_index_in_sorted_data`: the point of an ascending
-     curve furthest from the chord between its ends. Only values strictly above it are kept. */
-  function elbowCutoff(ascending) {
-    const n = ascending.length, [x1, y1, x2, y2] = [0, ascending[0], n - 1, ascending[n - 1]];
-    const chord = Math.hypot(y2 - y1, x2 - x1);
-    let best = 0, bestDistance = -1;
-    ascending.forEach((y, x) => {
-      const distance = Math.abs((y2 - y1) * x - (x2 - x1) * y + x2 * y1 - y2 * x1) / chord;
-      if (distance > bestDistance) { best = x; bestDistance = distance; }
-    });
-    return ascending[best];
-  }
-
-  function keptConcepts(list) {
-    if (list.length < 3) return new Set(list);
-    const cutoff = elbowCutoff(list.map(c => Math.abs(c.value)).sort((x, y) => x - y));
-    return new Set(list.filter(c => Math.abs(c.value) > cutoff));
-  }
-
   /* The largest |contribution| to dim n at any position, so brightness compares across positions. */
   function dimScale(n) {
     let largest = 1e-9;
@@ -113,65 +59,14 @@ body { max-width:1100px; }
     return largest;
   }
 
-  function conceptCard(concept, scale, t, kept) {
-    const card = document.createElement("div");
-    card.className = "concept" + (kept ? "" : " off");
-    card.style.setProperty("--c", signColor(concept.value));
-    card.style.opacity = 0.2 + 0.8 * Math.abs(concept.value) / scale;
-
-    const head = document.createElement("div");
-    head.className = "concept-head";
-    head.innerHTML = `<span></span><span class="value"></span><span></span>`;
-    head.children[0].textContent = concept.label;
-    head.children[1].textContent = fmt(concept.value);
-    head.children[2].textContent = `${pct(Math.abs(concept.value) / scale)} of this dim's largest`;
-    card.appendChild(head);
-
-    const shown = new Map(concept.parts.map(p => [p.s, p]));
-    const vmax = Math.max(...concept.parts.map(p => Math.abs(p.part)), 1e-9);
-    const row = document.createElement("div");
-    row.className = "tokens";
-    for (let s = 0; s <= t; s++) {
-      const chip = document.createElement("span");
-      const p = shown.get(s);
-      chip.className = "tok" + (s === t ? " tok-firing" : "");
-      chip.style.cssText = tokenStyle(p ? p.part : 0, vmax);
-      chip.textContent = data.tokens[s];
-      if (p && concept.label !== "W_E") chip.title = `part ${fmt(p.part)}, attention ${pct(p.a)}, v.w ${fmt(p.vw)}`;
-      row.appendChild(chip);
-    }
-    card.appendChild(row);
-
-    if (concept.label !== "W_E") {
-      const total = concept.parts.reduce((sum, p) => sum + Math.abs(p.part), 0) || 1;
-      const detail = document.createElement("pre");
-      detail.textContent = [...concept.parts].sort((p, q) => Math.abs(q.part) - Math.abs(p.part)).slice(0, 3)
-        .map(p => `${tokLabel(p.s).padEnd(18)} part ${fmt(p.part)}  A ${pct(p.a).padStart(6)}  ` +
-          `v.w ${fmt(p.vw)}  ${pct(Math.abs(p.part) / total).padStart(6)} of card`).join("\n");
-      card.appendChild(detail);
-    }
-    return card;
-  }
-
   function draw() {
     const t = state.position, n = state.neuron;
-    const list = concepts(t, n), scale = dimScale(n), kept = keptConcepts(list);
     document.getElementById("ov-totals").textContent =
       `residual dim ${n} at ${tokLabel(t)}: ${fmt(residual(t, n))}\n` +
       `  = W_E ${fmt(data.embeds[t][n])}  + layer 0 heads ${fmt(data.outputs[t][n])}`;
     const box = document.getElementById("ov-concepts");
     box.innerHTML = "";
-    let stage = null;
-    for (const concept of list) {
-      if (concept.stage !== stage) {
-        stage = concept.stage;
-        const label = document.createElement("div");
-        label.className = "ov-stage";
-        label.textContent = stage;
-        box.appendChild(label);
-      }
-      box.appendChild(conceptCard(concept, scale, t, kept.has(concept)));
-    }
+    ConceptCards.stack(box, concepts(t, n), { tokens: data.tokens.slice(0, t + 1), offset: 0 }, dimScale(n));
   }
 
   function drawPositions() {
