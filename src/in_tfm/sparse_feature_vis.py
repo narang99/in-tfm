@@ -151,7 +151,7 @@ class HadamardReader:
         self.conv: nn.Conv2d = getattr(model, conv_name)
         self.layout = ConvLayout(self.conv)
         self.kernel_row = self.layout.weight(self.conv.weight)[channel]
-        self.bias = self.conv.bias[channel] if self.conv.bias is not None else torch.zeros(())
+        self.bias = self.conv.bias[channel].detach() if self.conv.bias is not None else torch.zeros(())
 
     def __call__(self, pixels: Pixels) -> HadamardGrid:
         conv_input = forward_until(self.model, self.conv, pixels, take_input=True)
