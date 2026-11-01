@@ -99,6 +99,8 @@ class Checkpoint(BaseModel):
     """Share of the cat's firing cells whose nearest tree matches the cat cell's."""
     trees_at_firing_cells: dict[str, int]
     mean_pixel: float
+    path_reached: float | None = None
+    """Stepwise only: share of walking cells whose nearest point is the point they aimed at in this block."""
 
 
 def grid_of(reader: HadamardReader, pixels: torch.Tensor) -> torch.Tensor:
@@ -106,22 +108,60 @@ def grid_of(reader: HadamardReader, pixels: torch.Tensor) -> torch.Tensor:
         return reader(pixels)
 
 
-def nearest_trees(graph: HitGraph, grid: torch.Tensor, cells: np.ndarray) -> np.ndarray:
+def nearest_points(graph: HitGraph, grid: torch.Tensor, cells: np.ndarray) -> np.ndarray:
     """`grid` is one image's (dim, rows, cols)."""
     vectors = grid[:, cells[:, 0], cells[:, 1]].T.cpu().numpy()
-    nearest, _ = graph.nearest(vectors)
-    return graph.trees.tree[nearest]
+    return graph.nearest(vectors)[0]
+
+
+def nearest_trees(graph: HitGraph, grid: torch.Tensor, cells: np.ndarray) -> np.ndarray:
+    return graph.trees.tree[nearest_points(graph, grid, cells)]
+
+
+class CellPath(BaseModel):
+    row: int
+    col: int
+    path: list[int]
+    """Forest points from the car cell's nearest hit to the cat cell's nearest hit."""
+    trees: list[int]
+
+
+def cell_paths(graph: HitGraph, car_grid: torch.Tensor, cat_grid: torch.Tensor, cells: np.ndarray) -> list[CellPath]:
+    starts = nearest_points(graph, car_grid[0], cells)
+    ends = nearest_points(graph, cat_grid[0], cells)
+    paths = []
+    for (row, col), start, end in zip(cells, starts, ends):
+        path, _ = graph.shortest_path_to(int(start), np.array([end]))
+        paths.append(CellPath(row=int(row), col=int(col), path=path, trees=[int(graph.trees.tree[p]) for p in path]))
+    return paths
+
+
+def point_along(path: CellPath, stage: int, n_stages: int) -> int:
+    """The point `stage / n_stages` of the way along the path, so paths of any length arrive together."""
+    return path.path[round(stage * (len(path.path) - 1) / n_stages)]
+
+
+def staged_target(graph: HitGraph, cat_grid: torch.Tensor, paths: list[CellPath], stage: int, n_stages: int) -> tuple[torch.Tensor, np.ndarray]:
+    """The cat's grid, with each walking cell replaced by its path point for this stage. Also returns those points."""
+    target = cat_grid.clone()
+    aimed = np.array([point_along(p, stage, n_stages) for p in paths])
+    vectors = torch.from_numpy(graph.space.hadamard[graph.first_hit_of[aimed]]).to(target)
+    for (path, vector) in zip(paths, vectors):
+        target[0, :, path.row, path.col] = vector
+    return target, aimed
 
 
 def checkpoint(reader: HadamardReader, graph: HitGraph, images: torch.Tensor, target: torch.Tensor, firing: np.ndarray,
-               cat_trees_at_firing: np.ndarray, cat_peak: Pick, step: int) -> list[Checkpoint]:
+               cat_trees_at_firing: np.ndarray, cat_peak: Pick, step: int, aimed: np.ndarray | None = None) -> list[Checkpoint]:
     rows = []
     cat_map = reader.activation(target)[0].flatten().cpu().numpy()
     for seed in range(len(images)):
         grid = grid_of(reader, images[seed : seed + 1])
         activation = reader.activation(grid)[0]
-        trees = nearest_trees(graph, grid[0], firing)
+        points = nearest_points(graph, grid[0], firing)
+        trees = graph.trees.tree[points]
         rows.append(Checkpoint(
+            path_reached=float((points == aimed).mean()) if aimed is not None else None,
             step=step, grid_mse=float(((grid - target) ** 2).mean()),
             activation_map_correlation=float(np.corrcoef(activation.flatten().cpu().numpy(), cat_map)[0, 1]),
             cat_peak_activation=float(activation[cat_peak.row, cat_peak.col]),
@@ -165,6 +205,7 @@ def main() -> None:
     parser.add_argument("--car-trees", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--device", default=default_device())
+    parser.add_argument("--stepwise", action="store_true", help="walk each firing cell along its own forest path, all cells together")
     for field, info in TransferConfig.model_fields.items():
         parser.add_argument(f"--{field.replace('_', '-')}", type=info.annotation, default=info.default)
     args = parser.parse_args()
@@ -189,18 +230,28 @@ def main() -> None:
     frames_dir = args.out / "frames"
     frames_dir.mkdir(exist_ok=True)
     images = car.repeat(config.seeds, 1, 1, 1)
+    paths = cell_paths(graph, grid_of(reader, car), target, firing) if args.stepwise else []
+    if paths:
+        lengths = [len(p.path) for p in paths]
+        print(f"stepwise: {len(paths)} cell paths, {min(lengths)} to {max(lengths)} points, median {int(np.median(lengths))}", flush=True)
+    walking_stages = config.blocks - 1
     checkpoints = [checkpoint(reader, graph, images, target, firing, cat_trees_at_firing, cat_pick, 0)]
     frames, steps = [], []
     for block in range(1, config.blocks + 1):
-        images = fit_block(reader, images, target, config, salt=block)
+        aimed = None
+        block_target = target
+        if paths and block <= walking_stages:
+            block_target, aimed = staged_target(graph, target, paths, block, walking_stages)
+        images = fit_block(reader, images, block_target, config, salt=block)
         step = block * config.steps_per_block
-        checkpoints.append(checkpoint(reader, graph, images, target, firing, cat_trees_at_firing, cat_pick, step))
+        checkpoints.append(checkpoint(reader, graph, images, target, firing, cat_trees_at_firing, cat_pick, step, aimed))
         frames.append(images)
         steps.append(step)
         to_image(images[0]).save(frames_dir / f"step_{step:04d}.png")
         first = checkpoints[-1][0]
+        reached = f", path reached {first.path_reached:.2f}" if first.path_reached is not None else ""
         print(f"step {step}: grid mse {first.grid_mse:.2f}, map corr {first.activation_map_correlation:.2f}, "
-              f"tree agreement {first.tree_agreement:.2f}, mean pixel {first.mean_pixel:.3f}", flush=True)
+              f"tree agreement {first.tree_agreement:.2f}{reached}, mean pixel {first.mean_pixel:.3f}", flush=True)
 
     to_image(cat[0]).save(args.out / "cat_target.png")
     to_image(car[0]).save(args.out / "car_start.png")
@@ -209,6 +260,7 @@ def main() -> None:
     record = {
         "config": config.model_dump(), "cat": cat_pick.model_dump(), "car": car_pick.model_dump(),
         "firing_cells": firing.tolist(), "cat_trees_at_firing": cat_trees_at_firing.tolist(),
+        "stepwise": args.stepwise, "cell_paths": [p.model_dump() for p in paths],
         "checkpoints": [[c.model_dump() for c in row] for row in checkpoints],
     }
     (args.out / "transfer.json").write_text(json.dumps(record, indent=1))
