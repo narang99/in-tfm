@@ -26,7 +26,6 @@ from feature_vis_walk import (
     Context,
     StartImage,
     background_starts,
-    crop_around_cell,
     hit_crop,
     labelled,
     to_image,
@@ -61,10 +60,17 @@ class StepConfig(BaseModel):
     seeds: int = 2
 
 
-def fit_to(ctx: Context, images: torch.Tensor, row: int, col: int, target: np.ndarray, config: StepConfig, salt: int) -> torch.Tensor:
-    """Moves `images` so the cell's Hadamard vector matches `target`, with the sparse runs' affine and its bilinear read."""
+Cell = tuple[int, int]
+
+
+def fit_to(ctx: Context, images: torch.Tensor, cells: list[Cell], target: np.ndarray, config: StepConfig, salt: int) -> torch.Tensor:
+    """Moves `images` so every cell's Hadamard vector matches `target`, with the sparse runs' affine and its bilinear read.
+
+    - One forward pass serves all cells: each is read where the affine moved it, and their MSEs are averaged."""
     target_tensor = torch.from_numpy(target).float().to(ctx.device)
-    objective = HadamardObjective(ctx.reader, PeakHadamard(row=row, col=col, activation=0.0, target=target_tensor), 1.0)
+    objectives = [
+        HadamardObjective(ctx.reader, PeakHadamard(row=row, col=col, activation=0.0, target=target_tensor), 1.0) for row, col in cells
+    ]
     _, _, height, width = images.shape
     images = images.clone().requires_grad_(True)
     rngs = [random.Random(seed * 100_003 + salt) for seed in range(len(images))]
@@ -72,7 +78,8 @@ def fit_to(ctx: Context, images: torch.Tensor, row: int, col: int, target: np.nd
     for step in range(1, config.steps_per_point + 1):
         transformed = step <= config.steps_per_point - config.fine_tune_steps
         theta = seed_thetas(rngs, height, width, transformed, ctx.device)
-        fit = objective(warp(images, theta, fill=BACKGROUND_GREY), theta)
+        grid = ctx.reader(warp(images, theta, fill=BACKGROUND_GREY))
+        fit = torch.stack([((o.sample_at_peak(grid, theta) - target_tensor) ** 2).mean(dim=1) for o in objectives]).mean(dim=0)
         l1 = images.abs().mean(dim=(1, 2, 3))
         loss = (fit + config.l1_weight * l1 + config.tv_weight * total_variation_per_sample(images)).sum()
         optimizer.zero_grad()
@@ -84,7 +91,7 @@ def fit_to(ctx: Context, images: torch.Tensor, row: int, col: int, target: np.nd
 
 
 class Checkpoint(BaseModel):
-    """One seed's state after one fit."""
+    """One seed's state after one fit. Cell measures are averaged over the cells unless named per cell."""
 
     target_point: int
     target_tree: int
@@ -92,9 +99,14 @@ class Checkpoint(BaseModel):
     cosine: float
     activation: float
     nearest: int
+    """The first cell's nearest point."""
     nearest_tree: int
+    nearest_per_cell: list[int]
     reached_target: bool
+    """Every cell's nearest point is the target."""
+    cells_reached: float
     hops_to_target: int
+    """The median over cells."""
     distance_over_tau: float
     pixel_step_rms: float
     """RMS pixel change from the previous checkpoint."""
@@ -103,21 +115,29 @@ class Checkpoint(BaseModel):
     mean_pixel: float
 
 
-def checkpoint(ctx: Context, images: torch.Tensor, previous: torch.Tensor, row: int, col: int, point: int, target: np.ndarray) -> list[Checkpoint]:
-    vectors = vectors_at(ctx.reader, images, row, col)
-    nearest, distance = ctx.graph.nearest(vectors)
-    hops = ctx.graph.hops_between(nearest, np.full(len(nearest), point))
+def cell_vectors(ctx: Context, images: torch.Tensor, cells: list[Cell]) -> np.ndarray:
+    """(seeds, cells, dim)."""
+    return np.stack([vectors_at(ctx.reader, images, row, col) for row, col in cells], axis=1)
+
+
+def checkpoint(ctx: Context, images: torch.Tensor, previous: torch.Tensor, cells: list[Cell], point: int, target: np.ndarray) -> list[Checkpoint]:
+    vectors = cell_vectors(ctx, images, cells)
+    seeds, n_cells, _ = vectors.shape
+    nearest, distance = ctx.graph.nearest(vectors.reshape(seeds * n_cells, -1))
+    nearest, distance = nearest.reshape(seeds, n_cells), distance.reshape(seeds, n_cells)
+    hops = ctx.graph.hops_between(nearest.ravel(), np.full(nearest.size, point)).reshape(seeds, n_cells)
     rms = ((images - previous) ** 2).mean(dim=(1, 2, 3)).sqrt().cpu().numpy()
     rows = []
-    for seed, vector in enumerate(vectors):
+    for seed in range(seeds):
+        cosines = vectors[seed] @ target / (np.linalg.norm(vectors[seed], axis=1) * np.linalg.norm(target) + 1e-12)
         rows.append(Checkpoint(
             target_point=point, target_tree=int(ctx.graph.trees.tree[point]),
-            hadamard_mse=float(((vector - target) ** 2).mean()),
-            cosine=float(vector @ target / (np.linalg.norm(vector) * np.linalg.norm(target) + 1e-12)),
-            activation=float(vector.sum() + float(ctx.reader.bias)),
-            nearest=int(nearest[seed]), nearest_tree=int(ctx.graph.trees.tree[nearest[seed]]),
-            reached_target=bool(nearest[seed] == point), hops_to_target=int(hops[seed]),
-            distance_over_tau=float(distance[seed] / ctx.graph.tau), pixel_step_rms=float(rms[seed]),
+            hadamard_mse=float(((vectors[seed] - target) ** 2).mean()), cosine=float(cosines.mean()),
+            activation=float(vectors[seed].sum(axis=1).mean() + float(ctx.reader.bias)),
+            nearest=int(nearest[seed, 0]), nearest_tree=int(ctx.graph.trees.tree[nearest[seed, 0]]),
+            nearest_per_cell=nearest[seed].tolist(), reached_target=bool((nearest[seed] == point).all()),
+            cells_reached=float((nearest[seed] == point).mean()), hops_to_target=int(np.median(hops[seed])),
+            distance_over_tau=float(distance[seed].mean() / ctx.graph.tau), pixel_step_rms=float(rms[seed]),
             exact_zero_share=float((images[seed].amax(0) == 0).float().mean()), mean_pixel=float(images[seed].mean()),
         ))
     return rows
@@ -131,8 +151,7 @@ class Walk(BaseModel):
     start: str
     target_name: str
     target_trees: list[int]
-    row: int
-    col: int
+    cells: list[Cell]
     start_point: int
     start_distance_over_tau: float
     path: list[int]
@@ -144,30 +163,31 @@ class Walk(BaseModel):
     """Per block of the same length, one checkpoint per seed, always aimed at the path's last point."""
 
 
-def walk(ctx: Context, start: StartImage, target_name: str, target_trees: list[int], config: StepConfig) -> tuple[Walk, list[torch.Tensor], list[torch.Tensor]]:
+def walk(ctx: Context, start: StartImage, cells: list[Cell], target_name: str, target_trees: list[int], config: StepConfig) -> tuple[Walk, list[torch.Tensor], list[torch.Tensor]]:
+    """The path starts at the nearest hit to the mean of the cells' start vectors."""
     images = start.pixels.repeat(config.seeds, 1, 1, 1)
-    start_vector = vectors_at(ctx.reader, start.pixels, start.row, start.col)
+    start_vector = cell_vectors(ctx, start.pixels, cells)[0].mean(axis=0, keepdims=True)
     start_point, start_distance = ctx.graph.nearest(start_vector)
     path, length = ctx.graph.shortest_path_to(int(start_point[0]), ctx.graph.core_points(target_trees))
-    print(f"{start.name} -> {target_name}: start tree {ctx.graph.trees.tree[path[0]]}, path of {len(path)} points through trees "
-          f"{list(dict.fromkeys(int(ctx.graph.trees.tree[p]) for p in path))}", flush=True)
+    print(f"{start.name} -> {target_name} on cells {cells}: start tree {ctx.graph.trees.tree[path[0]]}, path of {len(path)} points "
+          f"through trees {list(dict.fromkeys(int(ctx.graph.trees.tree[p]) for p in path))}", flush=True)
     stepwise, stepwise_images = [], []
     current = images
     for index, point in enumerate(path[1:], start=1):
-        moved = fit_to(ctx, current, start.row, start.col, point_vector(ctx, point), config, salt=index)
-        stepwise.append(checkpoint(ctx, moved, current, start.row, start.col, point, point_vector(ctx, point)))
+        moved = fit_to(ctx, current, cells, point_vector(ctx, point), config, salt=index)
+        stepwise.append(checkpoint(ctx, moved, current, cells, point, point_vector(ctx, point)))
         stepwise_images.append(moved)
         current = moved
     direct, direct_images = [], []
     current = images
     final_point = path[-1]
     for index in range(1, len(path)):
-        moved = fit_to(ctx, current, start.row, start.col, point_vector(ctx, final_point), config, salt=index)
-        direct.append(checkpoint(ctx, moved, current, start.row, start.col, final_point, point_vector(ctx, final_point)))
+        moved = fit_to(ctx, current, cells, point_vector(ctx, final_point), config, salt=index)
+        direct.append(checkpoint(ctx, moved, current, cells, final_point, point_vector(ctx, final_point)))
         direct_images.append(moved)
         current = moved
     record = Walk(
-        start=start.name, target_name=target_name, target_trees=target_trees, row=start.row, col=start.col,
+        start=start.name, target_name=target_name, target_trees=target_trees, cells=cells,
         start_point=int(start_point[0]), start_distance_over_tau=float(start_distance[0] / ctx.graph.tau),
         path=path, path_trees=[int(ctx.graph.trees.tree[p]) for p in path], path_length=length,
         stepwise=stepwise, direct=direct,
@@ -175,31 +195,53 @@ def walk(ctx: Context, start: StartImage, target_name: str, target_trees: list[i
     return record, stepwise_images, direct_images
 
 
+def cells_centre_px(cells: list[Cell]) -> tuple[float, float]:
+    """(x, y) in pixels of the middle of the cells' block."""
+    return float(np.mean([c * 16 + 8 for _, c in cells])), float(np.mean([r * 16 + 8 for r, _ in cells]))
+
+
+def crop_around_cells(image: Image.Image, cells: list[Cell]) -> Image.Image:
+    x, y = cells_centre_px(cells)
+    half = CROP_PX // 2
+    return image.crop((int(x - half), int(y - half), int(x + half), int(y + half)))
+
+
+def cells_box_px(cells: list[Cell], scale: float) -> list[int]:
+    rows, cols = [r for r, _ in cells], [c for _, c in cells]
+    return [int(min(cols) * 16 * scale), int(min(rows) * 16 * scale), int((max(cols) + 1) * 16 * scale), int((max(rows) + 1) * 16 * scale)]
+
+
+def step_label(step: Checkpoint, n_cells: int) -> str:
+    if n_cells == 1:
+        return f"{'hit' if step.reached_target else f'+{step.hops_to_target}h'} t{step.nearest_tree}"
+    return f"{round(step.cells_reached * n_cells)}/{n_cells} t{step.nearest_tree}"
+
+
 def walk_sheet(ctx: Context, start: StartImage, record: Walk, stepwise: list[torch.Tensor], direct: list[torch.Tensor]) -> Image.Image:
     """Row 1: the path's hits. Row 2: the stepwise image after reaching each. Row 3: the direct fit at the same step count."""
     columns = len(record.path)
+    cells = [tuple(c) for c in record.cells]
     sheet = Image.new("RGB", (CROP_PX * columns, CROP_PX * 3), "black")
-    start_crop = crop_around_cell(to_image(start.pixels[0]), start.row, start.col)
+    start_crop = crop_around_cells(to_image(start.pixels[0]), cells)
     for column, point in enumerate(record.path):
         sheet.paste(labelled(hit_crop(ctx, point), f"t{record.path_trees[column]}").resize((CROP_PX, CROP_PX)), (column * CROP_PX, 0))
     sheet.paste(labelled(start_crop, "start"), (0, CROP_PX))
     sheet.paste(labelled(start_crop, "start"), (0, 2 * CROP_PX))
     for column in range(1, columns):
         step = record.stepwise[column - 1][0]
-        tile = crop_around_cell(to_image(stepwise[column - 1][0]), start.row, start.col)
-        sheet.paste(labelled(tile, f"{'hit' if step.reached_target else f'+{step.hops_to_target}h'} t{step.nearest_tree}"), (column * CROP_PX, CROP_PX))
+        tile = crop_around_cells(to_image(stepwise[column - 1][0]), cells)
+        sheet.paste(labelled(tile, step_label(step, len(cells))), (column * CROP_PX, CROP_PX))
         jump = record.direct[column - 1][0]
-        tile = crop_around_cell(to_image(direct[column - 1][0]), start.row, start.col)
-        sheet.paste(labelled(tile, f"t{jump.nearest_tree} d/t {jump.distance_over_tau:.1f}"), (column * CROP_PX, 2 * CROP_PX))
+        tile = crop_around_cells(to_image(direct[column - 1][0]), cells)
+        sheet.paste(labelled(tile, step_label(jump, len(cells))), (column * CROP_PX, 2 * CROP_PX))
     return sheet
 
 
 def full_strip(start: StartImage, record: Walk, stepwise: list[torch.Tensor], direct: list[torch.Tensor], size: int = 160) -> Image.Image:
-    """Whole images: row 1 stepwise after each point, row 2 the direct fit at the same step count. The cell is boxed."""
+    """Whole images: row 1 stepwise after each point, row 2 the direct fit at the same step count. The cells are boxed."""
     columns = len(record.path)
     sheet = Image.new("RGB", (size * columns, size * 2), "white")
-    scale = size / start.pixels.shape[-1]
-    box = [int((start.col * 16) * scale), int((start.row * 16) * scale), int((start.col * 16 + 16) * scale), int((start.row * 16 + 16) * scale)]
+    box = cells_box_px([tuple(c) for c in record.cells], size / start.pixels.shape[-1])
     rows = [[start.pixels[0]] + [images[0] for images in stepwise], [start.pixels[0]] + [images[0] for images in direct]]
     for row, frames in enumerate(rows):
         for column, frame in enumerate(frames):
@@ -220,7 +262,10 @@ def summarise(record: Walk) -> dict:
     return {
         "start": record.start, "target": record.target_name, "path_points": len(record.path),
         "path_trees": list(dict.fromkeys(record.path_trees)), "start_distance_over_tau": record.start_distance_over_tau,
+        "cells": record.cells,
         "stepwise_share_reached": path_mean(record.stepwise, "reached_target"),
+        "stepwise_share_cells_reached": path_mean(record.stepwise, "cells_reached"),
+        "direct_share_cells_reached": path_mean(record.direct, "cells_reached"),
         "stepwise_median_hops_off": float(np.median(per_seed(record.stepwise, "hops_to_target"))),
         "stepwise_mean_distance_over_tau": path_mean(record.stepwise, "distance_over_tau"),
         "direct_mean_distance_over_tau": path_mean(record.direct, "distance_over_tau"),
@@ -239,6 +284,10 @@ def summarise(record: Walk) -> dict:
     }
 
 
+def parse_cells(text: str) -> list[Cell]:
+    return [tuple(int(v) for v in cell.split(",")) for cell in text.split(";")]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hit-space", type=Path, required=True)
@@ -248,6 +297,7 @@ def main() -> None:
     parser.add_argument("--background-starts", type=int, default=3)
     parser.add_argument("--with-grey", action="store_true")
     parser.add_argument("--only-starts", default="", help="comma-separated start names to keep, for example background_t0_0")
+    parser.add_argument("--cells", default="", help="row,col cells fitted together, for example '6,6;6,7;7,6;7,7'. Default: each start's own cell")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--device", default=default_device())
     for field, info in StepConfig.model_fields.items():
@@ -271,7 +321,8 @@ def main() -> None:
     summaries = []
     for start in starts:
         for name, trees in targets.items():
-            record, stepwise, direct = walk(ctx, start, name, trees, config)
+            cells = parse_cells(args.cells) if args.cells else [(start.row, start.col)]
+            record, stepwise, direct = walk(ctx, start, cells, name, trees, config)
             stem = f"{start.name}_to_{name}"
             (args.out / f"{stem}.json").write_text(record.model_dump_json())
             walk_sheet(ctx, start, record, stepwise, direct).save(args.out / f"{stem}.png")
