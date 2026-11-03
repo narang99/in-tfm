@@ -5,8 +5,7 @@
     python scripts/train_tiny_attn_only.py --max-tokens 5000000 --out-dir checkpoints/tiny_timing
 
 - The first run trains the tokenizer and encodes the corpus. Later runs with the same `--out-dir` reuse them.
-- Each eval line prints the loss on a repeated random sequence, first copy then second copy.
-  - The second copy's loss falls far below the first once the induction heads form.
+- Each eval line prints the train and val loss.
 """
 
 from in_tfm.tiny_attn_only_training import TinyAttnOnlyTrainConfig, train
