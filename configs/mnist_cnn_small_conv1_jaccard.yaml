@@ -1,0 +1,20 @@
+# Run with: uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_conv1_jaccard.yaml
+# mnist_cnn_small_conv1.yaml with weighted Jaccard instead of euclidean distance between L2-normalised Hadamards.
+# Weighted Jaccard compares each dim's share of the contribution, so it is L1-normalised inside the distance.
+model: self/mnist-cnn-small
+target: conv
+layer_name: conv1
+neuron_start: 0
+neuron_end: 1
+batch_size: 64
+out_dir: reports/mnist_cnn_small_conv1_jaccard
+mnist:
+  images_per_class: 100
+hits:
+  method: elbow
+  max_hits: 200000
+clustering:
+  distance: weighted_jaccard
+  strategy:
+    method: density_peaks
+    k: 5

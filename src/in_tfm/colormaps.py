@@ -19,11 +19,15 @@ rd_wht_gn: mcolors.LinearSegmentedColormap = mcolors.LinearSegmentedColormap.fro
 )
 rd_wht_gn.set_bad("yellow")
 
-token_cmap_light: mcolors.LinearSegmentedColormap = mcolors.LinearSegmentedColormap.from_list(
-    "TokenLight", ["#B22222", "#FFFFFF", "#00A550"]
+token_cmap_light: mcolors.LinearSegmentedColormap = (
+    mcolors.LinearSegmentedColormap.from_list(
+        "TokenLight", ["#B22222", "#FFFFFF", "#00A550"]
+    )
 )
-token_cmap_dark: mcolors.LinearSegmentedColormap = mcolors.LinearSegmentedColormap.from_list(
-    "TokenDark", ["#FF3131", "#1E1E1E", "#39FF14"]
+token_cmap_dark: mcolors.LinearSegmentedColormap = (
+    mcolors.LinearSegmentedColormap.from_list(
+        "TokenDark", ["#FF3131", "#1E1E1E", "#39FF14"]
+    )
 )
 """Same red/green endpoints as the image maps, but centered on the html report's page color
 instead of grey/black: a near-zero token then reads as ordinary unhighlighted text rather than

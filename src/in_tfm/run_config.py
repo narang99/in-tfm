@@ -18,7 +18,11 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from .device import default_device
 
@@ -56,7 +60,9 @@ class Section(BaseModel):
 
 class TextDataConfig(Section):
     dataset: str = Field("Salesforce/wikitext", description="hf dataset name")
-    dataset_config: str | None = Field("wikitext-2-raw-v1", description="none for a dataset without configs")
+    dataset_config: str | None = Field(
+        "wikitext-2-raw-v1", description="none for a dataset without configs"
+    )
     split: str = "train"
     n_samples: int = 64
     max_length: int = 128
@@ -69,18 +75,28 @@ class TextDataConfig(Section):
 
 
 class MnistDataConfig(Section):
-    dataset: str = Field("ylecun/mnist", description="hf dataset with a grayscale `image` and a `label` column, 28x28")
+    dataset: str = Field(
+        "ylecun/mnist",
+        description="hf dataset with a grayscale `image` and a `label` column, 28x28",
+    )
     split: Literal["train", "test"] = "test"
-    images_per_class: int = Field(100, description="the first n images of each digit in the split")
-    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
+    images_per_class: int = Field(
+        100, description="the first n images of each digit in the split"
+    )
+    checkpoint: Path | None = Field(
+        None,
+        description="a snapshot from scripts/train_mnist.py, the model's own if unset",
+    )
 
 
 class InceptionDataConfig(Section):
     image_dir: Path = Field(
-        Path("data/inception_pool"), description="one folder per class holding jpgs, see scripts/prepare_inception_images.py"
+        Path("data/inception_pool"),
+        description="one folder per class holding jpgs, see scripts/prepare_inception_images.py",
     )
     n_images: int | None = Field(
-        None, description="evenly spread over the sorted images, so every class is in it. All of them if unset"
+        None,
+        description="evenly spread over the sorted images, so every class is in it. All of them if unset",
     )
 
 
@@ -93,7 +109,8 @@ class HitSelectionConfig(Section):
     max_hits: int = Field(20000, description="hits kept per neuron before clustering")
     n_buckets: int = 10
     min_bucket_size: int = Field(
-        100, description="bucketed only: buckets with fewer positions than this are merged with their neighbour"
+        100,
+        description="bucketed only: buckets with fewer positions than this are merged with their neighbour",
     )
     bucket_floor_fraction: float = Field(
         0.0,
@@ -115,19 +132,27 @@ class DensityPeaksConfig(Section):
     """Each hit links to its nearest denser hit, and every hit lands in the tree of a root. See in_tfm.density_peaks."""
 
     method: Literal["density_peaks"] = "density_peaks"
-    k: int = Field(5, description="a hit's density is 1 / the distance to its kth neighbour")
+    k: int = Field(
+        5, description="a hit's density is 1 / the distance to its kth neighbour"
+    )
     peak_share: float = Field(
-        0.8, gt=0, le=1,
+        0.8,
+        gt=0,
+        le=1,
         description="a tree's peak is its hits at least this dense relative to its root. Each hit's probability per "
         "tree comes from its geodesic distance to that tree's peak",
     )
     max_entropy: float = Field(
-        0.5, gt=0,
+        0.5,
+        gt=0,
         description="bits. Hits whose probabilities over trees are this mixed or more are left out of the cluster report",
     )
 
 
-ClusteringStrategy = Annotated[HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")]
+ClusteringStrategy = Annotated[
+    HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")
+]
+
 
 class ClusteringConfig(Section):
     """Settings every strategy shares sit here. Each strategy's own settings sit under `strategy`, picked by `method`."""
@@ -148,7 +173,8 @@ class ClusteringConfig(Section):
         "The Hadamard tiles in the reports are then raw too",
     )
     strategy: ClusteringStrategy = Field(
-        HdbscanConfig(), description="hdbscan or density_peaks, picked by strategy.method"
+        HdbscanConfig(),
+        description="hdbscan or density_peaks, picked by strategy.method",
     )
 
     @model_validator(mode="before")
@@ -169,14 +195,21 @@ class ReportConfig(Section):
 class RunConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True)
 
-    config: Path | None = Field(None, description="YAML file with defaults for any of the settings below")
-    model: ModelName = Field(ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l")
+    config: Path | None = Field(
+        None, description="YAML file with defaults for any of the settings below"
+    )
+    model: ModelName = Field(
+        ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l"
+    )
     layer_name: str = Field(
         "layers.10.mlp.down_proj",
         description="dotted submodule path of the adapter's model, for example layers.0.self_attn.q_proj. "
         "q_proj / k_proj neuron index = (kv_)head * head_dim + dim",
     )
-    neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
+    neurons: list[int] | None = Field(
+        None,
+        description="neuron indices, repeat the flag per index. Overrides the range",
+    )
     neuron_start: int = 90
     neuron_end: int = Field(90, description="inclusive")
     polarity: Literal["positive", "negative", "both", "signed"] = Field(
@@ -213,7 +246,9 @@ class RunConfig(BaseSettings):
         """`text.*` flags with an image model are a mistake, not something to ignore."""
         others = {"text", "mnist", "inception"} - {self.modality}
         if wrong := others & self.model_fields_set:
-            raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
+            raise ValueError(
+                f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set"
+            )
         return self
 
     @property

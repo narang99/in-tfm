@@ -27,7 +27,9 @@ def image_dir(tmp_path):
     rng = np.random.default_rng(0)
     for name in ("n02123045/b.jpg", "n02123045/a.jpg", "n03930630/c.jpg"):
         (tmp_path / name).parent.mkdir(exist_ok=True)
-        Image.fromarray(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8)).save(tmp_path / name)
+        Image.fromarray(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8)).save(
+            tmp_path / name
+        )
     return tmp_path
 
 
@@ -41,41 +43,60 @@ def test_the_forward_matches_lucents_own(model):
         torch.testing.assert_close(model(x), original(x), rtol=1e-4, atol=1e-6)
 
 
-def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(model, image_dir):
+def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(
+    model, image_dir
+):
     """Fails if the stem's local response norm, a pool or a ReLU is not being seen."""
     adapter = InceptionV1Adapter(model, LAYER, image_dir)
     source = adapter.make_source(image_paths(image_dir)[:1])
     batch = source.to_model_batch(list(source.sample_ids()))
     token = 100
     seen: list[torch.Tensor] = []
-    handle = submodule_getter(LAYER)(model).register_forward_hook(lambda m, i, o: seen.append(o[:, NEURON].flatten(1)[:, token]))
+    handle = submodule_getter(LAYER)(model).register_forward_hook(
+        lambda m, i, o: seen.append(o[:, NEURON].flatten(1)[:, token])
+    )
     with torch.no_grad():
         model(batch.kwargs["x"])
         model(torch.zeros_like(batch.kwargs["x"]))
     handle.remove()
-    relevance = compute_deeplift_relevance(model, batch, submodule_getter(LAYER), NEURON, token)
-    assert relevance.sum() == pytest.approx((seen[0] - seen[1]).item(), rel=1e-3, abs=1e-3)
+    relevance = compute_deeplift_relevance(
+        model, batch, submodule_getter(LAYER), NEURON, token
+    )
+    assert relevance.sum() == pytest.approx(
+        (seen[0] - seen[1]).item(), rel=1e-3, abs=1e-3
+    )
 
 
 def test_image_paths_are_relative_and_sorted(image_dir):
-    assert image_paths(image_dir) == ["n02123045/a.jpg", "n02123045/b.jpg", "n03930630/c.jpg"]
+    assert image_paths(image_dir) == [
+        "n02123045/a.jpg",
+        "n02123045/b.jpg",
+        "n03930630/c.jpg",
+    ]
 
 
 def test_mixed4e_has_a_14_by_14_grid_of_positions(model, image_dir):
-    source = InceptionV1Adapter(model, LAYER, image_dir).make_source(["n03930630/c.jpg"])
+    source = InceptionV1Adapter(model, LAYER, image_dir).make_source(
+        ["n03930630/c.jpg"]
+    )
     batch = source.to_model_batch(["n03930630/c.jpg"])
     assert batch.valid_mask.shape == (1, 14 * 14)
     assert batch.kwargs["x"].shape == (1, 3, IMAGE_SIZE, IMAGE_SIZE)
 
 
 def test_the_input_is_lucids_range(model, image_dir):
-    source = InceptionV1Adapter(model, LAYER, image_dir).make_source(["n03930630/c.jpg"])
+    source = InceptionV1Adapter(model, LAYER, image_dir).make_source(
+        ["n03930630/c.jpg"]
+    )
     x = source.to_model_batch(["n03930630/c.jpg"]).kwargs["x"]
     assert -117.01 <= x.min() and x.max() <= 138.01
 
 
 def test_the_model_reads_inception_data():
-    assert RunConfig(model=ModelName.INCEPTION_V1, layer_name=LAYER).modality == "inception"
+    assert (
+        RunConfig(model=ModelName.INCEPTION_V1, layer_name=LAYER).modality
+        == "inception"
+    )
 
 
 def test_another_models_data_section_is_rejected():

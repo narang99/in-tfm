@@ -72,7 +72,11 @@ def compute_attnlrp_relevance(
         with torch.enable_grad():
             model(**kwargs)
             layer_out = captured["layer_out"][..., neuron_idx]  # (batch, seq_len)
-            target = layer_out[:, token_idx] if token_idx is not None else layer_out.sum(dim=1)
+            target = (
+                layer_out[:, token_idx]
+                if token_idx is not None
+                else layer_out.sum(dim=1)
+            )
             target.sum().backward()
     finally:
         handle.remove()

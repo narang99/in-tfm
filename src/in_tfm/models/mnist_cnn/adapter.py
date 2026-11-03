@@ -29,10 +29,16 @@ def positions_in_output(output: torch.Tensor) -> int:
 def positions_in_layer(model: torch.nn.Module, layer: torch.nn.Module) -> int:
     """Output positions per image, found by running one blank image on the model's own device."""
     counts: list[int] = []
-    handle = layer.register_forward_hook(lambda module, inputs, output: counts.append(positions_in_output(output)))
+    handle = layer.register_forward_hook(
+        lambda module, inputs, output: counts.append(positions_in_output(output))
+    )
     try:
         with torch.no_grad():
-            model.eval()(torch.zeros(1, 1, IMAGE_SIZE, IMAGE_SIZE, device=next(model.parameters()).device))
+            model.eval()(
+                torch.zeros(
+                    1, 1, IMAGE_SIZE, IMAGE_SIZE, device=next(model.parameters()).device
+                )
+            )
     finally:
         handle.remove()
     return counts[0]
@@ -45,16 +51,22 @@ class MnistAdapter:
     default_checkpoint: ClassVar[Path]
     attr_fn: AttrFn = staticmethod(compute_deeplift_relevance)
 
-    def __init__(self, model: MnistCnn, layer_name: str, split_rows, split: str) -> None:
+    def __init__(
+        self, model: MnistCnn, layer_name: str, split_rows, split: str
+    ) -> None:
         if model.channels != self.channels:
-            raise ValueError(f"{type(self).__name__} is the {self.channels} network, got {model.channels}")
+            raise ValueError(
+                f"{type(self).__name__} is the {self.channels} network, got {model.channels}"
+            )
         self.model = model
         self.layer_name = layer_name
         self.split_rows = split_rows
         self.split = split
 
     @classmethod
-    def from_pretrained(cls, layer_name: str, dataset: str, split: str, checkpoint: Path | None = None):
+    def from_pretrained(
+        cls, layer_name: str, dataset: str, split: str, checkpoint: Path | None = None
+    ):
         model = load_checkpoint(checkpoint or cls.default_checkpoint)
         return cls(model, layer_name, load_dataset(dataset, split=split), split)
 
@@ -66,10 +78,14 @@ class MnistAdapter:
         reject_nnsight_wrapped(self.model)
 
     def make_source(self, samples: list[int]) -> MnistSource:
-        n_tokens = positions_in_layer(self.model, submodule_getter(self.layer_name)(self.model))
+        n_tokens = positions_in_layer(
+            self.model, submodule_getter(self.layer_name)(self.model)
+        )
         return MnistSource(self.split_rows, samples, self.split, n_tokens)
 
-    def make_presenter(self, source: MnistSource, clustered_label: str) -> ImagePresenter:
+    def make_presenter(
+        self, source: MnistSource, clustered_label: str
+    ) -> ImagePresenter:
         return ImagePresenter(Unnormalized())
 
 

@@ -32,12 +32,18 @@ def load_texts(text_config: TextDataConfig, seed: int) -> list[str]:
     first N would be N paragraphs of the same few articles."""
     from datasets import load_dataset
 
-    rows = list(load_dataset(text_config.dataset, text_config.dataset_config, split=text_config.split)["text"])
+    rows = list(
+        load_dataset(
+            text_config.dataset, text_config.dataset_config, split=text_config.split
+        )["text"]
+    )
     match text_config.unit:
         case "paragraph":
             texts = paragraphs(rows)
         case "article":
-            texts = [a for a in articles(rows) if len(a) >= text_config.min_article_chars]
+            texts = [
+                a for a in articles(rows) if len(a) >= text_config.min_article_chars
+            ]
         case "document":
             texts = [row for row in rows if row.strip()]
     random.Random(seed).shuffle(texts)

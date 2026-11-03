@@ -46,7 +46,9 @@ class MixedRow(BaseModel):
     cells: list[Cell]
 
 
-def sample_by_entropy(entropy: Float[np.ndarray, "n_hits"], min_entropy: float) -> Int[np.ndarray, "k"]:
+def sample_by_entropy(
+    entropy: Float[np.ndarray, "n_hits"], min_entropy: float
+) -> Int[np.ndarray, "k"]:
     """Up to `HITS_PER_BIN` hits from each of `ENTROPY_BINS` equal-width bins above `min_entropy`, least mixed first.
 
     - Even bins keep the rarer, heavily mixed hits on the sheet, which a plain random sample would mostly miss."""
@@ -54,11 +56,13 @@ def sample_by_entropy(entropy: Float[np.ndarray, "n_hits"], min_entropy: float) 
     if len(mixed) == 0:
         return mixed
     edges = np.linspace(min_entropy, entropy[mixed].max(), ENTROPY_BINS + 1)
-    bins = np.clip(np.searchsorted(edges, entropy[mixed], side="right") - 1, 0, ENTROPY_BINS - 1)
+    bins = np.clip(
+        np.searchsorted(edges, entropy[mixed], side="right") - 1, 0, ENTROPY_BINS - 1
+    )
     rng = np.random.default_rng(SAMPLE_SEED)
-    picked = np.concatenate([
-        rng.permutation(mixed[bins == b])[:HITS_PER_BIN] for b in range(ENTROPY_BINS)
-    ])
+    picked = np.concatenate(
+        [rng.permutation(mixed[bins == b])[:HITS_PER_BIN] for b in range(ENTROPY_BINS)]
+    )
     return picked[np.argsort(entropy[picked], kind="stable")]
 
 
@@ -72,7 +76,12 @@ def tile_url(tile: Image.Image, out_dir: Path, name: str) -> str:
     return f"{out_dir.name}/{name}"
 
 
-def cells(probabilities: Float[np.ndarray, "n_shown"], tiles: list[Image.Image], out_dir: Path, row: int) -> list[Cell]:
+def cells(
+    probabilities: Float[np.ndarray, "n_shown"],
+    tiles: list[Image.Image],
+    out_dir: Path,
+    row: int,
+) -> list[Cell]:
     """The fade is relative to the hit's most likely shown cluster, so that one is always at full colour.
 
     - With no cluster shown, every hit is mixed and there are no cells.
@@ -82,8 +91,13 @@ def cells(probabilities: Float[np.ndarray, "n_shown"], tiles: list[Image.Image],
     top = probabilities.max() if probabilities.max() > 0 else 1.0
     return [
         Cell(
-            src=tile_url(faded(tile, MOST_FADED * (1 - p / top)), out_dir, f"row{row}_cluster{column}.png"),
-            probability=f"{p:.2f}", likely=bool(p == probabilities.max()),
+            src=tile_url(
+                faded(tile, MOST_FADED * (1 - p / top)),
+                out_dir,
+                f"row{row}_cluster{column}.png",
+            ),
+            probability=f"{p:.2f}",
+            likely=bool(p == probabilities.max()),
         )
         for column, (p, tile) in enumerate(zip(probabilities, tiles))
     ]
@@ -103,25 +117,38 @@ def write_mixed_hits_page(
     tiles_dir = report_dir / "mixed_hits"
     tiles_dir.mkdir(exist_ok=True)
     cluster_ids = hits.shown_cluster_ids(min_uniq_images)
-    means = [hits.cluster_mean_hadamard(cid).reshape(hits.hadamard_shape) for cid in cluster_ids]
+    means = [
+        hits.cluster_mean_hadamard(cid).reshape(hits.hadamard_shape)
+        for cid in cluster_ids
+    ]
     tiles = render_hadamard_tiles(means) if means else []
 
     rows = []
     for row, hit in enumerate(sample_by_entropy(entropy, min_entropy)):
         artifacts = ClusterArtifacts(cluster_dir=report_dir / f"mixed_hit_{row}")
         artifacts.cluster_dir.mkdir(exist_ok=True)
-        hit_html = hits.presenter.render([hits.cluster_hit(int(hit), attr_fn)], artifacts, hits.hadamard_shape)
-        rows.append(MixedRow(
-            entropy=float(entropy[hit]), hit_html=hit_html,
-            cells=cells(probabilities[hit, cluster_ids], tiles, tiles_dir, row),
-        ))
+        hit_html = hits.presenter.render(
+            [hits.cluster_hit(int(hit), attr_fn)], artifacts, hits.hadamard_shape
+        )
+        rows.append(
+            MixedRow(
+                entropy=float(entropy[hit]),
+                hit_html=hit_html,
+                cells=cells(probabilities[hit, cluster_ids], tiles, tiles_dir, row),
+            )
+        )
     body = render_template(
         "mixed_hits.html",
         title=f"Neuron {hits.neuron_idx}: hits split between clusters",
-        n_mixed=int((entropy >= min_entropy).sum()), n_hits=len(entropy), min_entropy=min_entropy,
-        bins=ENTROPY_BINS, per_bin=HITS_PER_BIN,
-        clusters=[ClusterTile(cluster_id=cid, src=tile_url(t, tiles_dir, f"cluster{cid}.png"))
-                  for cid, t in zip(cluster_ids, tiles)],
+        n_mixed=int((entropy >= min_entropy).sum()),
+        n_hits=len(entropy),
+        min_entropy=min_entropy,
+        bins=ENTROPY_BINS,
+        per_bin=HITS_PER_BIN,
+        clusters=[
+            ClusterTile(cluster_id=cid, src=tile_url(t, tiles_dir, f"cluster{cid}.png"))
+            for cid, t in zip(cluster_ids, tiles)
+        ],
         rows=rows,
     )
     path = report_dir / MIXED_HITS_PAGE

@@ -49,15 +49,25 @@ class TextPresenter:
         return SINK_TOGGLE
 
     def render(
-        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+        self,
+        hits: Sequence[ClusterHit],
+        artifacts: ClusterArtifacts,
+        hadamard_shape: HadamardShape,
     ) -> str:
         view = self._cluster_view(hits, artifacts, hadamard_shape)
-        hits_html = "\n".join(render_template("text_hit.html", hit=hit) for hit in view.hits)
-        artifacts.path("hits.html").write_text(page(f"{artifacts.name} hits", hits_html))
+        hits_html = "\n".join(
+            render_template("text_hit.html", hit=hit) for hit in view.hits
+        )
+        artifacts.path("hits.html").write_text(
+            page(f"{artifacts.name} hits", hits_html)
+        )
         return render_template("text_cluster.html", view=view, hits_html=hits_html)
 
     def _cluster_view(
-        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+        self,
+        hits: Sequence[ClusterHit],
+        artifacts: ClusterArtifacts,
+        hadamard_shape: HadamardShape,
     ) -> TextClusterView:
         relevances = [self._relevance_up_to_firing(h) for h in hits]
         scale = SinkViews(
@@ -67,13 +77,19 @@ class TextPresenter:
         return TextClusterView(
             firing_tokens=self._firing_token_summary(hits),
             scale=scale,
-            hits=[self._hit_view(hit, relevance, scale) for hit, relevance in zip(hits, relevances)],
+            hits=[
+                self._hit_view(hit, relevance, scale)
+                for hit, relevance in zip(hits, relevances)
+            ],
             clustered_label=self.clustered_label,
             hadamard_url=self._save_hadamard_tiles(hits, artifacts, hadamard_shape),
         )
 
     def _save_hadamard_tiles(
-        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+        self,
+        hits: Sequence[ClusterHit],
+        artifacts: ClusterArtifacts,
+        hadamard_shape: HadamardShape,
     ) -> str:
         """The vectors that were clustered, one tile per hit in the same order as the hits above.
 
@@ -88,7 +104,11 @@ class TextPresenter:
             size=(round(tile_height * width / height), tile_height),
         )
         return artifacts.save_grid(
-            tiles, "hadamard.jpg", cols=4, pad=HADAMARD_TILE_GAP, border=HADAMARD_TILE_GAP
+            tiles,
+            "hadamard.jpg",
+            cols=4,
+            pad=HADAMARD_TILE_GAP,
+            border=HADAMARD_TILE_GAP,
         )
 
     def _firing_token_summary(self, hits: Sequence[ClusterHit]) -> list[FiringChip]:
@@ -117,7 +137,9 @@ class TextPresenter:
 
     def _firing_token(self, hit: ClusterHit) -> str:
         tokens = self._tokens(hit)
-        return tokens[hit.token_idx] if hit.token_idx < len(tokens) else "<out-of-range>"
+        return (
+            tokens[hit.token_idx] if hit.token_idx < len(tokens) else "<out-of-range>"
+        )
 
     def _relevance_up_to_firing(self, hit: ClusterHit) -> np.ndarray:
         """The whole text from the start, since the firing token only sees what came before it."""
@@ -151,7 +173,10 @@ class TextPresenter:
         """Ranked by absolute relevance among positions from `first` on, so `first=1` leaves out
         the attention sink."""
         order = first + np.argsort(-np.abs(relevance[first:]))[: self.top_tokens]
-        return [RelevanceChip(text=_chip_text(tokens[i]), value=float(relevance[i])) for i in order]
+        return [
+            RelevanceChip(text=_chip_text(tokens[i]), value=float(relevance[i]))
+            for i in order
+        ]
 
 
 def _chip_text(token: str) -> str:

@@ -15,9 +15,14 @@ def scan() -> ScanResult:
     activations = torch.randn(BATCH, SEQ, 1, generator=generator)
     valid_mask = torch.ones(BATCH, SEQ, dtype=torch.bool)
     valid_mask[:, 40:] = False
-    activations[:, 40:] = 100.0  # would dominate the tail if padding were not masked out
+    activations[:, 40:] = (
+        100.0  # would dominate the tail if padding were not masked out
+    )
     return ScanResult(
-        sample_ids=[str(i) for i in range(BATCH)], neuron_idxs=[7], activations=activations, valid_mask=valid_mask
+        sample_ids=[str(i) for i in range(BATCH)],
+        neuron_idxs=[7],
+        activations=activations,
+        valid_mask=valid_mask,
     )
 
 
@@ -27,7 +32,9 @@ def values_at(scan: ScanResult, selection) -> np.ndarray:
 
 @pytest.mark.parametrize("method", ["elbow", "bucketed"])
 def test_padding_is_never_selected(scan, method):
-    selection = select_hits(scan, 7, "positive", HitSelectionConfig(method=method), seed=0)
+    selection = select_hits(
+        scan, 7, "positive", HitSelectionConfig(method=method), seed=0
+    )
     assert selection.token_idx.max() < 40
 
 
@@ -49,11 +56,15 @@ def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
     again = select_hits(scan, 7, "positive", hits, seed=3)
     assert len(first.batch_idx) == 5
     assert first.n_candidates > 5
-    assert (first.batch_idx == again.batch_idx).all() and (first.token_idx == again.token_idx).all()
+    assert (first.batch_idx == again.batch_idx).all() and (
+        first.token_idx == again.token_idx
+    ).all()
 
 
 def test_signed_selection_takes_both_tails_beyond_the_magnitude_floor(scan):
-    hits = HitSelectionConfig(method="bucketed", max_hits=200, bucket_floor_fraction=0.3)
+    hits = HitSelectionConfig(
+        method="bucketed", max_hits=200, bucket_floor_fraction=0.3
+    )
     selection = select_hits(scan, 7, "signed", hits, seed=0)
     values = values_at(scan, selection)
     assert (values > 0).any() and (values < 0).any()
@@ -68,6 +79,8 @@ def test_signed_selection_refuses_an_elbow(scan):
 
 
 def test_bucketed_selection_labels_every_kept_hit(scan):
-    selection = select_hits(scan, 7, "positive", HitSelectionConfig(method="bucketed", max_hits=60), seed=0)
+    selection = select_hits(
+        scan, 7, "positive", HitSelectionConfig(method="bucketed", max_hits=60), seed=0
+    )
     assert isinstance(selection.pick, BucketedPick)
     assert len(selection.pick.bucket_ids) == len(selection.batch_idx)

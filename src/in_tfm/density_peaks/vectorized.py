@@ -6,7 +6,14 @@ from scipy.spatial.distance import cdist
 
 from ..weighted_jaccard import weighted_jaccard_block
 from .forest import (
-    DensityPeakForest, ForestTrees, PeakDistance, RootCuts, comparable_rows, merge_copies, root_cuts, root_mask,
+    DensityPeakForest,
+    ForestTrees,
+    PeakDistance,
+    RootCuts,
+    comparable_rows,
+    merge_copies,
+    root_cuts,
+    root_mask,
 )
 
 DISTANCE_BLOCK_ELEMENTS = 2**26
@@ -25,12 +32,16 @@ def _distance_block(
     return cdist(block, rows)
 
 
-def _row_blocks(rows: Float[np.ndarray, "n_distinct compared_dim"], distance: PeakDistance, block_elements: int):
+def _row_blocks(
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    distance: PeakDistance,
+    block_elements: int,
+):
     """Yields (start, distances of rows[start:start + size] to every row)."""
     # rows per block, so that block_size * n_distinct * compared_dim stays under block_elements
     size = max(1, block_elements // (len(rows) * rows.shape[1]))
     for start in range(0, len(rows), size):
-        yield start, _distance_block(rows[start:start + size], rows, distance)
+        yield start, _distance_block(rows[start : start + size], rows, distance)
 
 
 def kth_distances(
@@ -83,8 +94,14 @@ def kth_distances(
 
 
 def nearest_neighbours(
-    rows: Float[np.ndarray, "n_distinct compared_dim"], n_neighbours: int, distance: PeakDistance, block_elements: int
-) -> tuple[Int[np.ndarray, "n_distinct n_neighbours"], Float[np.ndarray, "n_distinct n_neighbours"]]:
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    n_neighbours: int,
+    distance: PeakDistance,
+    block_elements: int,
+) -> tuple[
+    Int[np.ndarray, "n_distinct n_neighbours"],
+    Float[np.ndarray, "n_distinct n_neighbours"],
+]:
     """Returns (neighbours, their distances): other distinct points, closest first, ties to the lower index.
 
     - A tie at the edge of the kept set can still differ from `naive.py`, since `argpartition` picks one arbitrarily."""
@@ -145,7 +162,9 @@ def nearest_denser(
     return parent, delta
 
 
-def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> ForestTrees:
+def forest_trees(
+    forest: DensityPeakForest, cuts: RootCuts | None = None
+) -> ForestTrees:
     """`cuts` defaults to `root_cuts`, the elbows.
 
     Points are visited densest first, so a point's parent always has its tree and depth already."""
@@ -157,7 +176,10 @@ def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> For
         if is_root[point]:
             root_of[point] = point
         else:
-            root_of[point], depth[point] = root_of[forest.parent[point]], depth[forest.parent[point]] + 1
+            root_of[point], depth[point] = (
+                root_of[forest.parent[point]],
+                depth[forest.parent[point]] + 1,
+            )
     roots = np.flatnonzero(is_root)
     hits_per_root = np.array([forest.counts[root_of == r].sum() for r in roots])
     roots = roots[np.argsort(-hits_per_root, kind="stable")]
@@ -176,12 +198,22 @@ def density_peak_forest(
     block_elements: int = DISTANCE_BLOCK_ELEMENTS,
 ) -> DensityPeakForest:
     """`points` are compared as `comparable_rows` makes them."""
-    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance, normalise))
+    distinct, distinct_of_hit, counts = merge_copies(
+        comparable_rows(points.astype(np.float64), distance, normalise)
+    )
     kth_distance = kth_distances(distinct, counts, k, distance, block_elements)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance, block_elements)
-    neighbours, neighbour_distance = nearest_neighbours(distinct, k, distance, block_elements)
+    neighbours, neighbour_distance = nearest_neighbours(
+        distinct, k, distance, block_elements
+    )
     return DensityPeakForest(
-        distinct_of_hit=distinct_of_hit, counts=counts, kth_distance=kth_distance, density_rank=ranks,
-        parent=parent, delta=delta, neighbours=neighbours, neighbour_distance=neighbour_distance,
+        distinct_of_hit=distinct_of_hit,
+        counts=counts,
+        kth_distance=kth_distance,
+        density_rank=ranks,
+        parent=parent,
+        delta=delta,
+        neighbours=neighbours,
+        neighbour_distance=neighbour_distance,
     )

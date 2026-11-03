@@ -113,7 +113,9 @@ def compose_grid(
     rows = math.ceil(len(images) / cols)
     w, h = images[0].size
     canvas = Image.new(
-        "RGB", (cols * (w + pad) - pad + 2 * border, rows * (h + pad) - pad + 2 * border), bg
+        "RGB",
+        (cols * (w + pad) - pad + 2 * border, rows * (h + pad) - pad + 2 * border),
+        bg,
     )
     for i, img in enumerate(images):
         row, col = divmod(i, cols)
@@ -141,7 +143,9 @@ def render_hadamard_tiles(
     """Colors raw Hadamard patches red/black/green, with one vmin/vmax shared across all
     patches and symmetric about 0."""
     v_limit = max(np.abs(p).max() for p in patches)
-    return [apply_cmap(p, rd_bk_gn, vmin=-v_limit, vmax=v_limit, size=size) for p in patches]
+    return [
+        apply_cmap(p, rd_bk_gn, vmin=-v_limit, vmax=v_limit, size=size) for p in patches
+    ]
 
 
 def to_pil(img: np.ndarray | torch.Tensor, size: tuple[int, int]) -> Image.Image:
@@ -186,5 +190,7 @@ def mk_overlay(
     if not overlay.any():
         return base
     overlay = overlay / np.abs(overlay).max()
-    heat = apply_cmap(overlay, cmap, vmin=-1, vmax=1, size=size, interpolation=Image.BILINEAR)
+    heat = apply_cmap(
+        overlay, cmap, vmin=-1, vmax=1, size=size, interpolation=Image.BILINEAR
+    )
     return Image.blend(base, heat, alpha=alpha)

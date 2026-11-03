@@ -26,11 +26,25 @@ def forest_section(data: ForestData | None) -> PageSection | None:
     if data is None:
         return None
     panes = [
-        Pane(name="Decision graph", intro=DECISION_INTRO, body_html=embed(decision_figure(data), "65vh")),
-        Pane(name="Root cuts", intro=CUTS_INTRO, body_html=embed(cuts_figure(data), "55vh")),
+        Pane(
+            name="Decision graph",
+            intro=DECISION_INTRO,
+            body_html=embed(decision_figure(data), "65vh"),
+        ),
+        Pane(
+            name="Root cuts",
+            intro=CUTS_INTRO,
+            body_html=embed(cuts_figure(data), "55vh"),
+        ),
     ]
     if len(data.up_close_points):
-        panes.append(Pane(name="Forest up close", intro=up_close_intro(data), body_html=up_close_html(data)))
+        panes.append(
+            Pane(
+                name="Forest up close",
+                intro=up_close_intro(data),
+                body_html=up_close_html(data),
+            )
+        )
     return PageSection(
         key="forest",
         title="Density-peak forest",
@@ -79,20 +93,42 @@ def point_hover(data: ForestData, points: Int[np.ndarray, "n"]) -> list[str]:
 
 def decision_figure(data: ForestData) -> go.Figure:
     points = np.arange(len(data.rho))
-    fig = go.Figure(go.Scattergl(
-        x=data.rho, y=data.delta, mode="markers", name="points",
-        marker=dict(size=4, color=[tree_color(t) for t in data.tree], opacity=0.55),
-        text=point_hover(data, points), hovertemplate="%{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Scattergl(
+            x=data.rho,
+            y=data.delta,
+            mode="markers",
+            name="points",
+            marker=dict(size=4, color=[tree_color(t) for t in data.tree], opacity=0.55),
+            text=point_hover(data, points),
+            hovertemplate="%{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
+        )
+    )
     trees = np.arange(data.n_trees)
-    fig.add_trace(go.Scatter(
-        x=data.rho[data.roots], y=data.delta[data.roots], mode="markers+text", name="roots",
-        text=[tree_name(t) for t in trees], textposition="top center",
-        marker=dict(size=11, color=[tree_color(t) for t in trees], line=dict(color="#fff", width=1.5)),
-        hovertemplate="root %{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
-    ))
-    fig.add_vline(x=data.cut_rho, line=dict(color=MARK, dash="dash"), annotation_text="rho cut")
-    fig.add_hline(y=data.cut_delta, line=dict(color=MARK, dash="dash"), annotation_text="delta cut")
+    fig.add_trace(
+        go.Scatter(
+            x=data.rho[data.roots],
+            y=data.delta[data.roots],
+            mode="markers+text",
+            name="roots",
+            text=[tree_name(t) for t in trees],
+            textposition="top center",
+            marker=dict(
+                size=11,
+                color=[tree_color(t) for t in trees],
+                line=dict(color="#fff", width=1.5),
+            ),
+            hovertemplate="root %{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
+        )
+    )
+    fig.add_vline(
+        x=data.cut_rho, line=dict(color=MARK, dash="dash"), annotation_text="rho cut"
+    )
+    fig.add_hline(
+        y=data.cut_delta,
+        line=dict(color=MARK, dash="dash"),
+        annotation_text="delta cut",
+    )
     fig.update_xaxes(title="rho (log density)")
     fig.update_yaxes(title="delta (distance to the nearest denser point)")
     fig.update_layout(showlegend=False)
@@ -108,15 +144,40 @@ def delta_for_elbow(data: ForestData) -> Float[np.ndarray, "n_distinct"]:
 
 
 def cuts_figure(data: ForestData) -> go.Figure:
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("rho, sorted", "delta, sorted"), horizontal_spacing=0.08)
-    for col, (values, cut) in enumerate([(data.rho, data.cut_rho), (delta_for_elbow(data), data.cut_delta)], start=1):
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=("rho, sorted", "delta, sorted"),
+        horizontal_spacing=0.08,
+    )
+    for col, (values, cut) in enumerate(
+        [(data.rho, data.cut_rho), (delta_for_elbow(data), data.cut_delta)], start=1
+    ):
         curve = np.sort(values)[::-1]
-        fig.add_trace(go.Scattergl(
-            x=np.arange(len(curve)), y=curve, mode="lines", line=dict(color=MUTED, width=2),
-            hovertemplate="rank %{x}<br>%{y:.3f}<extra></extra>",
-        ), row=1, col=col)
-        fig.add_hline(y=cut, line=dict(color=MARK, dash="dash"), annotation_text=f"cut {cut:.3f}", row=1, col=col)
-        fig.add_vline(x=int((curve >= cut).sum()) - 1, line=dict(color=MARK, dash="dot", width=1), row=1, col=col)
+        fig.add_trace(
+            go.Scattergl(
+                x=np.arange(len(curve)),
+                y=curve,
+                mode="lines",
+                line=dict(color=MUTED, width=2),
+                hovertemplate="rank %{x}<br>%{y:.3f}<extra></extra>",
+            ),
+            row=1,
+            col=col,
+        )
+        fig.add_hline(
+            y=cut,
+            line=dict(color=MARK, dash="dash"),
+            annotation_text=f"cut {cut:.3f}",
+            row=1,
+            col=col,
+        )
+        fig.add_vline(
+            x=int((curve >= cut).sum()) - 1,
+            line=dict(color=MARK, dash="dot", width=1),
+            row=1,
+            col=col,
+        )
     fig.update_xaxes(title="points, largest first")
     fig.update_layout(showlegend=False)
     return fig
@@ -166,26 +227,64 @@ def up_close_figure(data: ForestData, picks: set[int]) -> go.Figure:
     fig = go.Figure()
     for t in range(data.n_trees):
         on = t in picks
-        mine = np.array([i for i, p in enumerate(points) if data.tree[p] == t], dtype=int)
-        linked = np.array([i for i in mine if data.parent_in_tree[points[i]] >= 0], dtype=int)
-        parents = np.array([slot[int(data.parent_in_tree[points[i]])] for i in linked], dtype=int)
+        mine = np.array(
+            [i for i, p in enumerate(points) if data.tree[p] == t], dtype=int
+        )
+        linked = np.array(
+            [i for i in mine if data.parent_in_tree[points[i]] >= 0], dtype=int
+        )
+        parents = np.array(
+            [slot[int(data.parent_in_tree[points[i]])] for i in linked], dtype=int
+        )
         gap = np.full(len(linked), np.nan)
-        fig.add_trace(go.Scatter(
-            x=np.column_stack([xy[linked, 0], xy[parents, 0], gap]).ravel() if len(linked) else [],
-            y=np.column_stack([xy[linked, 1], xy[parents, 1], gap]).ravel() if len(linked) else [],
-            mode="lines", line=dict(color=tree_color(t), width=1), opacity=0.6, hoverinfo="skip", visible=on,
-        ))
-        fig.add_trace(go.Scatter(
-            x=xy[mine, 0], y=xy[mine, 1], mode="markers", visible=on,
-            marker=dict(size=size[mine], color=tree_color(t), line=dict(color="#000", width=0.5)),
-            text=point_hover(data, points[mine]), hovertemplate="%{text}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=np.column_stack([xy[linked, 0], xy[parents, 0], gap]).ravel()
+                if len(linked)
+                else [],
+                y=np.column_stack([xy[linked, 1], xy[parents, 1], gap]).ravel()
+                if len(linked)
+                else [],
+                mode="lines",
+                line=dict(color=tree_color(t), width=1),
+                opacity=0.6,
+                hoverinfo="skip",
+                visible=on,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=xy[mine, 0],
+                y=xy[mine, 1],
+                mode="markers",
+                visible=on,
+                marker=dict(
+                    size=size[mine],
+                    color=tree_color(t),
+                    line=dict(color="#000", width=0.5),
+                ),
+                text=point_hover(data, points[mine]),
+                hovertemplate="%{text}<extra></extra>",
+            )
+        )
         root = slot.get(int(data.roots[t]))
-        fig.add_trace(go.Scatter(
-            x=[xy[root, 0]] if root is not None else [], y=[xy[root, 1]] if root is not None else [],
-            mode="markers+text", text=[tree_name(t)], textposition="top center", visible=on, hoverinfo="skip",
-            marker=dict(symbol="star", size=20, color=tree_color(t), line=dict(color="#fff", width=1.5)),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=[xy[root, 0]] if root is not None else [],
+                y=[xy[root, 1]] if root is not None else [],
+                mode="markers+text",
+                text=[tree_name(t)],
+                textposition="top center",
+                visible=on,
+                hoverinfo="skip",
+                marker=dict(
+                    symbol="star",
+                    size=20,
+                    color=tree_color(t),
+                    line=dict(color="#fff", width=1.5),
+                ),
+            )
+        )
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x")
     fig.update_layout(showlegend=False)

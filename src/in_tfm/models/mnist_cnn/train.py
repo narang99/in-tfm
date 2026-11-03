@@ -51,7 +51,9 @@ def train_one_epoch(
 
 
 class MnistTrainConfig(BaseSettings):
-    model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True, cli_parse_args=True)
+    model_config = SettingsConfigDict(
+        extra="forbid", cli_kebab_case=True, cli_parse_args=True
+    )
 
     dataset: str = "ylecun/mnist"
     out_dir: Path = Path("checkpoints/mnist_cnn")
@@ -91,9 +93,13 @@ def split_as_tensors(dataset: str, split: str) -> MnistTensors:
     )
 
 
-def train(config: MnistTrainConfig, train_split: MnistTensors, test_split: MnistTensors) -> Path:
+def train(
+    config: MnistTrainConfig, train_split: MnistTensors, test_split: MnistTensors
+) -> Path:
     torch.manual_seed(config.seed)
-    train_loader = DataLoader(train_split.as_dataset(), config.batch_size, shuffle=True, drop_last=True)
+    train_loader = DataLoader(
+        train_split.as_dataset(), config.batch_size, shuffle=True, drop_last=True
+    )
     test_loader = DataLoader(test_split.as_dataset(), 1024)
     model = MnistCnn(config.channels).to(config.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
@@ -102,7 +108,9 @@ def train(config: MnistTrainConfig, train_split: MnistTensors, test_split: Mnist
     )
     for epoch in range(config.epochs):
         loss = train_one_epoch(model, train_loader, optimizer, scheduler, config.device)
-        print(f"epoch {epoch}: loss={loss:.4f} test_acc={accuracy(model, test_loader, config.device):.4f}")
+        print(
+            f"epoch {epoch}: loss={loss:.4f} test_acc={accuracy(model, test_loader, config.device):.4f}"
+        )
     return save_snapshot(config, model, accuracy(model, test_loader, config.device))
 
 

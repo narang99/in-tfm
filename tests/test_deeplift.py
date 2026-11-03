@@ -33,7 +33,9 @@ def select_position(layer_output: torch.Tensor) -> torch.Tensor:
 
 def change_from_baseline(model, layer, x, baseline) -> torch.Tensor:
     seen: list[torch.Tensor] = []
-    handle = layer.register_forward_hook(lambda m, i, o: seen.append(select_position(o)))
+    handle = layer.register_forward_hook(
+        lambda m, i, o: seen.append(select_position(o))
+    )
     with torch.no_grad():
         model(x)
         model(baseline)
@@ -42,7 +44,9 @@ def change_from_baseline(model, layer, x, baseline) -> torch.Tensor:
 
 
 @pytest.mark.parametrize("seed", range(10))
-def test_attributions_sum_to_the_change_from_the_baseline_across_overlapping_pools(seed):
+def test_attributions_sum_to_the_change_from_the_baseline_across_overlapping_pools(
+    seed,
+):
     torch.manual_seed(seed)
     model = PoolThenBranches().eval()
     x = torch.randn(2, 3, 16, 16)
@@ -57,4 +61,6 @@ def test_a_nonzero_baseline_is_used():
     model = PoolThenBranches().eval()
     x, baseline = torch.randn(1, 3, 16, 16), torch.randn(1, 3, 16, 16)
     attribution = deeplift_attribution(model, x, model.out, select_position, baseline)
-    assert attribution.sum().item() == pytest.approx(change_from_baseline(model, model.out, x, baseline).item(), abs=1e-4)
+    assert attribution.sum().item() == pytest.approx(
+        change_from_baseline(model, model.out, x, baseline).item(), abs=1e-4
+    )

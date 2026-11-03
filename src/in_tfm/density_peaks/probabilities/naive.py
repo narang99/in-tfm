@@ -37,12 +37,17 @@ def distances_to_peaks(
     return geodesic_distances(knn_graph(forest), peak_cores(forest, trees, peak_share))
 
 
-def peak_cores(forest: DensityPeakForest, trees: ForestTrees, peak_share: float) -> list[Int[np.ndarray, "n_peak"]]:
+def peak_cores(
+    forest: DensityPeakForest, trees: ForestTrees, peak_share: float
+) -> list[Int[np.ndarray, "n_peak"]]:
     cores = []
     for tree, root in enumerate(trees.roots):
         cut = forest.kth_distance[root] / peak_share
-        core = [point for point in range(len(trees.tree))
-                if trees.tree[point] == tree and forest.kth_distance[point] <= cut]
+        core = [
+            point
+            for point in range(len(trees.tree))
+            if trees.tree[point] == tree and forest.kth_distance[point] <= cut
+        ]
         cores.append(np.array(core, dtype=int))
     return cores
 
@@ -54,13 +59,17 @@ def knn_graph(forest: DensityPeakForest) -> Graph:
     for point in range(n):
         for j in range(k):
             other = int(forest.neighbours[point, j])
-            length = max(float(forest.neighbour_distance[point, j]), np.finfo(float).tiny)
+            length = max(
+                float(forest.neighbour_distance[point, j]), np.finfo(float).tiny
+            )
             for a, b in ((point, other), (other, point)):
                 graph[a][b] = max(graph[a].get(b, 0.0), length)
     return graph
 
 
-def geodesic_distances(graph: Graph, cores: list[np.ndarray]) -> Float[np.ndarray, "n_distinct n_trees"]:
+def geodesic_distances(
+    graph: Graph, cores: list[np.ndarray]
+) -> Float[np.ndarray, "n_distinct n_trees"]:
     """One Dijkstra per core, started from all its points at once at distance 0."""
     distances = np.full((len(graph), len(cores)), np.inf)
     for tree, core in enumerate(cores):
@@ -83,7 +92,9 @@ def step_length(forest: DensityPeakForest) -> float:
     return statistics.median(usable) if usable else 1.0
 
 
-def softmax_over_trees(distances: Float[np.ndarray, "n n_trees"], tau: float) -> Float[np.ndarray, "n n_trees"]:
+def softmax_over_trees(
+    distances: Float[np.ndarray, "n n_trees"], tau: float
+) -> Float[np.ndarray, "n n_trees"]:
     """A tree's weight is exp(-distance / tau), and its probability is its share of the row's weights.
 
     - Dividing by tau turns distances into units that are easy to reason about.

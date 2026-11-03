@@ -20,7 +20,10 @@ def test_a_cluster_card_and_its_nav_link_share_the_charts_colour():
     section = cluster_section(7, n_hits=40, n_unique_images=3, body="")
     nav = cluster_nav([ClusterLink(cluster_id=7, n_hits=40)])
     assert tree_color(7) == cluster_color(7)
-    assert f"--accent:{cluster_color(7)}" in section and f"--accent:{cluster_color(7)}" in nav
+    assert (
+        f"--accent:{cluster_color(7)}" in section
+        and f"--accent:{cluster_color(7)}" in nav
+    )
 
 
 def test_light_colours_get_dark_text():

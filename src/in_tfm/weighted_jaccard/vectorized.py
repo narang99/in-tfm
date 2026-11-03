@@ -6,23 +6,32 @@ from scipy.spatial.distance import cdist
 from sklearn.preprocessing import normalize
 
 
-def sign_parts(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+def sign_parts(
+    points: Float[np.ndarray, "n_points dim"],
+) -> Float[np.ndarray, "n_points two_dim"]:
     """Each row's positive and negative parts side by side, so +a and -a never match."""
-    return np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(np.float64)
+    return np.concatenate([points.clip(min=0), (-points).clip(min=0)], axis=1).astype(
+        np.float64
+    )
 
 
-def contribution_shares(points: Float[np.ndarray, "n_points dim"]) -> Float[np.ndarray, "n_points two_dim"]:
+def contribution_shares(
+    points: Float[np.ndarray, "n_points dim"],
+) -> Float[np.ndarray, "n_points two_dim"]:
     """`sign_parts`, L1-normalised, so a row says where its contribution comes from. An all-zero row stays all zero."""
     return normalize(sign_parts(points), norm="l1")
 
 
-def compared_parts(points: Float[np.ndarray, "n_points dim"], normalise: bool) -> Float[np.ndarray, "n_points two_dim"]:
+def compared_parts(
+    points: Float[np.ndarray, "n_points dim"], normalise: bool
+) -> Float[np.ndarray, "n_points two_dim"]:
     """Without normalising, a hit's size counts too: x and 3x are no longer the same."""
     return contribution_shares(points) if normalise else sign_parts(points)
 
 
 def weighted_jaccard_block(
-    block: Float[np.ndarray, "block_size two_dim"], shares: Float[np.ndarray, "n_points two_dim"]
+    block: Float[np.ndarray, "block_size two_dim"],
+    shares: Float[np.ndarray, "n_points two_dim"],
 ) -> Float[np.ndarray, "block_size n_points"]:
     """Distances from each row of `block` to every row of `shares`, both already `compared_parts`.
 
@@ -52,6 +61,8 @@ def weighted_jaccard_distances(
     shares = compared_parts(points, normalise)
     distances = np.empty((len(shares), len(shares)))
     for start in range(0, len(shares), chunk):
-        distances[start:start + chunk] = weighted_jaccard_block(shares[start:start + chunk], shares)
+        distances[start : start + chunk] = weighted_jaccard_block(
+            shares[start : start + chunk], shares
+        )
     np.fill_diagonal(distances, 0.0)
     return distances

@@ -42,7 +42,9 @@ def high_activation_hits(
     pad position can sit above the threshold like any other - those hits cluster perfectly
     happily and mean nothing, so they have to be dropped before `argwhere`, not after.
     """
-    token_activation = outputs[..., neuron_idx].detach().cpu().numpy()  # (batch, seq_len)
+    token_activation = (
+        outputs[..., neuron_idx].detach().cpu().numpy()
+    )  # (batch, seq_len)
     above = token_activation > thresh
     if valid_mask is not None:
         above &= valid_mask.detach().cpu().numpy()
@@ -62,6 +64,10 @@ def elbow_hits(
     batch_idx, token_idx = high_activation_hits(column, 0, pick.cutoff, scan.valid_mask)
     n_above = len(batch_idx)
     if n_above > hits.max_hits:
-        keep = np.sort(np.random.default_rng(seed).choice(n_above, hits.max_hits, replace=False))
+        keep = np.sort(
+            np.random.default_rng(seed).choice(n_above, hits.max_hits, replace=False)
+        )
         batch_idx, token_idx = batch_idx[keep], token_idx[keep]
-    return PickedPositions(batch_idx=batch_idx, token_idx=token_idx, n_candidates=n_above), pick
+    return PickedPositions(
+        batch_idx=batch_idx, token_idx=token_idx, n_candidates=n_above
+    ), pick

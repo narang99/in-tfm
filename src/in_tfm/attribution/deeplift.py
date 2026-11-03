@@ -49,20 +49,42 @@ EPS = 1e-10
 
 
 def rescale_multiplier(
-    x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor, slope_where_unchanged: torch.Tensor
+    x: torch.Tensor,
+    x0: torch.Tensor,
+    y: torch.Tensor,
+    y0: torch.Tensor,
+    slope_where_unchanged: torch.Tensor,
 ) -> torch.Tensor:
     unchanged = (x - x0).abs() < EPS
-    return torch.where(unchanged, slope_where_unchanged, (y - y0) / torch.where(unchanged, torch.ones_like(x), x - x0))
+    return torch.where(
+        unchanged,
+        slope_where_unchanged,
+        (y - y0) / torch.where(unchanged, torch.ones_like(x), x - x0),
+    )
 
 
-def divide_where_nonzero(numerator: torch.Tensor, denominator: torch.Tensor) -> torch.Tensor:
-    safe = torch.where(denominator.abs() < EPS, torch.ones_like(denominator), denominator)
-    return torch.where(denominator.abs() < EPS, torch.zeros_like(numerator), numerator / safe)
+def divide_where_nonzero(
+    numerator: torch.Tensor, denominator: torch.Tensor
+) -> torch.Tensor:
+    safe = torch.where(
+        denominator.abs() < EPS, torch.ones_like(denominator), denominator
+    )
+    return torch.where(
+        denominator.abs() < EPS, torch.zeros_like(numerator), numerator / safe
+    )
 
 
-def pooled_with_winners(pool: nn.MaxPool2d, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def pooled_with_winners(
+    pool: nn.MaxPool2d, x: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     return F.max_pool2d(
-        x, pool.kernel_size, pool.stride, pool.padding, pool.dilation, pool.ceil_mode, return_indices=True
+        x,
+        pool.kernel_size,
+        pool.stride,
+        pool.padding,
+        pool.dilation,
+        pool.ceil_mode,
+        return_indices=True,
     )
 
 
@@ -72,15 +94,21 @@ def at_winners(x: torch.Tensor, winners: torch.Tensor) -> torch.Tensor:
 
 def relu_surrogate(x: torch.Tensor, x0: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
     y = F.relu(x)
-    return y0 + rescale_multiplier(x, x0, y, y0, (x > 0).to(x.dtype)).detach() * (x - x0)
+    return y0 + rescale_multiplier(x, x0, y, y0, (x > 0).to(x.dtype)).detach() * (
+        x - x0
+    )
 
 
-def response_norm_surrogate(x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
+def response_norm_surrogate(
+    x: torch.Tensor, x0: torch.Tensor, y: torch.Tensor, y0: torch.Tensor
+) -> torch.Tensor:
     """Where the input did not change the slope carries no attribution, and a local response norm is close to the identity."""
     return y0 + rescale_multiplier(x, x0, y, y0, torch.ones_like(x)).detach() * (x - x0)
 
 
-def maxpool_surrogate(pool: nn.MaxPool2d, x: torch.Tensor, x0: torch.Tensor, y0: torch.Tensor) -> torch.Tensor:
+def maxpool_surrogate(
+    pool: nn.MaxPool2d, x: torch.Tensor, x0: torch.Tensor, y0: torch.Tensor
+) -> torch.Tensor:
     y, winners = pooled_with_winners(pool, x)
     _, winners0 = pooled_with_winners(pool, x0)
     cross_max = torch.max(y, y0)
@@ -100,13 +128,21 @@ def deeplift_attribution(
 ) -> Float[torch.Tensor, "batch ..."]:
     """Attribution of `selector(layer output)` to every element of `x`, summing to its change from the baseline."""
     baseline = torch.zeros_like(x) if baseline is None else baseline
-    nonlinear = [m for m in model.modules() if isinstance(m, (nn.ReLU, nn.MaxPool2d, nn.LocalResponseNorm))]
+    nonlinear = [
+        m
+        for m in model.modules()
+        if isinstance(m, (nn.ReLU, nn.MaxPool2d, nn.LocalResponseNorm))
+    ]
     reference: dict[nn.Module, tuple[torch.Tensor, torch.Tensor]] = {}
 
-    def record(module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
+    def record(
+        module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor
+    ) -> None:
         reference[module] = (inputs[0].detach(), output.detach())
 
-    def replace(module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor) -> torch.Tensor:
+    def replace(
+        module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor
+    ) -> torch.Tensor:
         x0, y0 = reference[module]
         if isinstance(module, nn.ReLU):
             return relu_surrogate(inputs[0], x0, y0)
@@ -122,7 +158,9 @@ def deeplift_attribution(
             handle.remove()
         handles = [m.register_forward_hook(replace) for m in nonlinear]
         explained: list[torch.Tensor] = []
-        handles.append(layer.register_forward_hook(lambda m, i, o: explained.append(selector(o))))
+        handles.append(
+            layer.register_forward_hook(lambda m, i, o: explained.append(selector(o)))
+        )
         with torch.enable_grad():
             leaf = x.detach().clone().requires_grad_(True)
             model(leaf)
@@ -151,11 +189,17 @@ def compute_deeplift_relevance(
     - The model is called as `model(leaf)`, so the batch must hold nothing else.
     """
     if token_idx is None:
-        raise ValueError("DeepLift here explains a single output position, pass token_idx")
+        raise ValueError(
+            "DeepLift here explains a single output position, pass token_idx"
+        )
     model.eval()
     _, leaf = batch.differentiable()
 
     def one_position(layer_output: torch.Tensor) -> torch.Tensor:
         return layer_output[:, neuron_idx].reshape(len(layer_output), -1)[:, token_idx]
 
-    return deeplift_attribution(model, leaf, layer_getter(model), one_position).cpu().numpy()
+    return (
+        deeplift_attribution(model, leaf, layer_getter(model), one_position)
+        .cpu()
+        .numpy()
+    )

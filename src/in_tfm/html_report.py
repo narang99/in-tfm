@@ -20,6 +20,7 @@ _env = Environment(
     undefined=StrictUndefined,
 )
 
+
 class ClusterLink(BaseModel):
     cluster_id: int
     n_hits: int
@@ -42,10 +43,14 @@ def page(title: str, body: str, plotly_js: str | None = None) -> str:
 
 
 def details(summary: str, body: str, start_open: bool = False) -> str:
-    return render_template("details.html", summary=summary, body=body, start_open=start_open)
+    return render_template(
+        "details.html", summary=summary, body=body, start_open=start_open
+    )
 
 
-def cluster_section(cluster_id: int, n_hits: int, n_unique_images: int, body: str) -> str:
+def cluster_section(
+    cluster_id: int, n_hits: int, n_unique_images: int, body: str
+) -> str:
     return render_template(
         "cluster_section.html",
         cluster_id=cluster_id,

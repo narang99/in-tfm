@@ -26,8 +26,13 @@ def test_max_lands_in_last_bucket():
 
 def test_sample_keeps_the_tail():
     rng = np.random.default_rng(0)
-    values = np.concatenate([np.full(10_000, 0.1), np.full(5, 5.0)]) + rng.random(10_005) * 0.01
-    sample = bucketed_sample(values, n_buckets=10, budget=100, floor=0.0, min_bucket_size=0, rng=rng)
+    values = (
+        np.concatenate([np.full(10_000, 0.1), np.full(5, 5.0)])
+        + rng.random(10_005) * 0.01
+    )
+    sample = bucketed_sample(
+        values, n_buckets=10, budget=100, floor=0.0, min_bucket_size=0, rng=rng
+    )
     assert len(sample.kept_value_idx) == 100
     assert (values[sample.kept_value_idx] > 4).sum() == 5
     assert (np.diff(sample.kept_value_idx) > 0).all()
@@ -36,13 +41,22 @@ def test_sample_keeps_the_tail():
 
 def test_nothing_above_floor():
     sample = bucketed_sample(
-        np.array([-1.0, 0.0]), n_buckets=4, budget=10, floor=0.0, min_bucket_size=100, rng=np.random.default_rng(0)
+        np.array([-1.0, 0.0]),
+        n_buckets=4,
+        budget=10,
+        floor=0.0,
+        min_bucket_size=100,
+        rng=np.random.default_rng(0),
     )
     assert len(sample.kept_value_idx) == 0 and sample.layout is None
 
 
 def test_small_top_buckets_merge_into_the_one_below():
-    assert merge_small_buckets([500, 300, 233, 64, 14, 8], min_size=100) == [[0], [1], [2, 3, 4, 5]]
+    assert merge_small_buckets([500, 300, 233, 64, 14, 8], min_size=100) == [
+        [0],
+        [1],
+        [2, 3, 4, 5],
+    ]
 
 
 def test_small_lowest_group_joins_the_group_above():
@@ -54,7 +68,11 @@ def test_everything_merges_when_total_is_small():
 
 
 def test_merged_edges_drop_the_boundaries_inside_merged_buckets():
-    values = np.concatenate([np.full(500, 0.1), np.full(300, 1.1), np.full(5, 1.9), np.array([4.0])])
-    edges = plan_buckets(values, n_buckets=4, lowest_edge=0.0, min_bucket_size=100).group_edges()
+    values = np.concatenate(
+        [np.full(500, 0.1), np.full(300, 1.1), np.full(5, 1.9), np.array([4.0])]
+    )
+    edges = plan_buckets(
+        values, n_buckets=4, lowest_edge=0.0, min_bucket_size=100
+    ).group_edges()
     assert edges[0] == 0.0 and edges[-1] == 4.0
     assert len(edges) < 5

@@ -4,7 +4,11 @@ from nnsight import NNsight
 from transformers import Gemma3ForCausalLM, Gemma3TextConfig
 
 from in_tfm.layers import submodule_getter
-from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, AttnOnlyConfig, AttnOnlyForCausalLM
+from in_tfm.models.attn_only_2l import (
+    AttnOnly2LAdapter,
+    AttnOnlyConfig,
+    AttnOnlyForCausalLM,
+)
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.sources import ModelBatch
 
@@ -34,7 +38,9 @@ def tiny_attn_only_adapter() -> AttnOnly2LAdapter:
         max_position_embeddings=MAX_LENGTH,
         vocab_size=VOCAB,
     )
-    return AttnOnly2LAdapter(AttnOnlyForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH)
+    return AttnOnly2LAdapter(
+        AttnOnlyForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH
+    )
 
 
 def tiny_gemma3_adapter() -> Gemma3Adapter:
@@ -48,10 +54,14 @@ def tiny_gemma3_adapter() -> Gemma3Adapter:
         head_dim=HEAD_DIM,
         max_position_embeddings=MAX_LENGTH,
     )
-    return Gemma3Adapter(Gemma3ForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH)
+    return Gemma3Adapter(
+        Gemma3ForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH
+    )
 
 
-@pytest.fixture(params=[tiny_attn_only_adapter, tiny_gemma3_adapter], ids=["attn_only_2l", "gemma3"])
+@pytest.fixture(
+    params=[tiny_attn_only_adapter, tiny_gemma3_adapter], ids=["attn_only_2l", "gemma3"]
+)
 def adapter(request):
     return request.param()
 
@@ -63,7 +73,9 @@ def test_getter_weight_rows_match_the_layer_output_width(adapter):
 
 def test_patch_runs_once(adapter, monkeypatch):
     calls: list[int] = []
-    monkeypatch.setattr(type(adapter), "_apply_attn_lrp_patch", lambda self: calls.append(1))
+    monkeypatch.setattr(
+        type(adapter), "_apply_attn_lrp_patch", lambda self: calls.append(1)
+    )
     adapter.patch_for_attn_lrp()
     adapter.patch_for_attn_lrp()
     assert calls == [1]
@@ -84,10 +96,13 @@ def test_model_runs_on_the_source_batch(adapter):
         adapter.get_model()(**batch.kwargs)
 
 
-@pytest.mark.parametrize(("make_adapter", "expected"), [
-    (tiny_attn_only_adapter, "<bos>a"),
-    (tiny_gemma3_adapter, "a"),
-])
+@pytest.mark.parametrize(
+    ("make_adapter", "expected"),
+    [
+        (tiny_attn_only_adapter, "<bos>a"),
+        (tiny_gemma3_adapter, "a"),
+    ],
+)
 def test_only_the_attn_only_model_gets_a_bos_prepended(make_adapter, expected):
     adapter = make_adapter()
     source = adapter.make_source(["a"])

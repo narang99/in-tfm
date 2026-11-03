@@ -2,8 +2,15 @@ import numpy as np
 from pydantic import TypeAdapter
 
 from in_tfm.cluster_membership import (
-    NOISE_LABEL, ClusterProbabilities, HitMembership, Noise, confident_labels, membership_entropy, most_probable_labels,
-    one_hot_memberships, probability_matrix,
+    NOISE_LABEL,
+    ClusterProbabilities,
+    HitMembership,
+    Noise,
+    confident_labels,
+    membership_entropy,
+    most_probable_labels,
+    one_hot_memberships,
+    probability_matrix,
 )
 from in_tfm.neuron_run import cluster_hits
 from in_tfm.run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig
@@ -29,18 +36,24 @@ def test_one_hot_round_trips_through_the_most_probable_label():
 def test_a_membership_is_picked_by_its_kind():
     adapter = TypeAdapter(HitMembership)
     assert isinstance(adapter.validate_python({"kind": "noise"}), Noise)
-    parsed = adapter.validate_python({"kind": "probabilities", "probabilities": np.array([0.3, 0.7])})
+    parsed = adapter.validate_python(
+        {"kind": "probabilities", "probabilities": np.array([0.3, 0.7])}
+    )
     assert isinstance(parsed, ClusterProbabilities)
 
 
 def test_the_most_probable_label_breaks_ties_toward_the_lower_cluster():
-    assert most_probable_labels([ClusterProbabilities(probabilities=np.array([0.5, 0.5]))]).tolist() == [0]
+    assert most_probable_labels(
+        [ClusterProbabilities(probabilities=np.array([0.5, 0.5]))]
+    ).tolist() == [0]
 
 
 def test_every_strategy_returns_one_probability_vector_per_hit():
     points = two_blobs()
     for strategy in (DensityPeaksConfig(k=3), HdbscanConfig(min_cluster_size=5)):
-        memberships = cluster_hits(points, ClusteringConfig(strategy=strategy)).memberships
+        memberships = cluster_hits(
+            points, ClusteringConfig(strategy=strategy)
+        ).memberships
         assert len(memberships) == len(points)
         for m in memberships:
             if isinstance(m, ClusterProbabilities):
@@ -62,10 +75,20 @@ def test_hits_too_mixed_are_left_out_and_the_rest_keep_their_cluster():
         ClusterProbabilities(probabilities=np.array([0.5, 0.5])),
         Noise(),
     ]
-    assert confident_labels(memberships, max_entropy=0.6).tolist() == [0, NOISE_LABEL, NOISE_LABEL]
-    assert confident_labels(memberships, max_entropy=None).tolist() == [0, 0, NOISE_LABEL]
+    assert confident_labels(memberships, max_entropy=0.6).tolist() == [
+        0,
+        NOISE_LABEL,
+        NOISE_LABEL,
+    ]
+    assert confident_labels(memberships, max_entropy=None).tolist() == [
+        0,
+        0,
+        NOISE_LABEL,
+    ]
 
 
 def test_the_probability_matrix_has_a_row_per_hit_and_zeros_for_noise():
-    matrix = probability_matrix([ClusterProbabilities(probabilities=np.array([0.2, 0.8])), Noise()])
+    matrix = probability_matrix(
+        [ClusterProbabilities(probabilities=np.array([0.2, 0.8])), Noise()]
+    )
     assert matrix.tolist() == [[0.2, 0.8], [0.0, 0.0]]

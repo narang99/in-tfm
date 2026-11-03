@@ -34,7 +34,9 @@ class HitSelection(BaseModel):
     @property
     def threshold(self) -> float:
         """The cutoff or floor, signed like the activations. With signed polarity it is the magnitude floor."""
-        return -self.pick.threshold if self.polarity == "negative" else self.pick.threshold
+        return (
+            -self.pick.threshold if self.polarity == "negative" else self.pick.threshold
+        )
 
 
 def positive_sorted_activations(
@@ -51,14 +53,19 @@ def positive_sorted_activations(
     return torch.sort(values).values
 
 
-def tail_column(scan: ScanResult, neuron_idx: int, polarity: Polarity) -> Float[torch.Tensor, "batch seq 1"]:
+def tail_column(
+    scan: ScanResult, neuron_idx: int, polarity: Polarity
+) -> Float[torch.Tensor, "batch seq 1"]:
     """Strategies only look at positive values, so the negative tail is found by negating the column.
     The signed column is left as it is, for the bucketed strategy to read both tails."""
     column = scan.neuron_column(neuron_idx)
     return -column if polarity == "negative" else column
 
 
-def sorted_valid_values(column: Float[torch.Tensor, "batch seq 1"], valid_mask: Bool[torch.Tensor, "batch seq"]) -> Float[torch.Tensor, "n_valid"]:
+def sorted_valid_values(
+    column: Float[torch.Tensor, "batch seq 1"],
+    valid_mask: Bool[torch.Tensor, "batch seq"],
+) -> Float[torch.Tensor, "n_valid"]:
     return torch.sort(column[..., 0][valid_mask]).values
 
 
@@ -73,13 +80,21 @@ def run_strategy(
     match hits.method:
         case "elbow":
             if signed:
-                raise ValueError("signed polarity needs hits.method bucketed: an elbow only exists on one tail")
+                raise ValueError(
+                    "signed polarity needs hits.method bucketed: an elbow only exists on one tail"
+                )
             return elbow_hits(column, sorted_magnitudes, scan, hits, seed)
         case "bucketed":
             return bucketed_hits(column, sorted_magnitudes, scan, hits, seed, signed)
 
 
-def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, hits: HitSelectionConfig, seed: int) -> HitSelection:
+def select_hits(
+    scan: ScanResult,
+    neuron_idx: int,
+    polarity: Polarity,
+    hits: HitSelectionConfig,
+    seed: int,
+) -> HitSelection:
     """Positions to cluster, capped at `max_hits`."""
     column = tail_column(scan, neuron_idx, polarity)
     signed = polarity == "signed"
@@ -92,11 +107,15 @@ def select_hits(scan: ScanResult, neuron_idx: int, polarity: Polarity, hits: Hit
         polarity=polarity,
         batch_idx=picked.batch_idx,
         token_idx=picked.token_idx,
-        activations=hit_activations(scan, neuron_idx, picked.batch_idx, picked.token_idx),
+        activations=hit_activations(
+            scan, neuron_idx, picked.batch_idx, picked.token_idx
+        ),
         n_candidates=picked.n_candidates,
         sorted_magnitudes=sorted_magnitudes,
         pick=pick,
     )
-    print(f"[neuron {neuron_idx} {polarity}] {pick.method} threshold={selection.threshold:.4f}, "
-          f"{selection.n_candidates} hits beyond it, {len(selection.batch_idx)} kept")
+    print(
+        f"[neuron {neuron_idx} {polarity}] {pick.method} threshold={selection.threshold:.4f}, "
+        f"{selection.n_candidates} hits beyond it, {len(selection.batch_idx)} kept"
+    )
     return selection

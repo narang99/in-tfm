@@ -49,8 +49,14 @@ def border_counts(data: ForestData) -> Counter[tuple[int, ...]]:
     return counts
 
 
-def largest_borders(data: ForestData, limit: int, min_hits: int = 1) -> list[tuple[tuple[int, ...], int]]:
-    return [(clusters, hits) for clusters, hits in border_counts(data).most_common(limit) if hits >= min_hits]
+def largest_borders(
+    data: ForestData, limit: int, min_hits: int = 1
+) -> list[tuple[tuple[int, ...], int]]:
+    return [
+        (clusters, hits)
+        for clusters, hits in border_counts(data).most_common(limit)
+        if hits >= min_hits
+    ]
 
 
 def border_key(clusters: tuple[int, ...]) -> str:
@@ -58,7 +64,9 @@ def border_key(clusters: tuple[int, ...]) -> str:
 
 
 def borders_section(
-    data: ForestData | None, mixed_hits_page: str | None, border_links: dict[str, str] | None,
+    data: ForestData | None,
+    mixed_hits_page: str | None,
+    border_links: dict[str, str] | None,
     shown: Collection[int],
 ) -> PageSection | None:
     if data is None:
@@ -69,12 +77,18 @@ def borders_section(
     n_hits = len(data.distinct_of_hit)
     rows = [
         {
-            "chips": "".join(cluster_chip(t, shown) for t in clusters), "hits": hits, "share": hits / n_hits,
+            "chips": "".join(cluster_chip(t, shown) for t in clusters),
+            "hits": hits,
+            "share": hits / n_hits,
             "page": (border_links or {}).get(border_key(clusters)),
         }
         for clusters, hits in counts.most_common(ROWS_SHOWN)
     ]
-    sheet = f' The <a href="{mixed_hits_page}">sheet of split hits</a> shows them with their inputs.' if mixed_hits_page else ""
+    sheet = (
+        f' The <a href="{mixed_hits_page}">sheet of split hits</a> shows them with their inputs.'
+        if mixed_hits_page
+        else ""
+    )
     return PageSection(
         key="borders",
         title="Borders between clusters",
@@ -83,12 +97,19 @@ def borders_section(
             f"clusters. {sum(counts.values()):,} of {n_hits:,} hits sit on a border, over {len(counts):,} sets. "
             f"The largest {min(ROWS_SHOWN, len(counts))} are listed." + sheet
         ),
-        panes=[Pane(name="Largest borders", body_html=render_template("borders_table.html", rows=rows))],
-        guide=[GuideEntry(
-            term="Border",
-            text=(
-                f"The smallest group of a hit's most probable clusters that holds {SET_SHARE:.0%} of its probability. "
-                "A border of two clusters is a hit split between them."
-            ),
-        )],
+        panes=[
+            Pane(
+                name="Largest borders",
+                body_html=render_template("borders_table.html", rows=rows),
+            )
+        ],
+        guide=[
+            GuideEntry(
+                term="Border",
+                text=(
+                    f"The smallest group of a hit's most probable clusters that holds {SET_SHARE:.0%} of its probability. "
+                    "A border of two clusters is a hit split between them."
+                ),
+            )
+        ],
     )

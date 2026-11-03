@@ -37,7 +37,10 @@ class UpCloseLayout(BaseModel):
 
 
 def sampled_with_ancestors(
-    tree: Int[np.ndarray, "n_distinct"], parent_in_tree: Int[np.ndarray, "n_distinct"], per_tree: int, seed: int,
+    tree: Int[np.ndarray, "n_distinct"],
+    parent_in_tree: Int[np.ndarray, "n_distinct"],
+    per_tree: int,
+    seed: int,
 ) -> Int[np.ndarray, "n_shown"]:
     rng = np.random.default_rng(seed)
     chosen: set[int] = set()
@@ -52,7 +55,9 @@ def sampled_with_ancestors(
 
 
 def slice_within_budget(
-    tree: Int[np.ndarray, "n_distinct"], parent_in_tree: Int[np.ndarray, "n_distinct"], seed: int,
+    tree: Int[np.ndarray, "n_distinct"],
+    parent_in_tree: Int[np.ndarray, "n_distinct"],
+    seed: int,
 ) -> tuple[Int[np.ndarray, "n_shown"], int]:
     """The most samples per tree whose slice, ancestors included, fits `POINT_BUDGET`. Never below `MIN_PER_TREE`."""
     n_trees = len(np.unique(tree))
@@ -64,9 +69,15 @@ def slice_within_budget(
     return points, per_tree
 
 
-def slice_distances(rows: Float[np.ndarray, "n_shown dim"], distance: PeakDistance) -> Float[np.ndarray, "n_shown n_shown"]:
+def slice_distances(
+    rows: Float[np.ndarray, "n_shown dim"], distance: PeakDistance
+) -> Float[np.ndarray, "n_shown n_shown"]:
     """`rows` are already `comparable_rows`."""
-    return weighted_jaccard_block(rows, rows) if distance == "weighted_jaccard" else cdist(rows, rows)
+    return (
+        weighted_jaccard_block(rows, rows)
+        if distance == "weighted_jaccard"
+        else cdist(rows, rows)
+    )
 
 
 def spring_positions(
@@ -82,7 +93,9 @@ def spring_positions(
     for i, parent in enumerate(parents):
         if parent >= 0:
             graph.add_edge(i, int(parent), weight=PARENT_WEIGHT)
-    positions = nx.spring_layout(graph, weight="weight", iterations=ITERATIONS, seed=seed)
+    positions = nx.spring_layout(
+        graph, weight="weight", iterations=ITERATIONS, seed=seed
+    )
     return np.array([positions[i] for i in range(len(distances))])
 
 
@@ -97,5 +110,7 @@ def up_close_layout(
     slot = np.full(len(tree), -1)
     slot[points] = np.arange(len(points))
     parents = np.where(parent_in_tree[points] >= 0, slot[parent_in_tree[points]], -1)
-    xy = spring_positions(slice_distances(distinct_rows[points], distance), parents, seed)
+    xy = spring_positions(
+        slice_distances(distinct_rows[points], distance), parents, seed
+    )
     return UpCloseLayout(points=points, xy=xy, per_tree=per_tree)

@@ -14,7 +14,11 @@ from in_tfm.models.mnist_cnn.train import MnistTrainConfig, split_as_tensors, tr
 def main() -> None:
     config = MnistTrainConfig()
     print(config)
-    train(config, split_as_tensors(config.dataset, "train"), split_as_tensors(config.dataset, "test"))
+    train(
+        config,
+        split_as_tensors(config.dataset, "train"),
+        split_as_tensors(config.dataset, "test"),
+    )
 
 
 if __name__ == "__main__":

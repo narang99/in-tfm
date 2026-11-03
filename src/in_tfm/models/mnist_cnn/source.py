@@ -30,7 +30,9 @@ def first_per_class(labels: Sequence[int], per_class: int) -> list[int]:
 class MnistSource:
     """Images of one MNIST split, picked by dataset index. The sample id is `{split}:{index}`."""
 
-    def __init__(self, split_rows, indices: Sequence[int], split: str, n_tokens: int) -> None:
+    def __init__(
+        self, split_rows, indices: Sequence[int], split: str, n_tokens: int
+    ) -> None:
         self.split_rows = split_rows
         """A hub split with a grayscale `image` column, or any list of such rows."""
         self.indices = list(indices)
@@ -43,7 +45,9 @@ class MnistSource:
         return [f"{self.split}:{i}" for i in self.indices]
 
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
-        images = torch.stack([to_tensor(self.split_rows[int(i.split(":")[1])]["image"]) for i in ids])
+        images = torch.stack(
+            [to_tensor(self.split_rows[int(i.split(":")[1])]["image"]) for i in ids]
+        )
         return ModelBatch(
             kwargs={IMAGE_KEY: images},
             grad_leaf_key=IMAGE_KEY,

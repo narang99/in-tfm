@@ -1,9 +1,21 @@
 import numpy as np
 import pytest
 
-from in_tfm.density_peaks import DensityPeakForest, ForestTrees, RootCuts, calculate_probs, density_peak_forest, forest_trees
+from in_tfm.density_peaks import (
+    DensityPeakForest,
+    ForestTrees,
+    RootCuts,
+    calculate_probs,
+    density_peak_forest,
+    forest_trees,
+)
 from in_tfm.density_peaks.probabilities import (
-    geodesic_distances, knn_graph, naive, peak_cores, softmax_over_trees, vectorized,
+    geodesic_distances,
+    knn_graph,
+    naive,
+    peak_cores,
+    softmax_over_trees,
+    vectorized,
 )
 
 
@@ -14,12 +26,21 @@ def line_forest() -> tuple[DensityPeakForest, ForestTrees]:
     x = np.array([0.0, 1.0, 2.0, 3.0, 10.0])
     neighbours = np.array([[1], [0], [1], [2], [3]])
     forest = DensityPeakForest(
-        distinct_of_hit=np.arange(5), counts=np.ones(5, dtype=int), kth_distance=np.array([1.0, 1.0, 2.0, 1.0, 7.0]),
-        density_rank=np.array([4, 3, 1, 2, 0]), parent=np.array([-1, 0, 1, -1, 3]), delta=np.zeros(5),
-        neighbours=neighbours, neighbour_distance=np.abs(x[:, None] - x[neighbours])[np.arange(5), 0][:, None],
+        distinct_of_hit=np.arange(5),
+        counts=np.ones(5, dtype=int),
+        kth_distance=np.array([1.0, 1.0, 2.0, 1.0, 7.0]),
+        density_rank=np.array([4, 3, 1, 2, 0]),
+        parent=np.array([-1, 0, 1, -1, 3]),
+        delta=np.zeros(5),
+        neighbours=neighbours,
+        neighbour_distance=np.abs(x[:, None] - x[neighbours])[np.arange(5), 0][:, None],
     )
-    trees = ForestTrees(cuts=RootCuts(rho=0.0, delta=0.0), roots=np.array([0, 3]), tree=np.array([0, 0, 0, 1, 1]),
-                        depth=np.array([0, 1, 2, 0, 1]))
+    trees = ForestTrees(
+        cuts=RootCuts(rho=0.0, delta=0.0),
+        roots=np.array([0, 3]),
+        tree=np.array([0, 0, 0, 1, 1]),
+        depth=np.array([0, 1, 2, 0, 1]),
+    )
     return forest, trees
 
 
@@ -38,7 +59,9 @@ def test_geodesic_distance_sums_the_hops_to_the_closest_peak_point():
 
 
 def test_softmax_rows_sum_to_one_and_favour_the_closer_tree():
-    probabilities = softmax_over_trees(np.array([[0.1, 0.3], [5.0, 5.0], [1000.0, 1001.0], [2.0, np.inf]]), tau=0.1)
+    probabilities = softmax_over_trees(
+        np.array([[0.1, 0.3], [5.0, 5.0], [1000.0, 1001.0], [2.0, np.inf]]), tau=0.1
+    )
     assert np.allclose(probabilities.sum(axis=1), 1)
     assert probabilities[0, 0] > probabilities[0, 1]
     assert np.allclose(probabilities[1], [0.5, 0.5])
@@ -100,19 +123,25 @@ def forests() -> list[tuple[DensityPeakForest, ForestTrees]]:
 @pytest.mark.parametrize("peak_share", [0.5, 0.8, 1.0])
 def test_peak_cores_match_the_naive_loop(forest, trees, peak_share):
     expected = naive.peak_cores(forest, trees, peak_share)
-    assert [c.tolist() for c in vectorized.peak_cores(forest, trees, peak_share)] == [c.tolist() for c in expected]
+    assert [c.tolist() for c in vectorized.peak_cores(forest, trees, peak_share)] == [
+        c.tolist() for c in expected
+    ]
 
 
 @pytest.mark.parametrize("forest, trees", forests())
 def test_knn_graph_matches_the_naive_loop(forest, trees):
-    assert np.array_equal(vectorized.knn_graph(forest).toarray(), dense(naive.knn_graph(forest)))
+    assert np.array_equal(
+        vectorized.knn_graph(forest).toarray(), dense(naive.knn_graph(forest))
+    )
 
 
 @pytest.mark.parametrize("forest, trees", forests())
 def test_geodesic_distances_match_the_naive_dijkstra(forest, trees):
     cores = naive.peak_cores(forest, trees, 0.8)
     expected = naive.geodesic_distances(naive.knn_graph(forest), cores)
-    assert np.allclose(vectorized.geodesic_distances(vectorized.knn_graph(forest), cores), expected)
+    assert np.allclose(
+        vectorized.geodesic_distances(vectorized.knn_graph(forest), cores), expected
+    )
 
 
 @pytest.mark.parametrize("forest, trees", forests())
@@ -132,7 +161,10 @@ def test_softmax_matches_the_naive_loop():
     distances[3, 1] = np.inf
     distances[7] = np.inf
     distances[9] += 1000.0
-    assert np.allclose(vectorized.softmax_over_trees(distances, 0.3), naive.softmax_over_trees(distances, 0.3))
+    assert np.allclose(
+        vectorized.softmax_over_trees(distances, 0.3),
+        naive.softmax_over_trees(distances, 0.3),
+    )
 
 
 @pytest.mark.parametrize("forest, trees", forests())

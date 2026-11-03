@@ -29,7 +29,9 @@ def image_paths(image_dir: Path) -> list[str]:
     - Sorted explicitly, since the filesystem's own order differs between machines.
     - With one folder per class this is class-sorted, so take a subset with `spread_indices`, not a prefix.
     """
-    return sorted(path.relative_to(image_dir).as_posix() for path in image_dir.rglob("*.jpg"))
+    return sorted(
+        path.relative_to(image_dir).as_posix() for path in image_dir.rglob("*.jpg")
+    )
 
 
 class InceptionNormalization:
@@ -42,7 +44,9 @@ class InceptionNormalization:
 class InceptionSource:
     """Images of one directory, picked by their path relative to it, which is also the sample id."""
 
-    def __init__(self, image_dir: Path, relative_paths: Sequence[str], n_tokens: int) -> None:
+    def __init__(
+        self, image_dir: Path, relative_paths: Sequence[str], n_tokens: int
+    ) -> None:
         self.image_dir = image_dir
         self.relative_paths = list(relative_paths)
         self.n_tokens = n_tokens
@@ -53,7 +57,9 @@ class InceptionSource:
         return list(self.relative_paths)
 
     def to_model_batch(self, ids: Sequence[SampleId]) -> ModelBatch:
-        images = torch.stack([eval_transform(Image.open(self.image_dir / i).convert("RGB")) for i in ids])
+        images = torch.stack(
+            [eval_transform(Image.open(self.image_dir / i).convert("RGB")) for i in ids]
+        )
         return ModelBatch(
             kwargs={IMAGE_KEY: images},
             grad_leaf_key=IMAGE_KEY,

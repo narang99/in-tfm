@@ -38,7 +38,10 @@ def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
 class Gemma3Adapter(text.DecoderTextAdapter):
     @classmethod
     def from_pretrained(
-        cls, name: str = "google/gemma-3-270m", max_length: int = 128, dtype: torch.dtype = torch.float32
+        cls,
+        name: str = "google/gemma-3-270m",
+        max_length: int = 128,
+        dtype: torch.dtype = torch.float32,
     ) -> "Gemma3Adapter":
         tokenizer = AutoTokenizer.from_pretrained(name)
         hf_model = AutoModelForCausalLM.from_pretrained(name, dtype=dtype)

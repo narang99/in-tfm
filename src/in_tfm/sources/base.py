@@ -73,7 +73,9 @@ class ModelBatch(BaseModel):
             kwargs={k: v.to(device) for k, v in self.kwargs.items()},
             grad_leaf_key=self.grad_leaf_key,
             valid_mask=self.valid_mask.to(device),
-            display_ids=None if self.display_ids is None else self.display_ids.to(device),
+            display_ids=None
+            if self.display_ids is None
+            else self.display_ids.to(device),
         )
 
 

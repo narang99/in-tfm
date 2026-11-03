@@ -102,14 +102,21 @@ time, and process-wide monkey-patching can't leak between runs.
 
 ```python
 import subprocess
-alive = subprocess.run(["pgrep", "-f", "scripts/space_reports.py"], capture_output=True, text=True).stdout.split()
+
+alive = subprocess.run(
+    ["pgrep", "-f", "scripts/space_reports.py"], capture_output=True, text=True
+).stdout.split()
 if alive:
     print("already running, pids", alive)
 else:
     log = open("/content/run.log", "w")
     proc = subprocess.Popen(
         "MPLBACKEND=Agg PYTHONUNBUFFERED=1 python scripts/space_reports.py --config <yaml>; echo EXIT $?",
-        shell=True, cwd="/content/in-tfm", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+        shell=True,
+        cwd="/content/in-tfm",
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
     )
     print("started, pid", proc.pid)
@@ -197,6 +204,7 @@ Release the VM when done; credits burn on wall-clock, not compute:
 
 ```python
 from google.colab import runtime
+
 runtime.unassign()
 ```
 

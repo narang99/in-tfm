@@ -20,11 +20,17 @@ from jaxtyping import Float
 
 @runtime_checkable
 class TokenLayout(Protocol):
-    def inputs(self, layer_input: torch.Tensor) -> Float[torch.Tensor, "batch seq hidden"]: ...
+    def inputs(
+        self, layer_input: torch.Tensor
+    ) -> Float[torch.Tensor, "batch seq hidden"]: ...
 
-    def outputs(self, layer_output: torch.Tensor) -> Float[torch.Tensor, "batch seq out_hidden"]: ...
+    def outputs(
+        self, layer_output: torch.Tensor
+    ) -> Float[torch.Tensor, "batch seq out_hidden"]: ...
 
-    def weight(self, layer_weight: torch.Tensor) -> Float[torch.Tensor, "out_hidden hidden"]: ...
+    def weight(
+        self, layer_weight: torch.Tensor
+    ) -> Float[torch.Tensor, "out_hidden hidden"]: ...
 
 
 def with_position_axis(tensor: torch.Tensor) -> torch.Tensor:
@@ -45,20 +51,32 @@ class IdentityLayout:
 class ConvLayout:
     def __init__(self, conv: torch.nn.Conv2d) -> None:
         if conv.groups != 1:
-            raise ValueError("grouped convs have no single patch to take a Hadamard product against")
+            raise ValueError(
+                "grouped convs have no single patch to take a Hadamard product against"
+            )
         self.kernel_size = conv.kernel_size
         self.dilation = conv.dilation
         self.padding = conv.padding
         self.stride = conv.stride
 
-    def inputs(self, layer_input: Float[torch.Tensor, "batch c_in h w"]) -> Float[torch.Tensor, "batch seq patch"]:
+    def inputs(
+        self, layer_input: Float[torch.Tensor, "batch c_in h w"]
+    ) -> Float[torch.Tensor, "batch seq patch"]:
         patches = F.unfold(
-            layer_input, self.kernel_size, dilation=self.dilation, padding=self.padding, stride=self.stride
+            layer_input,
+            self.kernel_size,
+            dilation=self.dilation,
+            padding=self.padding,
+            stride=self.stride,
         )
         return patches.transpose(1, 2)
 
-    def outputs(self, layer_output: Float[torch.Tensor, "batch c_out h w"]) -> Float[torch.Tensor, "batch seq c_out"]:
+    def outputs(
+        self, layer_output: Float[torch.Tensor, "batch c_out h w"]
+    ) -> Float[torch.Tensor, "batch seq c_out"]:
         return layer_output.flatten(2).transpose(1, 2)
 
-    def weight(self, layer_weight: Float[torch.Tensor, "c_out c_in kh kw"]) -> Float[torch.Tensor, "c_out patch"]:
+    def weight(
+        self, layer_weight: Float[torch.Tensor, "c_out c_in kh kw"]
+    ) -> Float[torch.Tensor, "c_out patch"]:
         return layer_weight.flatten(1)

@@ -23,23 +23,34 @@ class ActivationRanges(BaseModel):
     noise: list[float]
 
 
-def neuron_activations(scan: ScanResult, neuron_idx: int) -> Float[np.ndarray, "batch seq"]:
+def neuron_activations(
+    scan: ScanResult, neuron_idx: int
+) -> Float[np.ndarray, "batch seq"]:
     return scan.neuron_column(neuron_idx)[..., 0].numpy()
 
 
 def hit_activations(
-    scan: ScanResult, neuron_idx: int, batch_idx: Int[np.ndarray, "n_hits"], token_idx: Int[np.ndarray, "n_hits"]
+    scan: ScanResult,
+    neuron_idx: int,
+    batch_idx: Int[np.ndarray, "n_hits"],
+    token_idx: Int[np.ndarray, "n_hits"],
 ) -> Float[np.ndarray, "n_hits"]:
     return neuron_activations(scan, neuron_idx)[batch_idx, token_idx]
 
 
-def sample_noise(scan: ScanResult, neuron_idx: int, seed: int, size: int = NOISE_SAMPLE_SIZE) -> Float[np.ndarray, "n"]:
+def sample_noise(
+    scan: ScanResult, neuron_idx: int, seed: int, size: int = NOISE_SAMPLE_SIZE
+) -> Float[np.ndarray, "n"]:
     valid_values = neuron_activations(scan, neuron_idx)[scan.valid_mask.numpy()]
-    return np.random.default_rng(seed).choice(valid_values, size=min(size, len(valid_values)), replace=False)
+    return np.random.default_rng(seed).choice(
+        valid_values, size=min(size, len(valid_values)), replace=False
+    )
 
 
 def cluster_activations(
-    labels: Int[np.ndarray, "n_hits"], activations: Float[np.ndarray, "n_hits"], cluster_ids: list[int]
+    labels: Int[np.ndarray, "n_hits"],
+    activations: Float[np.ndarray, "n_hits"],
+    cluster_ids: list[int],
 ) -> dict[int, list[float]]:
     return {cid: activations[labels == cid].tolist() for cid in cluster_ids}
 
@@ -50,4 +61,8 @@ def write_activation_ranges(report_dir: Path, ranges: ActivationRanges) -> None:
 
 def load_activation_ranges(report_dir: Path) -> ActivationRanges | None:
     path = report_dir / RANGES_NAME
-    return ActivationRanges.model_validate_json(path.read_text()) if path.exists() else None
+    return (
+        ActivationRanges.model_validate_json(path.read_text())
+        if path.exists()
+        else None
+    )

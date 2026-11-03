@@ -138,9 +138,13 @@ class NeuronCapture:
 
             layer_inputs, outputs, _ = self._trace([ids[i] for i in chunk])
             order.append(hit_rows)
-            inputs.append(layer_inputs[in_batch.to(self.device), tokens.to(self.device)].cpu())
+            inputs.append(
+                layer_inputs[in_batch.to(self.device), tokens.to(self.device)].cpu()
+            )
             activations.append(
-                outputs[in_batch.to(self.device), tokens.to(self.device)][:, self.neuron_idxs].cpu()
+                outputs[in_batch.to(self.device), tokens.to(self.device)][
+                    :, self.neuron_idxs
+                ].cpu()
             )
             del layer_inputs, outputs
             self._release()
@@ -184,7 +188,11 @@ class NeuronCapture:
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
-        return self.layout.inputs(inputs.detach()), self.layout.outputs(outputs.detach()), batch.valid_mask
+        return (
+            self.layout.inputs(inputs.detach()),
+            self.layout.outputs(outputs.detach()),
+            batch.valid_mask,
+        )
 
     def _release(self) -> None:
         empty_cache()

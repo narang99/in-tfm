@@ -1,11 +1,10 @@
-
-
 from in_tfm.report_meta import (
     BucketedPickMeta,
     ReportMeta,
     load_report_meta,
     write_report_meta,
 )
+
 
 def test_a_current_meta_round_trips(tmp_path):
     meta = ReportMeta(

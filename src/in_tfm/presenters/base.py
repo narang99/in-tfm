@@ -42,7 +42,10 @@ class ClusterHit(BaseModel):
 @runtime_checkable
 class ClusterPresenter(Protocol):
     def render(
-        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+        self,
+        hits: Sequence[ClusterHit],
+        artifacts: ClusterArtifacts,
+        hadamard_shape: HadamardShape,
     ) -> str:
         """Writes artifact files through `artifacts`; returns the html fragment linking them."""
         ...

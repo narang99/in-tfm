@@ -1,12 +1,20 @@
 import torch
 
-from in_tfm.models.mnist_cnn.train import MnistTensors, MnistTrainConfig, load_checkpoint, train
+from in_tfm.models.mnist_cnn.train import (
+    MnistTensors,
+    MnistTrainConfig,
+    load_checkpoint,
+    train,
+)
 from in_tfm.models.mnist_cnn import MnistCnn, MnistCnnChannels
 
 
 def tiny_split(n: int) -> MnistTensors:
     generator = torch.Generator().manual_seed(0)
-    return MnistTensors(images=torch.rand(n, 1, 28, 28, generator=generator), labels=torch.arange(n) % 10)
+    return MnistTensors(
+        images=torch.rand(n, 1, 28, 28, generator=generator),
+        labels=torch.arange(n) % 10,
+    )
 
 
 def test_every_conv_is_3x3_with_stride_2():
@@ -18,7 +26,12 @@ def test_every_conv_is_3x3_with_stride_2():
 def test_the_checkpoint_rebuilds_the_trained_widths(tmp_path):
     channels = MnistCnnChannels(conv1=2, conv2=3)
     config = MnistTrainConfig(
-        _cli_parse_args=[], out_dir=tmp_path, channels=channels, epochs=1, batch_size=4, device="cpu"
+        _cli_parse_args=[],
+        out_dir=tmp_path,
+        channels=channels,
+        epochs=1,
+        batch_size=4,
+        device="cpu",
     )
     model = load_checkpoint(train(config, tiny_split(8), tiny_split(4)))
     assert not model.training

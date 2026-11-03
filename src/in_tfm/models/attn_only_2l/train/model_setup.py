@@ -8,11 +8,17 @@ from .config import TinyAttnOnlyTrainConfig
 
 def build_model(config: TinyAttnOnlyTrainConfig) -> AttnOnlyForCausalLM:
     shape = config.shape
-    model = AttnOnlyForCausalLM(AttnOnlyConfig(
-        hidden_size=shape.d_model, num_attention_heads=shape.n_heads, head_dim=shape.head_dim,
-        num_hidden_layers=shape.n_layers, max_position_embeddings=shape.seq_len, vocab_size=config.vocab_size,
-        attention_bias=False,
-    ))
+    model = AttnOnlyForCausalLM(
+        AttnOnlyConfig(
+            hidden_size=shape.d_model,
+            num_attention_heads=shape.n_heads,
+            head_dim=shape.head_dim,
+            num_hidden_layers=shape.n_layers,
+            max_position_embeddings=shape.seq_len,
+            vocab_size=config.vocab_size,
+            attention_bias=False,
+        )
+    )
     init_weights(model, shape.n_layers, config.init_std)
     return model
 

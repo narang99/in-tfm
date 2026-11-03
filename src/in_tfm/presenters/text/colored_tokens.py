@@ -41,7 +41,11 @@ def display_text(token: str) -> str:
     U+0120 (`Ġ`), a newline with `Ċ` and a tab with `ĉ`.
     Spans render them literally, so show the characters they stand for."""
     spaced = token.replace(SENTENCEPIECE_SPACE, " ").replace(BYTE_LEVEL_BPE_SPACE, " ")
-    return spaced.replace(BYTE_LEVEL_BPE_NEWLINE, "\n").replace(BYTE_LEVEL_BPE_TAB, "\t").replace("\n", "↵")
+    return (
+        spaced.replace(BYTE_LEVEL_BPE_NEWLINE, "\n")
+        .replace(BYTE_LEVEL_BPE_TAB, "\t")
+        .replace("\n", "↵")
+    )
 
 
 def token_views(
@@ -76,7 +80,10 @@ def _token_colors(value: float, vmax: float) -> TokenColors:
     light = _hex(token_cmap_light, value, vmax)
     dark = _hex(token_cmap_dark, value, vmax)
     return TokenColors(
-        bg_light=light, fg_light=_readable_fg(light), bg_dark=dark, fg_dark=_readable_fg(dark)
+        bg_light=light,
+        fg_light=_readable_fg(light),
+        bg_dark=dark,
+        fg_dark=_readable_fg(dark),
     )
 
 

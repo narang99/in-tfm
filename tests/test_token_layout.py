@@ -34,7 +34,9 @@ def test_grouped_convs_are_rejected():
 
 
 def test_submodule_getter_follows_a_dotted_path_through_sequentials():
-    model = torch.nn.Sequential(torch.nn.ReLU(), torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3)))
+    model = torch.nn.Sequential(
+        torch.nn.ReLU(), torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))
+    )
     conv = submodule_getter("1.0")(model)
     assert isinstance(conv, torch.nn.Conv2d)
     assert conv.kernel_size == (3, 3)

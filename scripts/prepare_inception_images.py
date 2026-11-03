@@ -63,15 +63,25 @@ BUCKET_CLASSES = {
 def run_aws(*args: str) -> str:
     result = subprocess.run(["aws", *args], capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"aws {' '.join(args[:3])} failed with {result.returncode}: {result.stderr}")
+        raise RuntimeError(
+            f"aws {' '.join(args[:3])} failed with {result.returncode}: {result.stderr}"
+        )
     return result.stdout
 
 
 def keys_in_bucket_folder(folder: int) -> list[str]:
     """Only the objects that can be downloaded, a few are in GLACIER and need a restore first."""
     listing = run_aws(
-        "s3api", "list-objects-v2", "--bucket", BUCKET_NAME, "--prefix", f"imagenet/{folder}/",
-        "--query", "Contents[?StorageClass=='STANDARD'].Key", "--output", "text",
+        "s3api",
+        "list-objects-v2",
+        "--bucket",
+        BUCKET_NAME,
+        "--prefix",
+        f"imagenet/{folder}/",
+        "--query",
+        "Contents[?StorageClass=='STANDARD'].Key",
+        "--output",
+        "text",
     )
     return sorted(key.rsplit("/", 1)[-1] for key in listing.split())
 
@@ -92,7 +102,16 @@ def fetch_bucket_class(folder: int, wnid: str, out: Path, per_class: int) -> Non
     keys = chosen(keys_in_bucket_folder(folder), per_class)
     remove_files_not_in(out / wnid, keys)
     include = [flag for key in keys for flag in ("--include", key)]
-    run_aws("s3", "sync", f"{BUCKET_PREFIX}/{folder}/", str(out / wnid), "--exclude", "*", *include, "--only-show-errors")
+    run_aws(
+        "s3",
+        "sync",
+        f"{BUCKET_PREFIX}/{folder}/",
+        str(out / wnid),
+        "--exclude",
+        "*",
+        *include,
+        "--only-show-errors",
+    )
 
 
 def download_mini_imagenet_shard(shard: int, cache_dir: Path) -> Path:
@@ -117,19 +136,27 @@ def jpeg_bytes(encoded: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def write_mini_imagenet_shard(shard_path: Path, out: Path, skip_wnids: set[str], per_class: int) -> None:
+def write_mini_imagenet_shard(
+    shard_path: Path, out: Path, skip_wnids: set[str], per_class: int
+) -> None:
     wnids = mini_imagenet_wnids(shard_path)
     for row in pq.read_table(shard_path).to_pylist():
         wnid = wnids[row["label"]]
         class_dir = out / wnid
-        if wnid in skip_wnids or (class_dir.exists() and len(list(class_dir.iterdir())) >= per_class):
+        if wnid in skip_wnids or (
+            class_dir.exists() and len(list(class_dir.iterdir())) >= per_class
+        ):
             continue
         class_dir.mkdir(parents=True, exist_ok=True)
-        (class_dir / f"mini_{len(list(class_dir.iterdir())):04d}.jpg").write_bytes(jpeg_bytes(row["image"]["bytes"]))
+        (class_dir / f"mini_{len(list(class_dir.iterdir())):04d}.jpg").write_bytes(
+            jpeg_bytes(row["image"]["bytes"])
+        )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--out", type=Path, default=Path("data/inception_pool"))
     parser.add_argument("--cache", type=Path, default=Path("data/cache/mini-imagenet"))
     parser.add_argument("--per-class", type=int, default=100)
@@ -139,9 +166,16 @@ def main() -> None:
         fetch_bucket_class(folder, wnid, args.out, args.per_class)
         print(f"bucket {folder} -> {wnid}")
     for shard in range(MINI_IMAGENET_SHARDS):
-        write_mini_imagenet_shard(download_mini_imagenet_shard(shard, args.cache), args.out, set(BUCKET_CLASSES.values()), args.per_class)
+        write_mini_imagenet_shard(
+            download_mini_imagenet_shard(shard, args.cache),
+            args.out,
+            set(BUCKET_CLASSES.values()),
+            args.per_class,
+        )
         print(f"mini-imagenet shard {shard}")
-    print(f"{len(list(args.out.rglob('*.jpg')))} images in {len(list(args.out.iterdir()))} classes")
+    print(
+        f"{len(list(args.out.rglob('*.jpg')))} images in {len(list(args.out.iterdir()))} classes"
+    )
 
 
 if __name__ == "__main__":

@@ -40,7 +40,9 @@ def load_page_data(report_dir: Path) -> PageData:
         curve=load_selection_curve(report_dir),
         ranges=load_activation_ranges(report_dir),
         forest=load_forest_data(report_dir),
-        mixed_hits_page=MIXED_HITS_PAGE if (report_dir / MIXED_HITS_PAGE).exists() else None,
+        mixed_hits_page=MIXED_HITS_PAGE
+        if (report_dir / MIXED_HITS_PAGE).exists()
+        else None,
         border_links=load_border_links(report_dir),
     )
 
@@ -57,7 +59,9 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
         cluster_ranges_section(data.ranges, cluster_ids),
         forest_section(data.forest),
         membership_section(data.forest),
-        borders_section(data.forest, data.mixed_hits_page, data.border_links, set(cluster_ids)),
+        borders_section(
+            data.forest, data.mixed_hits_page, data.border_links, set(cluster_ids)
+        ),
     ]
     return [section for section in built if section is not None]
 
@@ -65,13 +69,17 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
 def stat_tiles(data: PageData, meta: ReportMeta) -> list[StatTile]:
     tiles = []
     if data.curve is not None:
-        tiles.append(StatTile(value=f"{data.curve.n_positive:,}", name="positions in the tail"))
+        tiles.append(
+            StatTile(value=f"{data.curve.n_positive:,}", name="positions in the tail")
+        )
     tiles += [
         StatTile(value=f"{meta.n_hits:,}", name="hits"),
         StatTile(value=f"{len(meta.clusters)}", name="clusters shown"),
     ]
     if data.forest is not None:
-        tiles.append(StatTile(value=f"{data.forest.n_trees}", name="trees in the forest"))
+        tiles.append(
+            StatTile(value=f"{data.forest.n_trees}", name="trees in the forest")
+        )
         if not math.isnan(data.forest.max_entropy):
             confident = int((data.forest.hit_entropy < data.forest.max_entropy).sum())
             tiles.append(StatTile(value=f"{confident:,}", name="confident hits"))
@@ -80,9 +88,15 @@ def stat_tiles(data: PageData, meta: ReportMeta) -> list[StatTile]:
 
 def page_parts(data: PageData, meta: ReportMeta) -> PageParts:
     sections = page_sections(data, meta)
-    guide = [(step, section.title, entry) for step, section in enumerate(sections, 1) for entry in section.guide]
+    guide = [
+        (step, section.title, entry)
+        for step, section in enumerate(sections, 1)
+        for entry in section.guide
+    ]
     return PageParts(
-        header_html=render_template("page_header.html", stats=stat_tiles(data, meta), guide=guide),
+        header_html=render_template(
+            "page_header.html", stats=stat_tiles(data, meta), guide=guide
+        ),
         sections_html=render_template("page_sections.html", sections=sections),
         n_sections=len(sections),
         has_charts=bool(sections),

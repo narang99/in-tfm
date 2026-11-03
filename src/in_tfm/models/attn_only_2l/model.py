@@ -94,7 +94,8 @@ def eager_attention_forward(
     dropout: float = 0.0,
     **kwargs,
 ) -> tuple[
-    Float[torch.Tensor, "batch seq head head_dim"], Float[torch.Tensor, "batch head seq seq"]
+    Float[torch.Tensor, "batch seq head head_dim"],
+    Float[torch.Tensor, "batch head seq seq"],
 ]:
     """Named and signed to match HF's per-model attention kernels, which is what
     `attribution.patch_eager_attention` looks for when it installs the AttnLRP rule.
@@ -119,15 +120,23 @@ class PerHeadOutput(nn.Module):
       - So hooks and configs on `o_proj` still see the summed residual dim that layer 1 reads.
     """
 
-    def __init__(self, n_heads: int, head_dim: int, hidden_size: int, bias: bool) -> None:
+    def __init__(
+        self, n_heads: int, head_dim: int, hidden_size: int, bias: bool
+    ) -> None:
         super().__init__()
         self.head_dim = head_dim
-        self.heads = nn.ModuleList(nn.Linear(head_dim, hidden_size, bias=False) for _ in range(n_heads))
+        self.heads = nn.ModuleList(
+            nn.Linear(head_dim, hidden_size, bias=False) for _ in range(n_heads)
+        )
         self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
 
-    def forward(self, z: Float[torch.Tensor, "batch seq inner"]) -> Float[torch.Tensor, "batch seq hidden"]:
+    def forward(
+        self, z: Float[torch.Tensor, "batch seq inner"]
+    ) -> Float[torch.Tensor, "batch seq hidden"]:
         per_head = z.split(self.head_dim, dim=-1)
-        summed = torch.stack([head(z_h) for head, z_h in zip(self.heads, per_head)]).sum(dim=0)
+        summed = torch.stack(
+            [head(z_h) for head, z_h in zip(self.heads, per_head)]
+        ).sum(dim=0)
         return summed if self.bias is None else summed + self.bias
 
     @property
@@ -136,7 +145,9 @@ class PerHeadOutput(nn.Module):
         return torch.cat([head.weight for head in self.heads], dim=1)
 
 
-def split_fused_o_proj(state: dict[str, torch.Tensor], head_dim: int) -> dict[str, torch.Tensor]:
+def split_fused_o_proj(
+    state: dict[str, torch.Tensor], head_dim: int
+) -> dict[str, torch.Tensor]:
     """Checkpoints written before `PerHeadOutput` hold one fused `o_proj.weight` per layer."""
     split = dict(state)
     for key in [key for key in state if key.endswith("self_attn.o_proj.weight")]:
@@ -160,7 +171,9 @@ class AttnOnlyAttention(nn.Module):
         self.q_proj = nn.Linear(config.hidden_size, inner, bias=bias)
         self.k_proj = nn.Linear(config.hidden_size, inner, bias=bias)
         self.v_proj = nn.Linear(config.hidden_size, inner, bias=bias)
-        self.o_proj = PerHeadOutput(self.n_heads, self.head_dim, config.hidden_size, bias)
+        self.o_proj = PerHeadOutput(
+            self.n_heads, self.head_dim, config.hidden_size, bias
+        )
 
     def forward(
         self,
@@ -198,7 +211,9 @@ class AttnOnlyDecoderLayer(nn.Module):
         position_embeds: Float[torch.Tensor, "seq hidden"],
         attention_mask: Float[torch.Tensor, "batch 1 seq seq"],
     ) -> Float[torch.Tensor, "batch seq hidden"]:
-        return hidden_states + self.self_attn(hidden_states, position_embeds, attention_mask)
+        return hidden_states + self.self_attn(
+            hidden_states, position_embeds, attention_mask
+        )
 
 
 class AttnOnlyModel(nn.Module):
@@ -209,7 +224,9 @@ class AttnOnlyModel(nn.Module):
         super().__init__()
         self.config = config
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.pos_embed = nn.Embedding(config.max_position_embeddings, config.hidden_size)
+        self.pos_embed = nn.Embedding(
+            config.max_position_embeddings, config.hidden_size
+        )
         self.layers = nn.ModuleList(
             AttnOnlyDecoderLayer(config) for _ in range(config.num_hidden_layers)
         )
@@ -269,9 +286,13 @@ def _converted_state_dict(
             ("v_proj", "W_V", "b_V"),
         ):
             converted[f"{prefix}.{proj}.weight"] = (
-                tl_state[f"blocks.{idx}.attn.{weight}"].permute(0, 2, 1).reshape(inner, -1)
+                tl_state[f"blocks.{idx}.attn.{weight}"]
+                .permute(0, 2, 1)
+                .reshape(inner, -1)
             )
-            converted[f"{prefix}.{proj}.bias"] = tl_state[f"blocks.{idx}.attn.{bias}"].reshape(-1)
+            converted[f"{prefix}.{proj}.bias"] = tl_state[
+                f"blocks.{idx}.attn.{bias}"
+            ].reshape(-1)
         converted[f"{prefix}.o_proj.weight"] = (
             tl_state[f"blocks.{idx}.attn.W_O"].reshape(inner, -1).T
         )
@@ -294,7 +315,9 @@ def load_attn_only_2l(
     tl_state = torch.load(path, map_location="cpu", weights_only=True)
     config = AttnOnlyConfig()
     model = AttnOnlyForCausalLM(config)
-    model.load_state_dict(split_fused_o_proj(_converted_state_dict(tl_state, config), config.head_dim))
+    model.load_state_dict(
+        split_fused_o_proj(_converted_state_dict(tl_state, config), config.head_dim)
+    )
     tokenizer = AutoTokenizer.from_pretrained(ATTN_ONLY_2L_TOKENIZER)
     return model.to(dtype).eval(), tokenizer
 
@@ -314,7 +337,9 @@ def load_trained_attn_only(
     state = torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True)
     model.load_state_dict(split_fused_o_proj(state, config.head_dim))
     tokenizer = PreTrainedTokenizerFast(
-        tokenizer_file=str(checkpoint_dir / TRAINED_TOKENIZER), bos_token=BOS_TOKEN, eos_token=BOS_TOKEN,
+        tokenizer_file=str(checkpoint_dir / TRAINED_TOKENIZER),
+        bos_token=BOS_TOKEN,
+        eos_token=BOS_TOKEN,
         pad_token=BOS_TOKEN,
     )
     return model.eval(), tokenizer

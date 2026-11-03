@@ -28,14 +28,20 @@ class MnistCnnChannels(BaseModel):
 
 
 class MnistCnn(nn.Module):
-    def __init__(self, channels: MnistCnnChannels = MnistCnnChannels(), num_classes: int = NUM_CLASSES) -> None:
+    def __init__(
+        self,
+        channels: MnistCnnChannels = MnistCnnChannels(),
+        num_classes: int = NUM_CLASSES,
+    ) -> None:
         super().__init__()
         self.channels = channels
         self.conv1 = nn.Conv2d(1, channels.conv1, kernel_size=3, stride=2, padding=1)
         self.relu1 = nn.ReLU()
         self.conv2 = nn.Conv2d(channels.conv1, channels.conv2, kernel_size=3, stride=2)
         self.relu2 = nn.ReLU()
-        self.head = nn.Sequential(nn.Flatten(), nn.Linear(channels.conv2 * HEAD_GRID * HEAD_GRID, num_classes))
+        self.head = nn.Sequential(
+            nn.Flatten(), nn.Linear(channels.conv2 * HEAD_GRID * HEAD_GRID, num_classes)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.relu2(self.conv2(self.relu1(self.conv1(x)))))

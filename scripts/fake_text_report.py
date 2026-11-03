@@ -83,7 +83,9 @@ def fake_hit(
     firing_token_idx = 0
     for i, word in enumerate(sentence.split()):
         is_firing = word.startswith("*") and word.endswith("*") and len(word) > 2
-        pieces = source.tokenizer.encode_word(word.strip("*") if is_firing else word, first=(i == 0))
+        pieces = source.tokenizer.encode_word(
+            word.strip("*") if is_firing else word, first=(i == 0)
+        )
         tokens.extend(pieces)
         if is_firing:
             firing_token_idx = len(tokens) - 1
@@ -140,7 +142,9 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report-dir", type=Path, default=Path("reports/fake/neuron_90"))
+    parser.add_argument(
+        "--report-dir", type=Path, default=Path("reports/fake/neuron_90")
+    )
     args = parser.parse_args()
 
     source = StubSource()

@@ -23,7 +23,10 @@ class HDBSCANBackend(Protocol):
     """The slice of the HDBSCAN API used here - cuml and sklearn-contrib hdbscan agree on it."""
 
     def __init__(
-        self, min_cluster_size: int, cluster_selection_method: ClusterSelectionMethod, min_samples: int | None
+        self,
+        min_cluster_size: int,
+        cluster_selection_method: ClusterSelectionMethod,
+        min_samples: int | None,
     ) -> None: ...
     def fit(self, points: Float[np.ndarray, "n_points dim"]) -> object: ...
 
@@ -88,15 +91,21 @@ def cluster_labels(
     `weighted_jaccard` compares where each point's contribution comes from: see `weighted_jaccard_distances`.
     It always runs on CPU. `normalise` only reaches this path: euclidean takes `points` as they are."""
     if distance == "weighted_jaccard":
-        print(f"[cluster] {len(points)} points x {points.shape[1]} dims, weighted jaccard, via sklearn (cpu)")
+        print(
+            f"[cluster] {len(points)} points x {points.shape[1]} dims, weighted jaccard, via sklearn (cpu)"
+        )
         distances = weighted_jaccard_distances(points, normalise=normalise)
-        return _cluster_precomputed(distances, min_cluster_size, cluster_selection_method, min_samples)
+        return _cluster_precomputed(
+            distances, min_cluster_size, cluster_selection_method, min_samples
+        )
 
     backend, name = resolve_hdbscan_backend()
     print(f"[cluster] {len(points)} points x {points.shape[1]} dims via {name}")
 
     clusterer = backend(
-        min_cluster_size=min_cluster_size, cluster_selection_method=cluster_selection_method, min_samples=min_samples
+        min_cluster_size=min_cluster_size,
+        cluster_selection_method=cluster_selection_method,
+        min_samples=min_samples,
     )
     clusterer.fit(points)
     return np.asarray(clusterer.labels_)

@@ -37,7 +37,8 @@ def membership_section(data: ForestData | None) -> PageSection | None:
         return None
     confident = (
         f" Hits under <b>{data.max_entropy:g}</b> bits are confident, and only they are shown in the clusters below."
-        if has_threshold(data) else ""
+        if has_threshold(data)
+        else ""
     )
     return PageSection(
         key="membership",
@@ -59,20 +60,26 @@ def membership_section(data: ForestData | None) -> PageSection | None:
                 body_html=embed(touching_figure(data), "70vh"),
             ),
         ],
-        guide=[GuideEntry(
-            term="Probability and entropy",
-            text=(
-                "Each hit's probabilities over clusters come from graph distance to each cluster's peak. Entropy in "
-                "bits says how split it is: 0 is one cluster, 1 an even split between two."
-            ),
-        )],
+        guide=[
+            GuideEntry(
+                term="Probability and entropy",
+                text=(
+                    "Each hit's probabilities over clusters come from graph distance to each cluster's peak. Entropy in "
+                    "bits says how split it is: 0 is one cluster, 1 an even split between two."
+                ),
+            )
+        ],
     )
 
 
 def entropy_figure(data: ForestData) -> go.Figure:
     fig = go.Figure(go.Histogram(x=data.hit_entropy, nbinsx=80, marker_color="#7e57c2"))
     if has_threshold(data):
-        fig.add_vline(x=data.max_entropy, line=dict(color=MARK, dash="dash"), annotation_text="confident below")
+        fig.add_vline(
+            x=data.max_entropy,
+            line=dict(color=MARK, dash="dash"),
+            annotation_text="confident below",
+        )
     fig.update_xaxes(title="entropy (bits)")
     fig.update_yaxes(title="hits")
     return fig
@@ -84,16 +91,26 @@ def touching_figure(data: ForestData) -> go.Figure:
     labels = [tree_name(t) for t in order]
     nonzero = share[share > 0]
     top = float(np.percentile(nonzero, 98)) if len(nonzero) else 1.0
-    fig = go.Figure(go.Heatmap(
-        z=share, x=labels, y=labels, colorscale="Viridis", zmin=0, zmax=top, colorbar=dict(title="share"),
-        hovertemplate="from %{y} to %{x}: %{z:.1%} of mutual-neighbour pairs<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Heatmap(
+            z=share,
+            x=labels,
+            y=labels,
+            colorscale="Viridis",
+            zmin=0,
+            zmax=top,
+            colorbar=dict(title="share"),
+            hovertemplate="from %{y} to %{x}: %{z:.1%} of mutual-neighbour pairs<extra></extra>",
+        )
+    )
     fig.update_yaxes(autorange="reversed", title="cluster", type="category")
     fig.update_xaxes(title="neighbour cluster", type="category")
     return fig
 
 
-def cluster_stats_html(data: ForestData | None, cluster_id: int, shown: Collection[int]) -> str:
+def cluster_stats_html(
+    data: ForestData | None, cluster_id: int, shown: Collection[int]
+) -> str:
     """A row of stats for one cluster's card. Empty without a forest, so HDBSCAN cards are unchanged."""
     if data is None or cluster_id >= data.n_trees:
         return ""
@@ -103,9 +120,15 @@ def cluster_stats_html(data: ForestData | None, cluster_id: int, shown: Collecti
         confident = float((data.hit_entropy[mine] < data.max_entropy).mean())
         parts.append(f'<span class="card-stat"><b>{confident:.0%}</b> confident</span>')
     shares = touching_shares(data)[cluster_id]
-    parts.append(f'<span class="card-stat"><b>{shares[cluster_id]:.0%}</b> self-contained</span>')
-    others = [int(t) for t in np.argsort(-shares) if t != cluster_id and shares[t] > 0][:NEAREST_SHOWN]
+    parts.append(
+        f'<span class="card-stat"><b>{shares[cluster_id]:.0%}</b> self-contained</span>'
+    )
+    others = [int(t) for t in np.argsort(-shares) if t != cluster_id and shares[t] > 0][
+        :NEAREST_SHOWN
+    ]
     if others:
-        chips = "".join(cluster_chip(t, shown, f"{tree_name(t)} {shares[t]:.0%}") for t in others)
+        chips = "".join(
+            cluster_chip(t, shown, f"{tree_name(t)} {shares[t]:.0%}") for t in others
+        )
         parts.append(f'<span class="card-stat">touches {chips}</span>')
     return f'<div class="card-stats">{"".join(parts)}</div>'

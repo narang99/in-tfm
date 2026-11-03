@@ -7,11 +7,20 @@ from jaxtyping import Float, Int
 
 from ..weighted_jaccard import naive as weighted_jaccard
 from .forest import (
-    DensityPeakForest, ForestTrees, PeakDistance, RootCuts, comparable_rows, merge_copies, root_cuts, root_mask,
+    DensityPeakForest,
+    ForestTrees,
+    PeakDistance,
+    RootCuts,
+    comparable_rows,
+    merge_copies,
+    root_cuts,
+    root_mask,
 )
 
 
-def _distance_matrix(rows: Float[np.ndarray, "n_distinct compared_dim"], distance: PeakDistance) -> list[list[float]]:
+def _distance_matrix(
+    rows: Float[np.ndarray, "n_distinct compared_dim"], distance: PeakDistance
+) -> list[list[float]]:
     if distance == "weighted_jaccard":
         return weighted_jaccard.weighted_jaccard_block(rows, rows).tolist()
     points = rows.tolist()
@@ -42,24 +51,35 @@ def kth_distances(
 
 
 def nearest_neighbours(
-    rows: Float[np.ndarray, "n_distinct compared_dim"], n_neighbours: int, distance: PeakDistance
-) -> tuple[Int[np.ndarray, "n_distinct n_neighbours"], Float[np.ndarray, "n_distinct n_neighbours"]]:
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    n_neighbours: int,
+    distance: PeakDistance,
+) -> tuple[
+    Int[np.ndarray, "n_distinct n_neighbours"],
+    Float[np.ndarray, "n_distinct n_neighbours"],
+]:
     """Every other point sorted by distance, then index, and the first `n_neighbours` kept."""
     distances = _distance_matrix(rows, distance)
     n = max(min(n_neighbours, len(rows) - 1), 0)
     neighbours, kept = [], []
     for i in range(len(rows)):
-        others = sorted((j for j in range(len(rows)) if j != i), key=lambda j: (distances[i][j], j))[:n]
+        others = sorted(
+            (j for j in range(len(rows)) if j != i), key=lambda j: (distances[i][j], j)
+        )[:n]
         neighbours.append(others)
         kept.append([distances[i][j] for j in others])
-    return np.array(neighbours, dtype=int).reshape(len(rows), n), np.array(kept, dtype=np.float64).reshape(len(rows), n)
+    return np.array(neighbours, dtype=int).reshape(len(rows), n), np.array(
+        kept, dtype=np.float64
+    ).reshape(len(rows), n)
 
 
 def density_ranks(
     kth_distance: Float[np.ndarray, "n_distinct"], counts: Int[np.ndarray, "n_distinct"]
 ) -> Int[np.ndarray, "n_distinct"]:
     """Sparsest first: larger kth distance first, then fewer copies first, then lower index first."""
-    sparsest_first = sorted(range(len(kth_distance)), key=lambda p: (-kth_distance[p], counts[p]))
+    sparsest_first = sorted(
+        range(len(kth_distance)), key=lambda p: (-kth_distance[p], counts[p])
+    )
     ranks = [0] * len(kth_distance)
     for rank, point in enumerate(sparsest_first):
         ranks[point] = rank
@@ -67,7 +87,9 @@ def density_ranks(
 
 
 def nearest_denser(
-    rows: Float[np.ndarray, "n_distinct compared_dim"], ranks: Int[np.ndarray, "n_distinct"], distance: PeakDistance
+    rows: Float[np.ndarray, "n_distinct compared_dim"],
+    ranks: Int[np.ndarray, "n_distinct"],
+    distance: PeakDistance,
 ) -> tuple[Int[np.ndarray, "n_distinct"], Float[np.ndarray, "n_distinct"]]:
     """Ties on distance go to the lower index. The densest point has no parent, and gets its farthest distance."""
     distances = _distance_matrix(rows, distance)
@@ -84,7 +106,9 @@ def nearest_denser(
     return np.array(parents, dtype=int), np.array(deltas, dtype=np.float64)
 
 
-def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> ForestTrees:
+def forest_trees(
+    forest: DensityPeakForest, cuts: RootCuts | None = None
+) -> ForestTrees:
     """`cuts` defaults to `root_cuts`, the elbows.
 
     Points are visited densest first, so a point's parent always has its tree and depth already."""
@@ -107,19 +131,33 @@ def forest_trees(forest: DensityPeakForest, cuts: RootCuts | None = None) -> For
 
     tree = [roots.index(root_of[point]) for point in range(n)]
     return ForestTrees(
-        cuts=cuts, roots=np.array(roots, dtype=int), tree=np.array(tree, dtype=int), depth=np.array(depth, dtype=int)
+        cuts=cuts,
+        roots=np.array(roots, dtype=int),
+        tree=np.array(tree, dtype=int),
+        depth=np.array(depth, dtype=int),
     )
 
 
 def density_peak_forest(
-    points: Float[np.ndarray, "n_hits dim"], k: int = 5, distance: PeakDistance = "weighted_jaccard", normalise: bool = True
+    points: Float[np.ndarray, "n_hits dim"],
+    k: int = 5,
+    distance: PeakDistance = "weighted_jaccard",
+    normalise: bool = True,
 ) -> DensityPeakForest:
-    distinct, distinct_of_hit, counts = merge_copies(comparable_rows(points.astype(np.float64), distance, normalise))
+    distinct, distinct_of_hit, counts = merge_copies(
+        comparable_rows(points.astype(np.float64), distance, normalise)
+    )
     kth_distance = kth_distances(distinct, counts, k, distance)
     ranks = density_ranks(kth_distance, counts)
     parent, delta = nearest_denser(distinct, ranks, distance)
     neighbours, neighbour_distance = nearest_neighbours(distinct, k, distance)
     return DensityPeakForest(
-        distinct_of_hit=distinct_of_hit, counts=counts, kth_distance=kth_distance, density_rank=ranks,
-        parent=parent, delta=delta, neighbours=neighbours, neighbour_distance=neighbour_distance,
+        distinct_of_hit=distinct_of_hit,
+        counts=counts,
+        kth_distance=kth_distance,
+        density_rank=ranks,
+        parent=parent,
+        delta=delta,
+        neighbours=neighbours,
+        neighbour_distance=neighbour_distance,
     )

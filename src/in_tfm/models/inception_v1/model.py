@@ -29,7 +29,17 @@ INPUT_STD = 1 / 255
 BLOCKS_BEFORE_DOWNSAMPLE = {"mixed3b": "maxpool4", "mixed4e": "maxpool10"}
 """The block after which a stride 2 pool halves the grid, and that pool's name."""
 
-BLOCK_NAMES = ("mixed3a", "mixed3b", "mixed4a", "mixed4b", "mixed4c", "mixed4d", "mixed4e", "mixed5a", "mixed5b")
+BLOCK_NAMES = (
+    "mixed3a",
+    "mixed3b",
+    "mixed4a",
+    "mixed4b",
+    "mixed4c",
+    "mixed4d",
+    "mixed4e",
+    "mixed5a",
+    "mixed5b",
+)
 
 NEGATIVE_INFINITY = float("-inf")
 
@@ -46,10 +56,14 @@ def attributable_layers(lucent_model: nn.Module) -> list[tuple[str, nn.Module]]:
         if isinstance(layer, ReluLayer):
             return nn.ReLU()
         if isinstance(layer, MaxPool2dLayer):
-            return nn.MaxPool2d(kernel_size=3, stride=1 if name.endswith("_pool") else 2)
+            return nn.MaxPool2d(
+                kernel_size=3, stride=1 if name.endswith("_pool") else 2
+            )
         return layer
 
-    return [(name, swapped(name, layer)) for name, layer in lucent_model.named_children()]
+    return [
+        (name, swapped(name, layer)) for name, layer in lucent_model.named_children()
+    ]
 
 
 class AttributableInceptionV1(nn.Module):
@@ -68,7 +82,9 @@ class AttributableInceptionV1(nn.Module):
             x = self.block(name, x)
             if name in BLOCKS_BEFORE_DOWNSAMPLE:
                 x = self.downsample(BLOCKS_BEFORE_DOWNSAMPLE[name], x)
-        pooled = F.avg_pool2d(x, kernel_size=7, stride=1, padding=0, count_include_pad=False)
+        pooled = F.avg_pool2d(
+            x, kernel_size=7, stride=1, padding=0, count_include_pad=False
+        )
         logits = self.softmax2_pre_activation_matmul(pooled.reshape(-1, 1024))
         return self.softmax2(logits)
 
@@ -84,14 +100,22 @@ class AttributableInceptionV1(nn.Module):
         return getattr(self, pool_name)(F.pad(x, (0, 1, 0, 1), value=NEGATIVE_INFINITY))
 
     def conv_relu(self, block: str, branch: str, x: torch.Tensor) -> torch.Tensor:
-        return getattr(self, f"{block}_{branch}")(getattr(self, f"{block}_{branch}_pre_relu_conv")(x))
+        return getattr(self, f"{block}_{branch}")(
+            getattr(self, f"{block}_{branch}_pre_relu_conv")(x)
+        )
 
     def block(self, name: str, x: torch.Tensor) -> torch.Tensor:
         """Four branches on the same input, concatenated as 1x1, 3x3, 5x5, pool projection."""
         one = self.conv_relu(name, "1x1", x)
-        three = self.conv_relu(name, "3x3", F.pad(self.conv_relu(name, "3x3_bottleneck", x), (1, 1, 1, 1)))
-        five = self.conv_relu(name, "5x5", F.pad(self.conv_relu(name, "5x5_bottleneck", x), (2, 2, 2, 2)))
-        pooled = getattr(self, f"{name}_pool")(F.pad(x, (1, 1, 1, 1), value=NEGATIVE_INFINITY))
+        three = self.conv_relu(
+            name, "3x3", F.pad(self.conv_relu(name, "3x3_bottleneck", x), (1, 1, 1, 1))
+        )
+        five = self.conv_relu(
+            name, "5x5", F.pad(self.conv_relu(name, "5x5_bottleneck", x), (2, 2, 2, 2))
+        )
+        pooled = getattr(self, f"{name}_pool")(
+            F.pad(x, (1, 1, 1, 1), value=NEGATIVE_INFINITY)
+        )
         projected = self.conv_relu(name, "pool_reduce", pooled)
         return getattr(self, name)((one, three, five, projected), 1)
 
@@ -100,7 +124,9 @@ def load_lucent_model(pretrained: bool) -> nn.Module:
     try:
         from lucent.modelzoo import inceptionv1
     except ImportError as error:
-        raise ImportError("InceptionV1 needs lucent, install it with `uv sync --extra inception`") from error
+        raise ImportError(
+            "InceptionV1 needs lucent, install it with `uv sync --extra inception`"
+        ) from error
     return inceptionv1(pretrained=pretrained, redirected_ReLU=False)
 
 

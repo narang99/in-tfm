@@ -47,7 +47,9 @@ def embed(fig: go.Figure, height: str = "60vh", div_id: str | None = None) -> st
     )
 
 
-def cluster_chip(tree: int, shown: Collection[int], label: str = "", page: str = "") -> str:
+def cluster_chip(
+    tree: int, shown: Collection[int], label: str = "", page: str = ""
+) -> str:
     """A chip that links to the cluster's section, or plain when it has none.
 
     - A cluster gets a section only with enough confident hits, so a tree can be drawn without one.

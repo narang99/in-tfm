@@ -60,7 +60,9 @@ class ForestTrees(BaseModel):
 
 
 def comparable_rows(
-    points: Float[np.ndarray, "n_hits dim"], distance: PeakDistance, normalise: bool = True
+    points: Float[np.ndarray, "n_hits dim"],
+    distance: PeakDistance,
+    normalise: bool = True,
 ) -> Float[np.ndarray, "n_hits compared_dim"]:
     """`compared_dim` is `dim` for euclidean, and `2 * dim` for weighted Jaccard, which splits each dim by sign.
 
@@ -72,17 +74,25 @@ def comparable_rows(
 
 def merge_copies(
     rows: Float[np.ndarray, "n_hits compared_dim"],
-) -> tuple[Float[np.ndarray, "n_distinct compared_dim"], Int[np.ndarray, "n_hits"], Int[np.ndarray, "n_distinct"]]:
+) -> tuple[
+    Float[np.ndarray, "n_distinct compared_dim"],
+    Int[np.ndarray, "n_hits"],
+    Int[np.ndarray, "n_distinct"],
+]:
     """Returns (distinct rows, distinct_of_hit, counts).
 
     - distinct_of_hit[h] is the row of `distinct` that hit h became.
     - counts[p] is how many hits became row p.
     - Rounding lets float noise still count as a copy."""
-    distinct, distinct_of_hit, counts = np.unique(rows.round(6), axis=0, return_inverse=True, return_counts=True)
+    distinct, distinct_of_hit, counts = np.unique(
+        rows.round(6), axis=0, return_inverse=True, return_counts=True
+    )
     return distinct, distinct_of_hit.ravel(), counts
 
 
-def log_density(kth_distance: Float[np.ndarray, "n_distinct"]) -> Float[np.ndarray, "n_distinct"]:
+def log_density(
+    kth_distance: Float[np.ndarray, "n_distinct"],
+) -> Float[np.ndarray, "n_distinct"]:
     """-log10(d_k + offset), with the offset half the smallest nonzero d_k.
 
     - Many points tie at d_k = 0, so a plain 1 / d_k is infinite for them.
@@ -111,10 +121,15 @@ def delta_for_elbow(forest: DensityPeakForest) -> Float[np.ndarray, "n_distinct"
 
 def root_cuts(forest: DensityPeakForest) -> RootCuts:
     """Each axis gets its own elbow, so rho and delta are never compared in each other's units."""
-    return RootCuts(rho=elbow(log_density(forest.kth_distance)), delta=elbow(delta_for_elbow(forest)))
+    return RootCuts(
+        rho=elbow(log_density(forest.kth_distance)),
+        delta=elbow(delta_for_elbow(forest)),
+    )
 
 
-def root_mask(forest: DensityPeakForest, cuts: RootCuts) -> Bool[np.ndarray, "n_distinct"]:
+def root_mask(
+    forest: DensityPeakForest, cuts: RootCuts
+) -> Bool[np.ndarray, "n_distinct"]:
     """The rho cut keeps out outliers: they are far from everything, but sparse.
 
     The densest point has no parent, so it is always a root."""

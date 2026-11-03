@@ -18,7 +18,9 @@ class ModelShape(BaseModel):
 
 
 class TinyAttnOnlyTrainConfig(BaseSettings):
-    model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True, cli_parse_args=True)
+    model_config = SettingsConfigDict(
+        extra="forbid", cli_kebab_case=True, cli_parse_args=True
+    )
 
     dataset: str = "roneneldan/TinyStories"
     text_column: str = "text"
@@ -35,7 +37,14 @@ class TinyAttnOnlyTrainConfig(BaseSettings):
     max_tokens: int = 500_000_000
     eval_every: int = 500
     eval_batches: int = 20
-    snapshot_tokens: list[int] = [1_000_000, 5_000_000, 20_000_000, 50_000_000, 100_000_000, 200_000_000]
+    snapshot_tokens: list[int] = [
+        1_000_000,
+        5_000_000,
+        20_000_000,
+        50_000_000,
+        100_000_000,
+        200_000_000,
+    ]
     """Extra checkpoints along the way, to look at the model mid-training."""
     seed: int = 0
     device: str = default_device()

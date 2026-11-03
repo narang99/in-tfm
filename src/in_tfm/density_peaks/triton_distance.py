@@ -23,8 +23,21 @@ TILE_CONFIGS = [
 @triton.autotune(configs=TILE_CONFIGS, key=["D"])
 @triton.jit
 def distance_kernel(
-    a_ptr, b_ptr, sums_a_ptr, sums_b_ptr, out_ptr, M, N, D, stride_a, stride_b, stride_out,
-    JACCARD: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
+    a_ptr,
+    b_ptr,
+    sums_a_ptr,
+    sums_b_ptr,
+    out_ptr,
+    M,
+    N,
+    D,
+    stride_a,
+    stride_b,
+    stride_out,
+    JACCARD: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
 ):
     rows_a = tl.program_id(0) * BM + tl.arange(0, BM)
     rows_b = tl.program_id(1) * BN + tl.arange(0, BN)
@@ -33,11 +46,13 @@ def distance_kernel(
         dims = start + tl.arange(0, BK)
         a = tl.load(
             a_ptr + rows_a[:, None] * stride_a + dims[None, :],
-            mask=(rows_a[:, None] < M) & (dims[None, :] < D), other=0.0,
+            mask=(rows_a[:, None] < M) & (dims[None, :] < D),
+            other=0.0,
         )
         b = tl.load(
             b_ptr + rows_b[:, None] * stride_b + dims[None, :],
-            mask=(rows_b[:, None] < N) & (dims[None, :] < D), other=0.0,
+            mask=(rows_b[:, None] < N) & (dims[None, :] < D),
+            other=0.0,
         )
         diff = a[:, None, :] - b[None, :, :]
         if JACCARD:
@@ -54,22 +69,40 @@ def distance_kernel(
     else:
         result = tl.sqrt(total)
     tl.store(
-        out_ptr + rows_a[:, None] * stride_out + rows_b[None, :], result,
+        out_ptr + rows_a[:, None] * stride_out + rows_b[None, :],
+        result,
         mask=(rows_a[:, None] < M) & (rows_b[None, :] < N),
     )
 
 
 def triton_distances(
-    a: Float[torch.Tensor, "a dim"], b: Float[torch.Tensor, "b dim"],
-    sums_a: Float[torch.Tensor, "a"] | None, sums_b: Float[torch.Tensor, "b"] | None, distance: PeakDistance,
+    a: Float[torch.Tensor, "a dim"],
+    b: Float[torch.Tensor, "b dim"],
+    sums_a: Float[torch.Tensor, "a"] | None,
+    sums_b: Float[torch.Tensor, "b"] | None,
+    distance: PeakDistance,
 ) -> Float[torch.Tensor, "a b"]:
     a, b = a.contiguous(), b.contiguous()
     out = torch.empty((len(a), len(b)), dtype=torch.float32, device=a.device)
     jaccard = distance == "weighted_jaccard"
     sums_a = sums_a.contiguous() if jaccard else a
     sums_b = sums_b.contiguous() if jaccard else b
-    grid = lambda meta: (triton.cdiv(len(a), meta["BM"]), triton.cdiv(len(b), meta["BN"]))  # noqa: E731
+    grid = lambda meta: (
+        triton.cdiv(len(a), meta["BM"]),
+        triton.cdiv(len(b), meta["BN"]),
+    )  # noqa: E731
     distance_kernel[grid](
-        a, b, sums_a, sums_b, out, len(a), len(b), a.shape[1], a.stride(0), b.stride(0), out.stride(0), JACCARD=jaccard,
+        a,
+        b,
+        sums_a,
+        sums_b,
+        out,
+        len(a),
+        len(b),
+        a.shape[1],
+        a.stride(0),
+        b.stride(0),
+        out.stride(0),
+        JACCARD=jaccard,
     )
     return out

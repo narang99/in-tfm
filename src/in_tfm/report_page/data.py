@@ -40,7 +40,9 @@ class SelectionCurve(BaseModel):
 def shown_positions(n: int, points: int = CURVE_POINTS) -> Int[np.ndarray, "n_shown"]:
     """An even spread, plus every one of the last `points`, where the hits are."""
     step = max(1, n // points)
-    return np.unique(np.concatenate([np.arange(0, n, step), np.arange(max(0, n - points), n)]))
+    return np.unique(
+        np.concatenate([np.arange(0, n, step), np.arange(max(0, n - points), n)])
+    )
 
 
 def selection_curve(selection: HitSelection) -> SelectionCurve:
@@ -66,8 +68,14 @@ def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
     if curve.bucket_edges is not None:
         optional["bucket_edges"] = curve.bucket_edges
     np.savez(
-        report_dir / SELECTION_DATA, index=curve.index, magnitude=curve.magnitude, n_positive=curve.n_positive,
-        threshold=curve.threshold, negative=curve.negative, signed=curve.signed, **optional,
+        report_dir / SELECTION_DATA,
+        index=curve.index,
+        magnitude=curve.magnitude,
+        n_positive=curve.n_positive,
+        threshold=curve.threshold,
+        negative=curve.negative,
+        signed=curve.signed,
+        **optional,
     )
 
 
@@ -136,7 +144,9 @@ class ForestData(BaseModel):
 
     @property
     def hits_per_tree(self) -> Int[np.ndarray, "n_trees"]:
-        return np.bincount(self.tree, weights=self.counts, minlength=self.n_trees).astype(int)
+        return np.bincount(
+            self.tree, weights=self.counts, minlength=self.n_trees
+        ).astype(int)
 
 
 def touching_counts(data: ForestData) -> Int[np.ndarray, "n_trees n_trees"]:
@@ -148,7 +158,9 @@ def touching_counts(data: ForestData) -> Int[np.ndarray, "n_trees n_trees"]:
     own = np.repeat(np.arange(n), data.neighbours.shape[1])
     other = data.neighbours.ravel()
     edges = set(zip(own.tolist(), other.tolist()))
-    mutual = np.array([(a, b) for a, b in edges if a < b and (b, a) in edges], dtype=int).reshape(-1, 2)
+    mutual = np.array(
+        [(a, b) for a, b in edges if a < b and (b, a) in edges], dtype=int
+    ).reshape(-1, 2)
     counts = np.zeros((data.n_trees, data.n_trees), dtype=int)
     cluster = data.most_probable
     np.add.at(counts, (cluster[mutual[:, 0]], cluster[mutual[:, 1]]), 1)
@@ -172,8 +184,14 @@ def forest_data(
     up_close = {}
     if hit_rows is not None:
         _, first_hit = np.unique(forest.distinct_of_hit, return_index=True)
-        layout = up_close_layout(hit_rows[first_hit], trees.tree, parent_in_tree, distance)
-        up_close = dict(up_close_points=layout.points, up_close_xy=layout.xy, up_close_per_tree=layout.per_tree)
+        layout = up_close_layout(
+            hit_rows[first_hit], trees.tree, parent_in_tree, distance
+        )
+        up_close = dict(
+            up_close_points=layout.points,
+            up_close_xy=layout.xy,
+            up_close_per_tree=layout.per_tree,
+        )
     return ForestData(
         rho=rho,
         delta=forest.delta,
@@ -201,8 +219,16 @@ def load_forest_data(report_dir: Path) -> ForestData | None:
     if not path.exists():
         return None
     arrays = np.load(path)
-    scalars = {"cut_rho": float, "cut_delta": float, "max_entropy": float, "up_close_per_tree": int}
-    return ForestData(**{
-        name: scalars[name](arrays[name]) if name in scalars else arrays[name]
-        for name in ForestData.model_fields if name in arrays
-    })
+    scalars = {
+        "cut_rho": float,
+        "cut_delta": float,
+        "max_entropy": float,
+        "up_close_per_tree": int,
+    }
+    return ForestData(
+        **{
+            name: scalars[name](arrays[name]) if name in scalars else arrays[name]
+            for name in ForestData.model_fields
+            if name in arrays
+        }
+    )

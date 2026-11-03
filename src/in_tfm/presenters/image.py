@@ -54,14 +54,24 @@ class ImagePresenter:
         return ""
 
     def render(
-        self, hits: Sequence[ClusterHit], artifacts: ClusterArtifacts, hadamard_shape: HadamardShape
+        self,
+        hits: Sequence[ClusterHit],
+        artifacts: ClusterArtifacts,
+        hadamard_shape: HadamardShape,
     ) -> str:
         originals = [to_pil(self._denormalized(h), (500, 500)) for h in hits]
         overlays = [
-            mk_overlay(self._denormalized(h), self._relevance_map(h), (500, 500), alpha=self.alpha)
+            mk_overlay(
+                self._denormalized(h),
+                self._relevance_map(h),
+                (500, 500),
+                alpha=self.alpha,
+            )
             for h in hits
         ]
-        tiles = render_hadamard_tiles([h.hadamard.reshape(hadamard_shape) for h in hits])
+        tiles = render_hadamard_tiles(
+            [h.hadamard.reshape(hadamard_shape) for h in hits]
+        )
         view = ImageClusterView(
             original_url=artifacts.save_grid(originals, "original.jpg"),
             overlay_url=artifacts.save_grid(overlays, "overlay.jpg"),

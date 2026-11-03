@@ -24,7 +24,10 @@ def scan() -> ScanResult:
     valid_mask[:, 40:] = False
     activations[:, 40:] = 100.0
     return ScanResult(
-        sample_ids=[str(i) for i in range(BATCH)], neuron_idxs=[7], activations=activations, valid_mask=valid_mask
+        sample_ids=[str(i) for i in range(BATCH)],
+        neuron_idxs=[7],
+        activations=activations,
+        valid_mask=valid_mask,
     )
 
 
@@ -56,7 +59,8 @@ def test_clusters_get_the_activations_of_their_own_hits_and_noise_is_left_out():
 def test_ranges_round_trip_as_json_without_an_image(tmp_path):
     rng = np.random.default_rng(0)
     ranges = ActivationRanges(
-        clusters={i: rng.normal(i, 1, 30).tolist() for i in range(20)}, noise=rng.normal(0, 1, 100).tolist()
+        clusters={i: rng.normal(i, 1, 30).tolist() for i in range(20)},
+        noise=rng.normal(0, 1, 100).tolist(),
     )
     assert load_activation_ranges(tmp_path) is None
     write_activation_ranges(tmp_path, ranges)
