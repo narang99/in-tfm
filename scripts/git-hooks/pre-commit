@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Runs ruff format on the staged python files, then re-stages them.
+# A file that also has unstaged changes is only checked.
+# Re-staging it would sweep its unstaged hunks into the commit.
+
+full=()
+partial=()
+while IFS= read -r path; do
+    if git diff --quiet -- "$path"; then
+        full+=("$path")
+    else
+        partial+=("$path")
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi')
+
+if [ ${#full[@]} -gt 0 ]; then
+    uvx ruff format "${full[@]}" || exit 1
+    git add -- "${full[@]}"
+fi
+
+if [ ${#partial[@]} -gt 0 ] && ! uvx ruff format --check "${partial[@]}"; then
+    echo "pre-commit: these files are partly staged and need formatting." >&2
+    echo "Run ruff format on them, stage them again, then commit:" >&2
+    printf '  %s\n' "${partial[@]}" >&2
+    exit 1
+fi
+exit 0

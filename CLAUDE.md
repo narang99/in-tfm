@@ -29,3 +29,9 @@ These should be strictly adhered to in both code, documentation, readmes, PR, co
 - Persisting a neuron's density-peak forest was prototyped and parked, unreviewed.
   - It lives on branch `feat/cluster-fit`, draft PR #137.
   - If we ever want to persist the forest, look at that PR first.
+
+# Formatting
+
+- `scripts/git-hooks/pre-commit` runs `ruff format` on staged python files at commit time.
+  - Install it once per clone with `ln -s ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit`.
+  - A partly staged file is only checked, so its unstaged hunks never get committed.
