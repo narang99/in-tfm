@@ -82,5 +82,5 @@ def test_the_model_needs_the_conv_target_and_a_layer_name():
 
 
 def test_another_models_data_section_is_rejected():
-    with pytest.raises(ValueError, match="stl"):
-        RunConfig(model=ModelName.INCEPTION_V1, target="conv", layer_name=LAYER, stl={"n_images": 3})
+    with pytest.raises(ValueError, match="text"):
+        RunConfig(model=ModelName.INCEPTION_V1, target="conv", layer_name=LAYER, text={"n_samples": 3})

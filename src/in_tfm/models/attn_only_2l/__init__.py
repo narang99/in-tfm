@@ -3,7 +3,6 @@ from .model import (
     AttnOnlyConfig,
     AttnOnlyForCausalLM,
     AttnOnlyModel,
-    attention_patterns,
     load_attn_only_2l,
 )
 
@@ -12,6 +11,5 @@ __all__ = [
     "AttnOnlyConfig",
     "AttnOnlyForCausalLM",
     "AttnOnlyModel",
-    "attention_patterns",
     "load_attn_only_2l",
 ]

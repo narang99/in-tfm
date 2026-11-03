@@ -1,3 +1,14 @@
+> **Reproduce**
+>
+> - The MNIST code was removed from `main`. Its last commit on `main` is [`0c79252`](https://github.com/narang99/in-tfm/tree/0c792524ada4568bd24eac7bfea2795820e6a864).
+>   - Model, source and adapters: [`src/in_tfm/models/mnist_cnn/`](https://github.com/narang99/in-tfm/tree/0c792524ada4568bd24eac7bfea2795820e6a864/src/in_tfm/models/mnist_cnn)
+>   - Training: [`src/in_tfm/mnist_training.py`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/src/in_tfm/mnist_training.py), [`scripts/train_mnist.py`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/scripts/train_mnist.py)
+>   - Config: [`configs/mnist_cnn_small_conv2.yaml`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/configs/mnist_cnn_small_conv2.yaml)
+> - `git checkout 0c792524a`, then:
+>   - `uv run python scripts/train_mnist.py --channels.conv1 2 --channels.conv2 4 --out-dir checkpoints/mnist_cnn_2_4`
+>   - `uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_conv2.yaml`
+> - `weighted_jaccard` is still on `main`, as `--clustering.distance weighted_jaccard`.
+
 # MNIST 2/4 logit 9: distances and decompositions for Hadamard products
 
 Run locally on 2026-10-19 and 2026-10-20, on a Mac.

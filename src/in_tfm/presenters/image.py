@@ -1,16 +1,37 @@
 """Pixel-space rendering of a cluster's hits."""
 
 from collections.abc import Sequence
+from typing import Protocol
 
 import numpy as np
 import torch
+from jaxtyping import Float, UInt8
 from pydantic import BaseModel
 
-from ..sources.dicom import ImageNormalization, inv_tfm
 from ..html_report import render_template
 from ..viz import mk_overlay, render_hadamard_tiles, to_pil
 from .artifacts import ClusterArtifacts
 from .base import ClusterHit, HadamardShape
+
+
+class ImageNormalization(Protocol):
+    """Per-channel mean and std a model input was normalised with."""
+
+    image_mean: list[float]
+    image_std: list[float]
+
+
+def inv_tfm(
+    processor: ImageNormalization, tensor: Float[torch.Tensor, "*batch c h w"]
+) -> UInt8[np.ndarray, "h w c"]:
+    """Undo the mean/std normalization, for display (not model input)."""
+    mean = np.array(processor.image_mean)
+    std = np.array(processor.image_std)
+    img = tensor.detach().cpu().numpy()
+    if img.ndim == 4:
+        img = img[0]
+    img = img.transpose(1, 2, 0) * std + mean
+    return (np.clip(img, 0, 1) * 255).round().astype(np.uint8)
 
 
 class ImageClusterView(BaseModel):
@@ -23,7 +44,7 @@ class ImageClusterView(BaseModel):
 
 
 class ImagePresenter:
-    """Pixel-space overlays, as in the original DICOM reports."""
+    """Pixel-space overlays."""
 
     def __init__(self, processor: ImageNormalization, alpha: float = 0.7) -> None:
         self.processor = processor

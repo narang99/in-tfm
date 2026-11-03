@@ -64,17 +64,6 @@ def test_a_strategy_without_a_method_is_hdbscan():
         load_run_config(["--clustering.strategy.k", "7"])
 
 
-@pytest.mark.parametrize("old_key, where", [
-    ("min_cluster_size: 20", "clustering.strategy.min_cluster_size, with strategy.method: hdbscan"),
-    ("k: 7", "clustering.strategy.k, with strategy.method: density_peaks"),
-    ("method: density_peaks", "clustering.strategy.method"),
-])
-def test_an_old_flat_key_says_where_it_moved(tmp_path, old_key, where):
-    path = write_yaml(tmp_path, f"clustering: {{{old_key}}}\n")
-    with pytest.raises(ValidationError, match=where):
-        load_run_config(["--config", path])
-
-
 @pytest.mark.parametrize("path", sorted(Path("configs").glob("*.yaml")), ids=lambda path: path.name)
 def test_every_checked_in_config_loads(path):
     load_run_config(["--config", str(path)])
@@ -108,36 +97,3 @@ def test_environment_variables_do_not_reach_the_config(monkeypatch):
     monkeypatch.setenv("TARGET", Target.K_PROJ.value)
     config = load_run_config([])
     assert (config.layer_idx, config.target) == (10, Target.DOWN_PROJ)
-
-
-def test_rad_dino_takes_fc2_and_not_the_language_model_targets():
-    config = load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2"])
-    assert config.modality == "image"
-    with pytest.raises(ValidationError, match="has no down_proj"):
-        load_run_config(["--model", "microsoft/rad-dino"])
-
-
-def test_a_data_section_for_the_other_modality_is_rejected():
-    with pytest.raises(ValidationError, match="reads image data, but the text section was set"):
-        load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2", "--text.n-samples", "5"])
-    with pytest.raises(ValidationError, match="reads text data, but the image section was set"):
-        load_run_config(["--image.n-dicoms", "5"])
-
-
-def test_conv_target_needs_a_layer_name():
-    with pytest.raises(ValidationError, match="layer_name"):
-        load_run_config(["--model", "self/stl-inception", "--target", "conv"])
-
-
-def test_the_stl_model_rejects_the_other_modalities_sections():
-    with pytest.raises(ValidationError, match="reads stl data, but the text section was set"):
-        load_run_config(
-            ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0", "--text.n-samples", "5"]
-        )
-
-
-def test_attribution_defaults_to_deeplift_and_takes_integrated_gradients():
-    flags = ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0"]
-    assert load_run_config(flags).stl.attribution == "deeplift"
-    config = load_run_config([*flags, "--stl.attribution", "integrated-gradients", "--stl.ig-steps", "64"])
-    assert (config.stl.attribution, config.stl.ig_steps) == ("integrated-gradients", 64)

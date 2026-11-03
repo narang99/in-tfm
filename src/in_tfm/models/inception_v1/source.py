@@ -59,3 +59,15 @@ class InceptionSource:
             grad_leaf_key=IMAGE_KEY,
             valid_mask=torch.ones(len(ids), self.n_tokens, dtype=torch.bool),
         )
+
+
+def spread_indices(total: int, count: int) -> list[int]:
+    """`count` evenly spaced indices into `total` sorted images.
+
+    - Index `k` is `(k * total) // count`, so the gap between neighbours is `total / count`.
+      - The multiply comes first so the arithmetic stays in integers, with no float rounding.
+      - The indices are distinct as long as `count <= total`, since the gap is then at least 1.
+    - `image_paths` is class-sorted, so a prefix would be a few classes only.
+      - Evenly spaced picks take every class in proportion.
+    """
+    return [(index * total) // count for index in range(count)]

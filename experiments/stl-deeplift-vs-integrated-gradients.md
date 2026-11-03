@@ -1,3 +1,11 @@
+> **Reproduce**
+>
+> - The STL code was removed from `main`. Its last commit on `main` is [`0c79252`](https://github.com/narang99/in-tfm/tree/0c792524ada4568bd24eac7bfea2795820e6a864).
+>   - Model, source and adapter: [`src/in_tfm/models/stl_inception/`](https://github.com/narang99/in-tfm/tree/0c792524ada4568bd24eac7bfea2795820e6a864/src/in_tfm/models/stl_inception)
+>   - Comparison: [`src/in_tfm/attribution/comparison.py`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/src/in_tfm/attribution/comparison.py) and [`scripts/compare_attribution.py`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/scripts/compare_attribution.py)
+>   - IG: [`src/in_tfm/attribution/integrated_gradients.py`](https://github.com/narang99/in-tfm/blob/0c792524ada4568bd24eac7bfea2795820e6a864/src/in_tfm/attribution/integrated_gradients.py)
+> - `git checkout 0c792524a`, then run the commands below.
+
 # STL mini-Inception: DeepLift against Integrated Gradients
 
 Run on 2026-10-11 on a Colab T4. Code is the tip of `feat/ig-reports` (PR #56), commit `e01f3ff`.

@@ -14,7 +14,9 @@ wheels/
 # generated outputs - every report lives under reports/, as per-run artifacts, never source
 /reports
 
-/experiments
+# experiment outputs stay local, their markdown logs are tracked
+/experiments/*
+!/experiments/*.md
 /data
 /checkpoints
 /experiments_grokking
