@@ -1,7 +1,6 @@
 # mixed4e:55 with the density-peak forest, so its report gets the forest and membership sections.
 #   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4e_peaks.yaml
 model: lucent/inception-v1
-target: conv
 layer_name: mixed4e_1x1_pre_relu_conv
 neurons: [55]
 batch_size: 16

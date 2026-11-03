@@ -3,8 +3,7 @@
 # down_proj neurons sit after gelu(gate) * up, and `up` takes either sign, so strong negative firings are possible.
 #   uv run python scripts/run_neuron_report.py --config configs/gemma3_l11_signed_down_proj_peaks.yaml
 model: google/gemma-3-270m
-target: down_proj
-layer_idx: 11
+layer_name: layers.11.mlp.down_proj
 neurons: [332]
 polarity: signed
 batch_size: 16

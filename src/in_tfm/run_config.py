@@ -40,21 +40,6 @@ MODALITY: dict[ModelName, Modality] = {
 }
 
 
-class Target(StrEnum):
-    DOWN_PROJ = "down_proj"
-    Q_PROJ = "q_proj"
-    K_PROJ = "k_proj"
-    CONV = "conv"
-    LINEAR = "linear"
-
-
-SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
-    ModelName.GEMMA3_270M: {Target.DOWN_PROJ, Target.Q_PROJ, Target.K_PROJ},
-    ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ, Target.LINEAR},
-    ModelName.INCEPTION_V1: {Target.CONV},
-}
-"""The attention-only model has no MLP, so it has no `down_proj`. Its `o_proj` is a `linear` target."""
-
 Polarity = Literal["positive", "negative", "signed"]
 """`signed` takes hits from both tails into one space."""
 
@@ -175,10 +160,10 @@ class RunConfig(BaseSettings):
 
     config: Path | None = Field(None, description="YAML file with defaults for any of the settings below")
     model: ModelName = Field(ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l")
-    target: Target = Field(Target.DOWN_PROJ, description="down_proj: MLP neurons. q_proj / k_proj: neuron index = (kv_)head * head_dim + dim")
-    layer_idx: int = 10
-    layer_name: str | None = Field(
-        None, description="conv and linear only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
+    layer_name: str = Field(
+        "layers.10.mlp.down_proj",
+        description="dotted submodule path of the adapter's model, for example layers.0.self_attn.q_proj. "
+        "q_proj / k_proj neuron index = (kv_)head * head_dim + dim",
     )
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
@@ -210,19 +195,6 @@ class RunConfig(BaseSettings):
         """Without this, an environment variable named `DEVICE` or `MODEL` would silently
         override a field. The config file arrives as init values."""
         return (init_settings,)
-
-    @model_validator(mode="after")
-    def target_exists_on_model(self) -> "RunConfig":
-        if self.target not in SUPPORTED_TARGETS[self.model]:
-            options = sorted(t.value for t in SUPPORTED_TARGETS[self.model])
-            raise ValueError(f"{self.model.value} has no {self.target.value}, choose one of {options}")
-        return self
-
-    @model_validator(mode="after")
-    def conv_target_names_its_layer(self) -> "RunConfig":
-        if self.target in (Target.CONV, Target.LINEAR) and self.layer_name is None:
-            raise ValueError(f"the {self.target.value} target needs layer_name, a dotted submodule path")
-        return self
 
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":

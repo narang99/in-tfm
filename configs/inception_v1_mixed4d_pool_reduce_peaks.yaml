@@ -2,7 +2,6 @@
 # The conv reads the 3x3 max pool of mixed4c, so a hit's Hadamard is over the 512 pooled channels.
 #   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4d_pool_reduce_peaks.yaml
 model: lucent/inception-v1
-target: conv
 layer_name: mixed4d_pool_reduce_pre_relu_conv
 neurons: [29]
 batch_size: 16

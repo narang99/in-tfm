@@ -3,8 +3,7 @@
 # 20,000 hits needs the GPU forest. Run on Colab with:
 #   python scripts/run_neuron_report.py --config configs/attn_only_2l_signed_q_proj_pile.yaml
 model: self/attn-only-2l
-target: q_proj
-layer_idx: 0
+layer_name: layers.0.self_attn.q_proj
 neurons: [3]
 polarity: signed
 batch_size: 64

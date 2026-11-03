@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from in_tfm.run_config import DensityPeaksConfig, HdbscanConfig, ModelName, Target, load_run_config
+from in_tfm.run_config import DensityPeaksConfig, HdbscanConfig, ModelName, load_run_config
 
 
 def write_yaml(tmp_path: Path, text: str) -> str:
@@ -19,15 +19,15 @@ def test_defaults_need_no_arguments():
 
 
 def test_file_sets_defaults(tmp_path):
-    path = write_yaml(tmp_path, "layer_idx: 3\nclustering: {strategy: {method: hdbscan, min_cluster_size: 20}}\n")
+    path = write_yaml(tmp_path, "layer_name: layers.3.mlp.down_proj\nclustering: {strategy: {method: hdbscan, min_cluster_size: 20}}\n")
     config = load_run_config(["--config", path])
-    assert config.layer_idx == 3
+    assert config.layer_name == "layers.3.mlp.down_proj"
     assert config.clustering.strategy.min_cluster_size == 20
 
 
 def test_flags_override_the_file(tmp_path):
-    path = write_yaml(tmp_path, "layer_idx: 3\n")
-    assert load_run_config(["--config", path, "--layer-idx", "5"]).layer_idx == 5
+    path = write_yaml(tmp_path, "layer_name: layers.3.mlp.down_proj\n")
+    assert load_run_config(["--config", path, "--layer-name", "layers.5.mlp.down_proj"]).layer_name == "layers.5.mlp.down_proj"
 
 
 def test_a_flag_overrides_one_key_of_a_section_and_keeps_the_rest(tmp_path):
@@ -78,12 +78,7 @@ def test_neuron_range_is_inclusive():
 
 
 def test_model_is_given_by_its_value():
-    assert load_run_config(["--model", "self/attn-only-2l", "--target", "q_proj"]).model is ModelName.ATTN_ONLY_2L
-
-
-def test_a_target_the_model_lacks_is_rejected_up_front():
-    with pytest.raises(ValidationError, match="has no down_proj"):
-        load_run_config(["--model", "self/attn-only-2l"])
+    assert load_run_config(["--model", "self/attn-only-2l"]).model is ModelName.ATTN_ONLY_2L
 
 
 def test_a_typo_in_the_file_is_an_error(tmp_path):
@@ -93,7 +88,5 @@ def test_a_typo_in_the_file_is_an_error(tmp_path):
 
 
 def test_environment_variables_do_not_reach_the_config(monkeypatch):
-    monkeypatch.setenv("LAYER_IDX", "99")
-    monkeypatch.setenv("TARGET", Target.K_PROJ.value)
-    config = load_run_config([])
-    assert (config.layer_idx, config.target) == (10, Target.DOWN_PROJ)
+    monkeypatch.setenv("LAYER_NAME", "layers.0.self_attn.k_proj")
+    assert load_run_config([]).layer_name == "layers.10.mlp.down_proj"

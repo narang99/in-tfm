@@ -3,7 +3,6 @@
 # Both neurons share one scan.
 #   uv run --extra inception python scripts/run_neuron_report.py --config configs/inception_v1_mixed4d_3x3_peaks.yaml
 model: lucent/inception-v1
-target: conv
 layer_name: mixed4d_3x3_pre_relu_conv
 neurons: [89, 240]
 batch_size: 16

@@ -3,7 +3,7 @@ import torch
 from nnsight import NNsight
 from transformers import Gemma3ForCausalLM, Gemma3TextConfig
 
-from in_tfm.layers import q_proj_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, AttnOnlyConfig, AttnOnlyForCausalLM
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.sources import ModelBatch
@@ -57,7 +57,7 @@ def adapter(request):
 
 
 def test_getter_weight_rows_match_the_layer_output_width(adapter):
-    weight = q_proj_getter(0)(adapter.get_model()).weight
+    weight = submodule_getter("layers.0.self_attn.q_proj")(adapter.get_model()).weight
     assert weight.shape == (N_HEADS * HEAD_DIM, HIDDEN)
 
 

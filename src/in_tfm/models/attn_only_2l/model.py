@@ -147,8 +147,7 @@ def split_fused_o_proj(state: dict[str, torch.Tensor], head_dim: int) -> dict[st
 
 
 class AttnOnlyAttention(nn.Module):
-    """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj` so `layers.q_proj_getter` and
-    `layers.k_proj_getter` resolve on this model with no special case."""
+    """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj`, so layer paths match the HF decoders."""
 
     def __init__(self, config: AttnOnlyConfig) -> None:
         super().__init__()
@@ -183,7 +182,7 @@ class AttnOnlyAttention(nn.Module):
         self, x: Float[torch.Tensor, "batch seq inner"]
     ) -> Float[torch.Tensor, "batch head seq head_dim"]:
         """Splits head-major, so a flat neuron index is `head * head_dim + dim` - the convention
-        `layers.q_proj_getter` documents and `_converted_state_dict` lays the weights out for."""
+        the README documents and `_converted_state_dict` lays the weights out for."""
         batch, seq, _ = x.shape
         return x.view(batch, seq, self.n_heads, self.head_dim).transpose(1, 2)
 

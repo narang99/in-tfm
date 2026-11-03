@@ -1,8 +1,7 @@
 # Both tails of a layer 0 query neuron of the attn-only model, sampled and clustered together.
 # Run with: python scripts/run_neuron_report.py --config configs/attn_only_2l_signed_q_proj.yaml
 model: self/attn-only-2l
-target: q_proj
-layer_idx: 0
+layer_name: layers.0.self_attn.q_proj
 neurons: [3]
 polarity: signed
 out_dir: reports/attn_only_2l_signed
