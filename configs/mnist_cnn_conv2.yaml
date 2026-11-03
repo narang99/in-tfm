@@ -1,6 +1,6 @@
 # Run with: uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_conv2.yaml
 # conv2 channels of the 8/16 network, on the first 100 MNIST test images of each digit.
-# The checkpoint is checkpoints/mnist_cnn/final.pt, written by scripts/train_mnist.py with its defaults.
+# The checkpoint is checkpoints/mnist_cnn/final.pt, written by python -m in_tfm.models.mnist_cnn.train with its defaults.
 model: self/mnist-cnn
 layer_name: conv2
 neuron_start: 0

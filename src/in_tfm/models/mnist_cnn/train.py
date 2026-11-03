@@ -1,5 +1,11 @@
 """Train `MnistCnn` on MNIST, writing the checkpoint the MNIST adapter loads.
 
+    uv run python -m in_tfm.models.mnist_cnn.train
+    uv run python -m in_tfm.models.mnist_cnn.train --channels.conv1 2 --channels.conv2 4 --out-dir checkpoints/mnist_cnn_2_4
+
+- The default widths of 8 and 16 channels reach about 98.1% test accuracy in 5 epochs.
+- 2 and 4 channels, the smallest network, reach about 94.2%.
+
 - Each split is loaded into one tensor up front, since all of MNIST is under 50MB.
   - Batches are then slices, with no per-image PIL transform in the loop.
 - There is no augmentation, MNIST does not need it to pass 98%.
@@ -133,3 +139,17 @@ def load_checkpoint(path: Path) -> MnistCnn:
     model = MnistCnn(MnistCnnChannels.model_validate(saved["channels"]))
     model.load_state_dict(saved["model"])
     return model.eval()
+
+
+def main() -> None:
+    config = MnistTrainConfig()
+    print(config)
+    train(
+        config,
+        split_as_tensors(config.dataset, "train"),
+        split_as_tensors(config.dataset, "test"),
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -88,6 +88,7 @@
   - `inception_v1/`.
   - `mnist_cnn/`, with its training in `train.py`.
 - A model we train ourselves is a directory, and its training sits beside it in `train.py` or `train/`.
+  - Run it as a module, e.g. `uv run python -m in_tfm.models.attn_only_2l.train`.
 - A decoder language model only needs `DecoderTextAdapter` and a patch. See `gemma3.py`.
 - `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads.
   - Add the new adapter to its fixture.
@@ -105,8 +106,6 @@
 - `scripts/`:
   - `run_neuron_report.py`: the reports.
   - `prepare_inception_images.py`: the InceptionV1 image pool.
-  - `train_tiny_attn_only.py`: trains the tiny attn-only model.
-  - `train_mnist.py`: trains the MNIST network.
   - `bench_forest.py`: times the torch forest against a saved one, the regression check for the GPU path.
   - `fake_text_report.py`: renders a text report from fake data, to iterate on the html with no model.
 - `configs/`: one YAML per experiment.

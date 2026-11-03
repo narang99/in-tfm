@@ -85,7 +85,7 @@ class MnistDataConfig(Section):
     )
     checkpoint: Path | None = Field(
         None,
-        description="a snapshot from scripts/train_mnist.py, the model's own if unset",
+        description="a snapshot from python -m in_tfm.models.mnist_cnn.train, the model's own if unset",
     )
 
 

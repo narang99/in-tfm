@@ -1,6 +1,0 @@
-{% for example in examples %}
-<div class="hit">
-<div class="hit-tag">c{{ example.tree }} &middot; {{ example.tag }} &middot; window {{ example.window }} &middot; position {{ example.position }} &middot; {{ "%.3f"|format(example.entropy) }} bits</div>
-<div class="tokens">{% for tok in example.tokens %}<span class="tok{% if tok.current %} tok-firing{% endif %}" title="{{ tok.title }}" style="{{ tok.style }}{% if tok.previous %}text-decoration:underline;{% endif %}{% if tok.attended %}font-weight:700;{% endif %}">{{ tok.text }}</span>{% endfor %}</div>
-</div>
-{% endfor %}
