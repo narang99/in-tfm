@@ -4,14 +4,95 @@ attribution heatmap onto its source image.
 
 import math
 from pathlib import Path
+from typing import Literal
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from jaxtyping import Float
+from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
+from matplotlib.figure import Figure
 from PIL import Image
 
-from .colormaps import rd_bk_gn
+from .colormaps import get_local_image_limits, rd_bk_gn, rd_wht_gn
+
+ViewType = Literal["global", "local", "gray"]
+Mode = Literal["dark", "light"]
+
+
+def show_single_channel_red_green_black(
+    images: list[np.ndarray],
+    figsize: int | tuple[int, int] | None = None,
+    ncols: int = 2,
+    axis: str = "on",
+    viztype: ViewType = "global",
+    mode: Mode = "dark",
+    suptitle: str = "",
+    ax_titles: list[str] | None = None,
+) -> list[Axes] | None:
+    if len(images) == 1:
+        ncols = 1
+    fig, axs, v_limit = _plot_single_channel_red_green_black(
+        images, figsize, ncols, axis, viztype, mode, suptitle, ax_titles
+    )
+    return axs
+
+
+def _plot_single_channel_red_green_black(
+    images: list[np.ndarray],
+    figsize: int | tuple[int, int] | None,
+    ncols: int,
+    axis: str,
+    viztype: ViewType,
+    mode: Mode,
+    suptitle: str,
+    ax_titles: list[str] | None,
+) -> tuple[Figure, list[Axes], float] | tuple[None, None, None]:
+    if not images:
+        return None, None, None
+
+    if images[0].dtype == np.uint8:
+        images = [img.astype(np.float32) for img in images]
+
+    all_min = min(img.min() for img in images)
+    all_max = max(img.max() for img in images)
+    v_limit = max(abs(all_min), abs(all_max))
+
+    images = list(images)
+    rows = math.ceil(len(images) / ncols)
+    if figsize is None:
+        figsize = (5 * rows, 5 * rows)
+    elif isinstance(figsize, int):
+        figsize = (figsize, figsize)
+
+    fig, axs = plt.subplots(rows, ncols, figsize=figsize)
+    fig.suptitle(suptitle)
+    axs = axs.flatten() if len(images) > 1 else [axs]
+
+    for i, img in enumerate(images):
+        params = {}
+        if viztype == "gray":
+            params["cmap"] = "gray"
+        else:
+            params["cmap"] = rd_bk_gn if mode == "dark" else rd_wht_gn
+            if viztype == "global":
+                params["vmin"], params["vmax"] = -v_limit, v_limit
+            elif viztype == "local":
+                params["vmin"], params["vmax"] = get_local_image_limits(img)
+            else:
+                raise ValueError(f"invalid viztype {viztype}")
+
+        axs[i].imshow(img, **params)
+        axs[i].axis(axis)
+
+    if ax_titles is not None:
+        for i in range(len(axs)):
+            if i < len(ax_titles):
+                axs[i].set_title(ax_titles[i])
+
+    plt.tight_layout()
+    return fig, axs, v_limit
 
 
 def compose_grid(
