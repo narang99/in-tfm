@@ -16,6 +16,8 @@ Two things differ from a stock HF decoder, both read off the checkpoint:
   never to the value path and never to the residual stream. Since `q_proj` stays linear in its
   input, a query or key coordinate's activation splits *exactly* into a token term and a
   position term, which RoPE models do not allow.
+
+`o_proj` is split by head, see `PerHeadOutput`, so each head's write to a residual dim is its own neuron.
 """
 
 from pathlib import Path
@@ -108,6 +110,42 @@ def eager_attention_forward(
     return torch.matmul(weights, value).transpose(1, 2).contiguous(), weights
 
 
+class PerHeadOutput(nn.Module):
+    """`o_proj` as one `Linear` per head, so residual dim d of `heads.h` is what head h alone writes to d.
+
+    - The fused projection is already a sum over heads of each head's slice, so this changes no output.
+    - The bias belongs to no head, so it is added once, after the sum.
+    - The input is the fused projection's input and the output is the sum.
+      - So hooks and configs on `o_proj` still see the summed residual dim that layer 1 reads.
+    """
+
+    def __init__(self, n_heads: int, head_dim: int, hidden_size: int, bias: bool) -> None:
+        super().__init__()
+        self.head_dim = head_dim
+        self.heads = nn.ModuleList(nn.Linear(head_dim, hidden_size, bias=False) for _ in range(n_heads))
+        self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
+
+    def forward(self, z: Float[torch.Tensor, "batch seq inner"]) -> Float[torch.Tensor, "batch seq hidden"]:
+        per_head = z.split(self.head_dim, dim=-1)
+        summed = torch.stack([head(z_h) for head, z_h in zip(self.heads, per_head)]).sum(dim=0)
+        return summed if self.bias is None else summed + self.bias
+
+    @property
+    def weight(self) -> Float[torch.Tensor, "hidden inner"]:
+        """The fused weight, for code that reads `o_proj` as one `Linear`."""
+        return torch.cat([head.weight for head in self.heads], dim=1)
+
+
+def split_fused_o_proj(state: dict[str, torch.Tensor], head_dim: int) -> dict[str, torch.Tensor]:
+    """Checkpoints written before `PerHeadOutput` hold one fused `o_proj.weight` per layer."""
+    split = dict(state)
+    for key in [key for key in state if key.endswith("self_attn.o_proj.weight")]:
+        prefix = key.removesuffix("weight")
+        for head, block in enumerate(split.pop(key).split(head_dim, dim=1)):
+            split[f"{prefix}heads.{head}.weight"] = block
+    return split
+
+
 class AttnOnlyAttention(nn.Module):
     """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj` so `layers.q_proj_getter` and
     `layers.k_proj_getter` resolve on this model with no special case."""
@@ -123,7 +161,7 @@ class AttnOnlyAttention(nn.Module):
         self.q_proj = nn.Linear(config.hidden_size, inner, bias=bias)
         self.k_proj = nn.Linear(config.hidden_size, inner, bias=bias)
         self.v_proj = nn.Linear(config.hidden_size, inner, bias=bias)
-        self.o_proj = nn.Linear(inner, config.hidden_size, bias=bias)
+        self.o_proj = PerHeadOutput(self.n_heads, self.head_dim, config.hidden_size, bias)
 
     def forward(
         self,
@@ -292,7 +330,7 @@ def load_attn_only_2l(
     tl_state = torch.load(path, map_location="cpu", weights_only=True)
     config = AttnOnlyConfig()
     model = AttnOnlyForCausalLM(config)
-    model.load_state_dict(_converted_state_dict(tl_state, config))
+    model.load_state_dict(split_fused_o_proj(_converted_state_dict(tl_state, config), config.head_dim))
     tokenizer = AutoTokenizer.from_pretrained(ATTN_ONLY_2L_TOKENIZER)
     return model.to(dtype).eval(), tokenizer
 
@@ -307,8 +345,10 @@ def load_trained_attn_only(
     checkpoint_dir: Path, weights: str = TRAINED_WEIGHTS
 ) -> tuple[AttnOnlyForCausalLM, PreTrainedTokenizerFast]:
     """A model written by `tiny_attn_only_training`, with the tokenizer trained on its own corpus."""
-    model = AttnOnlyForCausalLM(AttnOnlyConfig.from_json_file(checkpoint_dir / TRAINED_CONFIG))
-    model.load_state_dict(torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True))
+    config = AttnOnlyConfig.from_json_file(checkpoint_dir / TRAINED_CONFIG)
+    model = AttnOnlyForCausalLM(config)
+    state = torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True)
+    model.load_state_dict(split_fused_o_proj(state, config.head_dim))
     tokenizer = PreTrainedTokenizerFast(
         tokenizer_file=str(checkpoint_dir / TRAINED_TOKENIZER), bos_token=BOS_TOKEN, eos_token=BOS_TOKEN,
         pad_token=BOS_TOKEN,
