@@ -11,14 +11,7 @@ drowned out.
 Names used below:
 - A raw bucket is one of the `n_buckets` equal-width slices.
 - A group is one or more neighbouring raw buckets after merging. Group 0 is the lowest.
-- A candidate is a value whose magnitude is above the floor. `candidate_idx` arrays index into the candidates, not into all values.
-
-Values come from a tail column, see `hit_selection.selection.tail_column`.
-- A one-tailed column has its other side zeroed, so only its own tail has candidates.
-- The buckets span from the floor, or the lowest candidate when it sits below the floor, to the max.
-  - Only a signed column has candidates below the floor, its negative tail.
-  - Each tail then gets buckets in proportion to its range.
-  - The buckets around zero hold nothing when the floor is above zero, and merge into a neighbour.
+- A candidate is a value above the floor. `candidate_idx` arrays index into the candidates, not into all values.
 """
 
 import numpy as np
@@ -33,7 +26,7 @@ from ..picks import BucketedPick, PickedPositions
 
 class BucketLayout(BaseModel):
     raw_edges: list[float]
-    """`n_buckets + 1` edges, from the lowest edge to the max."""
+    """`n_buckets + 1` edges, from the floor to the max."""
     groups: list[list[int]]
     """The raw buckets in each group, lowest group first."""
 
@@ -168,7 +161,7 @@ def bucketed_sample(
     min_bucket_size: int,
     rng: np.random.Generator,
 ) -> BucketedSample:
-    candidate_value_idx = np.flatnonzero(np.abs(values) > floor)
+    candidate_value_idx = np.flatnonzero(values > floor)
     if len(candidate_value_idx) == 0:
         return BucketedSample(
             kept_value_idx=candidate_value_idx,
@@ -177,8 +170,7 @@ def bucketed_sample(
             layout=None,
         )
     candidate_values = values[candidate_value_idx]
-    lowest_edge = min(floor, float(candidate_values.min()))
-    layout = plan_buckets(candidate_values, n_buckets, lowest_edge, min_bucket_size)
+    layout = plan_buckets(candidate_values, n_buckets, floor, min_bucket_size)
     group_of_candidate = group_of_each_value(candidate_values, layout)
     quotas = bucket_quotas(
         count_per_bucket(group_of_candidate, len(layout.groups)), budget
@@ -208,19 +200,26 @@ def valid_values_and_positions(
     return values, positions[:, 0], positions[:, 1]
 
 
+def bucket_floor(
+    sorted_magnitudes: Float[torch.Tensor, "n_pos"], floor_fraction: float
+) -> float:
+    return floor_fraction * sorted_magnitudes[-1].item()
+
+
 def bucketed_hits(
     column: Float[torch.Tensor, "batch seq 1"],
     sorted_magnitudes: Float[torch.Tensor, "n_pos"],
     scan: ScanResult,
     hits: HitSelectionConfig,
+    budget: int,
     seed: int,
 ) -> tuple[PickedPositions, BucketedPick]:
-    floor = hits.bucket_floor_fraction * sorted_magnitudes.abs().max().item()
+    floor = bucket_floor(sorted_magnitudes, hits.bucket_floor_fraction)
     values, batch_idx, token_idx = valid_values_and_positions(column, scan.valid_mask)
     sample = bucketed_sample(
         values,
         hits.n_buckets,
-        hits.max_hits,
+        budget,
         floor,
         hits.min_bucket_size,
         np.random.default_rng(seed),

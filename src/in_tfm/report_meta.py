@@ -1,11 +1,14 @@
 """What a neuron report's `meta.json` holds."""
 
+import json
+import math
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .presenters import HadamardShape
+from .run_config import Tail
 from .sources import SampleId
 
 META_NAME = "meta.json"
@@ -20,6 +23,7 @@ class ElbowPickMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     method: Literal["elbow"] = "elbow"
+    tail: Tail = "positive"
     cutoff: float
     """Signed, so it is negative for the negative tail."""
 
@@ -28,6 +32,7 @@ class BucketedPickMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     method: Literal["bucketed"] = "bucketed"
+    tail: Tail = "positive"
     floor: float
     """Signed, like the elbow cutoff."""
     bucket_edges: list[float]
@@ -45,9 +50,10 @@ class ReportMeta(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal[2] = 2
+    version: Literal[3] = 3
     neuron_idx: int
-    pick: PickMeta
+    picks: list[PickMeta]
+    """One per tail the hits came from, negative first."""
     n_hits: int
     min_uniq_images_per_cluster: int
     hadamard_shape: HadamardShape
@@ -57,16 +63,33 @@ class ReportMeta(BaseModel):
     sample_ids: list[SampleId]
 
     @property
-    def threshold(self) -> float:
-        match self.pick:
-            case ElbowPickMeta(cutoff=cutoff):
-                return cutoff
-            case BucketedPickMeta(floor=floor):
-                return floor
+    def thresholds(self) -> list[float]:
+        return [threshold_of(pick) for pick in self.picks]
+
+
+def threshold_of(pick: PickMeta) -> float:
+    match pick:
+        case ElbowPickMeta(cutoff=cutoff):
+            return cutoff
+        case BucketedPickMeta(floor=floor):
+            return floor
+
+
+def picks_from_version_2(pick: dict[str, Any]) -> list[dict[str, Any]]:
+    """Version 2 held one pick, signed like the hits, so its sign gives the tail.
+
+    - A version 2 signed report held a magnitude floor, so it reads as the positive tail."""
+    value = pick["cutoff"] if pick["method"] == "elbow" else pick["floor"]
+    tail = "negative" if math.copysign(1.0, value) < 0 else "positive"
+    return [{**pick, "tail": tail}]
 
 
 def load_report_meta(report_dir: Path) -> ReportMeta:
-    return ReportMeta.model_validate_json((report_dir / META_NAME).read_text())
+    raw = json.loads((report_dir / META_NAME).read_text())
+    if raw.get("version") == 2:
+        pick = raw.pop("pick")
+        raw = {**raw, "version": 3, "picks": picks_from_version_2(pick)}
+    return ReportMeta.model_validate(raw)
 
 
 def write_report_meta(report_dir: Path, meta: ReportMeta) -> None:

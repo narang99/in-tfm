@@ -48,8 +48,9 @@ MODALITY: dict[ModelName, Modality] = {
 }
 
 
+Tail = Literal["positive", "negative"]
 Polarity = Literal["positive", "negative", "signed"]
-"""`signed` takes hits from both tails into one space."""
+"""`signed` selects from each tail on its own, then clusters the hits of both together."""
 
 
 class Section(BaseModel):
@@ -106,7 +107,11 @@ class HitSelectionConfig(Section):
         description="elbow: everything above the elbow, uniformly subsampled to max_hits. "
         "bucketed: equal-width activation buckets, an equal share of max_hits from each",
     )
-    max_hits: int = Field(20000, description="hits kept per neuron before clustering")
+    max_hits: int = Field(
+        20000,
+        description="hits kept per neuron before clustering. "
+        "With signed polarity, split between the tails by how many candidates each has",
+    )
     n_buckets: int = 10
     min_bucket_size: int = Field(
         100,
@@ -114,8 +119,8 @@ class HitSelectionConfig(Section):
     )
     bucket_floor_fraction: float = Field(
         0.0,
-        description="bucketed only: lowest bucket starts at this fraction of the max activation. "
-        "With signed polarity, hits need a magnitude above this fraction of the largest magnitude",
+        description="bucketed only: lowest bucket starts at this fraction of the tail's max activation. "
+        "With signed polarity, each tail has its own floor",
     )
 
 
@@ -215,7 +220,7 @@ class RunConfig(BaseSettings):
     polarity: Polarity = Field(
         "positive",
         description="which tail of the activation distribution counts as a hit. "
-        "signed: both tails sampled and clustered together, bucketed only",
+        "signed: each tail selected on its own, then both clustered together",
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
@@ -248,14 +253,6 @@ class RunConfig(BaseSettings):
         if wrong := others & self.model_fields_set:
             raise ValueError(
                 f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def signed_polarity_is_bucketed(self) -> "RunConfig":
-        if self.polarity == "signed" and self.hits.method != "bucketed":
-            raise ValueError(
-                "signed polarity needs hits.method bucketed: an elbow only exists on one tail"
             )
         return self
 

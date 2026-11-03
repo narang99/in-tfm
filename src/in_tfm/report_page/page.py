@@ -10,14 +10,15 @@ from ..activation_ranges import ActivationRanges, load_activation_ranges
 from ..html_report import render_template
 from ..report_meta import ReportMeta
 from .borders_section import BORDER_INDEX, BORDERS_DIR, borders_section
-from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curve
+from .data import ForestData, SelectionCurve, load_forest_data, load_selection_curves
 from .forest_section import forest_section
 from .membership import membership_section
 from .sections import PageSection, StatTile, activations_section, cluster_ranges_section
 
 
 class PageData(BaseModel):
-    curve: SelectionCurve | None
+    curves: list[SelectionCurve] = []
+    """One per tail the hits came from, negative first."""
     ranges: ActivationRanges | None
     forest: ForestData | None
     mixed_hits_page: str | None = None
@@ -37,7 +38,7 @@ MIXED_HITS_PAGE = "mixed_hits.html"
 
 def load_page_data(report_dir: Path) -> PageData:
     return PageData(
-        curve=load_selection_curve(report_dir),
+        curves=load_selection_curves(report_dir),
         ranges=load_activation_ranges(report_dir),
         forest=load_forest_data(report_dir),
         mixed_hits_page=MIXED_HITS_PAGE
@@ -55,7 +56,7 @@ def load_border_links(report_dir: Path) -> dict[str, str]:
 def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
     cluster_ids = list(meta.clusters)
     built = [
-        activations_section(data.curve),
+        activations_section(data.curves),
         cluster_ranges_section(data.ranges, cluster_ids),
         forest_section(data.forest),
         membership_section(data.forest),
@@ -66,17 +67,17 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
     return [section for section in built if section is not None]
 
 
-def curve_positions_name(curve: SelectionCurve) -> str:
-    return "positions" if curve.polarity == "signed" else "positions in the tail"
+def curve_positions_name(curves: list[SelectionCurve]) -> str:
+    return "positions in the tail" if len(curves) == 1 else "positions in both tails"
 
 
 def stat_tiles(data: PageData, meta: ReportMeta) -> list[StatTile]:
     tiles = []
-    if data.curve is not None:
+    if data.curves:
         tiles.append(
             StatTile(
-                value=f"{data.curve.n_positions:,}",
-                name=curve_positions_name(data.curve),
+                value=f"{sum(c.n_positions for c in data.curves):,}",
+                name=curve_positions_name(data.curves),
             )
         )
     tiles += [

@@ -5,15 +5,14 @@
 
 from .data import (
     FOREST_DATA,
-    SELECTION_DATA,
     ForestData,
     SelectionCurve,
     forest_data,
     load_forest_data,
-    load_selection_curve,
+    load_selection_curves,
     save_forest_data,
-    save_selection_curve,
-    selection_curve,
+    save_selection_curves,
+    selection_curves,
 )
 from .figures import PLOTLY_JS
 from .membership import cluster_stats_html
@@ -23,17 +22,16 @@ __all__ = [
     "FOREST_DATA",
     "MIXED_HITS_PAGE",
     "PLOTLY_JS",
-    "SELECTION_DATA",
     "ForestData",
     "SelectionCurve",
     "forest_data",
     "load_forest_data",
-    "load_selection_curve",
+    "load_selection_curves",
     "page_parts",
     "PageData",
     "cluster_stats_html",
     "load_page_data",
     "save_forest_data",
-    "save_selection_curve",
-    "selection_curve",
+    "save_selection_curves",
+    "selection_curves",
 ]

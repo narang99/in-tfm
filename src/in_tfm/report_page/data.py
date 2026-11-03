@@ -1,6 +1,7 @@
 """What the report page's charts read, saved next to `meta.json` so a re-render needs no model.
 
-- `selection.npz`: the sorted activation curve that picked the hits. Every report has it.
+- `selection_{tail}.npz`: the sorted activation curve that picked a tail's hits.
+  - Every report has one per tail it selected from, so a signed report has two.
 - `forest.npz`: the density-peak forest. Only density-peak reports have it, so its sections are optional.
 """
 
@@ -13,27 +14,33 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
 from ..density_peaks import DensityPeakForest, ForestTrees, PeakDistance, log_density
-from ..hit_selection import BucketedPick, ElbowPick, HitSelection
-from ..run_config import Polarity
+from ..hit_selection import BucketedPick, ElbowPick, HitSelection, TailSelection
+from ..run_config import Polarity, Tail
 from .up_close import up_close_layout
 
-SELECTION_DATA = "selection.npz"
+LEGACY_SELECTION_DATA = "selection.npz"
+"""Reports before per-tail curves saved one curve here."""
 FOREST_DATA = "forest.npz"
 CURVE_POINTS = 4000
 """Points kept from the sorted curve. A text neuron's tail can have millions."""
+TAILS: tuple[Tail, ...] = ("negative", "positive")
+
+
+def selection_data_name(tail: Tail) -> str:
+    return f"selection_{tail}.npz"
 
 
 class SelectionCurve(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    tail: Tail
     index: Int[np.ndarray, "n_shown"]
     """Position of each shown value in the full sorted curve."""
     magnitude: Float[np.ndarray, "n_shown"]
     n_positions: int
-    """Positions on the full curve. A one-tailed curve holds its tail, a signed one every position."""
+    """Positions the tail's full curve holds."""
     threshold: float
-    """As a magnitude, so it sits on the curve whatever the polarity."""
-    polarity: Polarity
+    """As a magnitude, so it sits on the curve whatever the tail."""
     elbow_idx: int | None
     bucket_edges: Float[np.ndarray, "n_edges"] | None
 
@@ -46,19 +53,28 @@ def shown_positions(n: int, points: int = CURVE_POINTS) -> Int[np.ndarray, "n_sh
     )
 
 
-def selection_curve(selection: HitSelection) -> SelectionCurve:
-    magnitudes = selection.sorted_magnitudes.numpy()
+def tail_curve(tail: TailSelection) -> SelectionCurve:
+    magnitudes = tail.sorted_magnitudes.numpy()
     index = shown_positions(len(magnitudes))
-    pick = selection.pick
+    pick = tail.pick
     return SelectionCurve(
+        tail=tail.tail,
         index=index,
         magnitude=magnitudes[index],
         n_positions=len(magnitudes),
         threshold=pick.threshold,
-        polarity=selection.polarity,
         elbow_idx=pick.elbow_idx if isinstance(pick, ElbowPick) else None,
         bucket_edges=pick.bucket_edges if isinstance(pick, BucketedPick) else None,
     )
+
+
+def selection_curves(selection: HitSelection) -> list[SelectionCurve]:
+    return [tail_curve(tail) for tail in selection.tails]
+
+
+def save_selection_curves(report_dir: Path, curves: list[SelectionCurve]) -> None:
+    for curve in curves:
+        save_selection_curve(report_dir, curve)
 
 
 def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
@@ -68,18 +84,31 @@ def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
     if curve.bucket_edges is not None:
         optional["bucket_edges"] = curve.bucket_edges
     np.savez(
-        report_dir / SELECTION_DATA,
+        report_dir / selection_data_name(curve.tail),
         index=curve.index,
         magnitude=curve.magnitude,
         n_positions=curve.n_positions,
         threshold=curve.threshold,
-        polarity=curve.polarity,
         **optional,
     )
 
 
-def saved_polarity(data: Mapping[str, np.ndarray]) -> Polarity:
-    """Older reports saved two bools, `negative` and `signed`, in place of the polarity."""
+def curve_from(data: Mapping[str, np.ndarray], tail: Tail) -> SelectionCurve:
+    return SelectionCurve(
+        tail=tail,
+        index=data["index"],
+        magnitude=data["magnitude"],
+        n_positions=int(
+            data["n_positions"] if "n_positions" in data else data["n_positive"]
+        ),
+        threshold=float(data["threshold"]),
+        elbow_idx=int(data["elbow_idx"]) if "elbow_idx" in data else None,
+        bucket_edges=data["bucket_edges"] if "bucket_edges" in data else None,
+    )
+
+
+def legacy_polarity(data: Mapping[str, np.ndarray]) -> Polarity:
+    """The oldest reports saved two bools, `negative` and `signed`, in place of the polarity."""
     if "polarity" in data:
         return cast(Polarity, str(data["polarity"]))
     if "signed" in data and bool(data["signed"]):
@@ -87,22 +116,23 @@ def saved_polarity(data: Mapping[str, np.ndarray]) -> Polarity:
     return "negative" if bool(data["negative"]) else "positive"
 
 
-def load_selection_curve(report_dir: Path) -> SelectionCurve | None:
-    path = report_dir / SELECTION_DATA
+def load_legacy_curve(report_dir: Path) -> list[SelectionCurve]:
+    """A legacy signed curve held both tails on one axis, which no per-tail curve can stand for, so it is skipped."""
+    path = report_dir / LEGACY_SELECTION_DATA
     if not path.exists():
-        return None
+        return []
     data = np.load(path)
-    return SelectionCurve(
-        index=data["index"],
-        magnitude=data["magnitude"],
-        n_positions=int(
-            data["n_positions"] if "n_positions" in data else data["n_positive"]
-        ),
-        threshold=float(data["threshold"]),
-        polarity=saved_polarity(data),
-        elbow_idx=int(data["elbow_idx"]) if "elbow_idx" in data else None,
-        bucket_edges=data["bucket_edges"] if "bucket_edges" in data else None,
-    )
+    polarity = legacy_polarity(data)
+    return [] if polarity == "signed" else [curve_from(data, polarity)]
+
+
+def load_selection_curves(report_dir: Path) -> list[SelectionCurve]:
+    """Negative first, as the tails were selected."""
+    paths = {tail: report_dir / selection_data_name(tail) for tail in TAILS}
+    curves = [
+        curve_from(np.load(path), tail) for tail, path in paths.items() if path.exists()
+    ]
+    return curves or load_legacy_curve(report_dir)
 
 
 class ForestData(BaseModel):

@@ -41,7 +41,7 @@ def test_sample_keeps_the_tail():
 
 def test_nothing_above_floor():
     sample = bucketed_sample(
-        np.array([0.0, 0.0]),
+        np.array([-1.0, 0.0]),
         n_buckets=4,
         budget=10,
         floor=0.0,

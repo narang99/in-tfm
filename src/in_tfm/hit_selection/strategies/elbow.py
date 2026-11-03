@@ -11,7 +11,6 @@ import torch
 from jaxtyping import Bool, Float, Int
 
 from ...neuron_capture import ScanResult
-from ...run_config import HitSelectionConfig
 from ..picks import ElbowPick, PickedPositions
 
 
@@ -52,20 +51,24 @@ def high_activation_hits(
     return hits[:, 0], hits[:, 1]
 
 
+def elbow_pick(sorted_magnitudes: Float[torch.Tensor, "n_pos"]) -> ElbowPick:
+    elbow_idx = find_elbow_index_in_sorted_data(sorted_magnitudes)
+    return ElbowPick(cutoff=sorted_magnitudes[elbow_idx].item(), elbow_idx=elbow_idx)
+
+
 def elbow_hits(
     column: Float[torch.Tensor, "batch seq 1"],
     sorted_magnitudes: Float[torch.Tensor, "n_pos"],
     scan: ScanResult,
-    hits: HitSelectionConfig,
+    budget: int,
     seed: int,
 ) -> tuple[PickedPositions, ElbowPick]:
-    elbow_idx = find_elbow_index_in_sorted_data(sorted_magnitudes)
-    pick = ElbowPick(cutoff=sorted_magnitudes[elbow_idx].item(), elbow_idx=elbow_idx)
+    pick = elbow_pick(sorted_magnitudes)
     batch_idx, token_idx = high_activation_hits(column, 0, pick.cutoff, scan.valid_mask)
     n_above = len(batch_idx)
-    if n_above > hits.max_hits:
+    if n_above > budget:
         keep = np.sort(
-            np.random.default_rng(seed).choice(n_above, hits.max_hits, replace=False)
+            np.random.default_rng(seed).choice(n_above, budget, replace=False)
         )
         batch_idx, token_idx = batch_idx[keep], token_idx[keep]
     return PickedPositions(

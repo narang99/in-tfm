@@ -12,7 +12,7 @@ text:
   n_samples: 2000
   max_length: 128
 hits:
-  method: bucketed  # equal-width buckets over the whole signed range, so neither tail is assumed to matter more
+  method: bucketed  # each tail bucketed on its own, max_hits split by their candidates
 clustering:
   "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
   distance: weighted_jaccard

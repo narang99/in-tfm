@@ -2,9 +2,10 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.hit_selection import BucketedPick, select_hits
+from in_tfm.hit_selection import BucketedPick, TailSelection, select_hits
+from in_tfm.hit_selection.selection import tail_budgets
 from in_tfm.neuron_capture import ScanResult
-from in_tfm.run_config import HitSelectionConfig, load_run_config
+from in_tfm.run_config import HitSelectionConfig
 
 BATCH, SEQ = 40, 50
 
@@ -38,16 +39,23 @@ def test_padding_is_never_selected(scan, method):
     assert selection.token_idx.max() < 40
 
 
+def only_tail(selection) -> TailSelection:
+    [tail] = selection.tails
+    return tail
+
+
 def test_positive_hits_are_above_the_threshold(scan):
     selection = select_hits(scan, 7, "positive", HitSelectionConfig(), seed=0)
-    assert selection.threshold > 0
-    assert (values_at(scan, selection) > selection.threshold).all()
+    threshold = only_tail(selection).threshold
+    assert threshold > 0
+    assert (values_at(scan, selection) > threshold).all()
 
 
 def test_negative_hits_are_below_a_negative_threshold(scan):
     selection = select_hits(scan, 7, "negative", HitSelectionConfig(), seed=0)
-    assert selection.threshold < 0
-    assert (values_at(scan, selection) < selection.threshold).all()
+    threshold = only_tail(selection).threshold
+    assert threshold < 0
+    assert (values_at(scan, selection) < threshold).all()
 
 
 def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
@@ -61,24 +69,30 @@ def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
     ).all()
 
 
-def test_signed_selection_takes_both_tails_beyond_the_magnitude_floor(scan):
-    hits = HitSelectionConfig(
-        method="bucketed", max_hits=200, bucket_floor_fraction=0.3
-    )
+@pytest.mark.parametrize("method", ["elbow", "bucketed"])
+def test_signed_selection_takes_each_tail_beyond_its_own_threshold(scan, method):
+    hits = HitSelectionConfig(method=method, max_hits=200, bucket_floor_fraction=0.3)
     selection = select_hits(scan, 7, "signed", hits, seed=0)
+    negative, positive = selection.tails
+    assert (negative.tail, positive.tail) == ("negative", "positive")
     values = values_at(scan, selection)
-    assert (values > 0).any() and (values < 0).any()
-    assert (np.abs(values) > selection.threshold).all()
-    assert isinstance(selection.pick, BucketedPick)
-    assert selection.pick.bucket_edges[0] < 0 < selection.pick.bucket_edges[-1]
+    assert ((values < negative.threshold) | (values > positive.threshold)).all()
+    assert (values < 0).sum() == len(negative.batch_idx)
+    assert len(values) == 200
     assert selection.token_idx.max() < 40
 
 
-def test_a_signed_config_refuses_an_elbow():
-    with pytest.raises(ValueError, match="bucketed"):
-        load_run_config(
-            ["--layer-name", "x", "--polarity", "signed", "--hits.method", "elbow"]
-        )
+def test_signed_hits_are_in_row_major_order(scan):
+    hits = HitSelectionConfig(method="bucketed", max_hits=200)
+    selection = select_hits(scan, 7, "signed", hits, seed=0)
+    flat = selection.batch_idx * SEQ + selection.token_idx
+    assert (np.diff(flat) > 0).all()
+
+
+def test_the_budget_follows_each_tails_candidates():
+    assert tail_budgets([300, 100], 200) == [150, 50]
+    assert tail_budgets([2, 1], 2) == [2, 0]
+    assert tail_budgets([30, 10], 200) == [30, 10]
 
 
 @pytest.mark.parametrize("polarity", ["positive", "negative"])
@@ -93,5 +107,14 @@ def test_bucketed_selection_labels_every_kept_hit(scan):
     selection = select_hits(
         scan, 7, "positive", HitSelectionConfig(method="bucketed", max_hits=60), seed=0
     )
-    assert isinstance(selection.pick, BucketedPick)
-    assert len(selection.pick.bucket_ids) == len(selection.batch_idx)
+    pick = only_tail(selection).pick
+    assert isinstance(pick, BucketedPick)
+    assert len(pick.bucket_ids) == len(selection.batch_idx)
+
+
+def test_a_neuron_that_never_fires_in_a_tail_is_refused(scan):
+    relu_scan = scan.model_copy(update={"activations": scan.activations.clamp(min=0)})
+    with pytest.raises(ValueError, match="never fires"):
+        select_hits(relu_scan, 7, "negative", HitSelectionConfig(), seed=0)
+    signed = select_hits(relu_scan, 7, "signed", HitSelectionConfig(), seed=0)
+    assert [tail.tail for tail in signed.tails] == ["positive"]

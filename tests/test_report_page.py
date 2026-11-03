@@ -3,19 +3,21 @@ import torch
 
 from in_tfm.activation_ranges import ActivationRanges, write_activation_ranges
 from in_tfm.density_peaks import calculate_probs, density_peak_forest, forest_trees
-from in_tfm.hit_selection import ElbowPick, HitSelection
+from in_tfm.hit_selection import ElbowPick, HitSelection, TailSelection
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
 from in_tfm.report_page import (
     forest_data,
     load_forest_data,
     load_page_data,
-    load_selection_curve,
+    load_selection_curves,
     page_parts,
     save_forest_data,
-    save_selection_curve,
-    selection_curve,
+    save_selection_curves,
+    selection_curves,
 )
-from in_tfm.report_page.data import SELECTION_DATA, touching_counts
+from in_tfm.report_page.data import LEGACY_SELECTION_DATA, touching_counts
+from in_tfm.report_page.sections import sorted_curve_figure
+from in_tfm.run_config import Tail
 
 
 def two_blobs(n: int = 60) -> np.ndarray:
@@ -31,23 +33,32 @@ def a_forest():
     return forest_data(forest, trees, calculate_probs(forest, trees, 0.8))
 
 
-def a_selection(n_positive: int = 10_000) -> HitSelection:
-    magnitudes = torch.linspace(0, 1, n_positive) ** 4
-    return HitSelection(
-        polarity="positive",
+def a_tail(tail: Tail = "positive", n_positions: int = 10_000) -> TailSelection:
+    return TailSelection(
+        tail=tail,
         batch_idx=np.zeros(3, int),
         token_idx=np.arange(3),
-        activations=np.ones(3),
         n_candidates=3,
-        sorted_magnitudes=magnitudes,
-        pick=ElbowPick(cutoff=0.5, elbow_idx=9_000),
+        sorted_magnitudes=torch.linspace(0, 1, n_positions) ** 4,
+        pick=ElbowPick(cutoff=0.5, elbow_idx=n_positions - 1_000),
+    )
+
+
+def a_selection(*tails: TailSelection) -> HitSelection:
+    tails = tails or (a_tail(),)
+    return HitSelection(
+        polarity="signed" if len(tails) > 1 else tails[0].tail,
+        tails=list(tails),
+        batch_idx=np.zeros(3 * len(tails), int),
+        token_idx=np.arange(3 * len(tails)),
+        activations=np.ones(3 * len(tails)),
     )
 
 
 def a_meta() -> ReportMeta:
     return ReportMeta(
         neuron_idx=0,
-        pick=ElbowPickMeta(cutoff=0.5),
+        picks=[ElbowPickMeta(cutoff=0.5)],
         n_hits=3,
         min_uniq_images_per_cluster=1,
         hadamard_shape=(2, 3),
@@ -60,30 +71,39 @@ def a_meta() -> ReportMeta:
 
 
 def test_a_long_curve_is_thinned_but_keeps_its_tail(tmp_path):
-    save_selection_curve(tmp_path, selection_curve(a_selection()))
-    curve = load_selection_curve(tmp_path)
-    assert curve is not None
+    save_selection_curves(tmp_path, selection_curves(a_selection()))
+    [curve] = load_selection_curves(tmp_path)
     assert len(curve.index) < 10_000
     assert curve.index[-1] == 9_999 and curve.index[-4000] == 6_000
     assert (
         curve.elbow_idx == 9_000
         and curve.bucket_edges is None
-        and curve.polarity == "positive"
+        and curve.tail == "positive"
     )
 
 
-def test_a_signed_curve_round_trips_and_cuts_both_tails(tmp_path):
-    selection = a_selection().model_copy(update={"polarity": "signed"})
-    save_selection_curve(tmp_path, selection_curve(selection))
-    curve = load_selection_curve(tmp_path)
-    assert curve is not None
-    assert curve.polarity == "signed"
+def test_a_signed_selection_saves_a_curve_per_tail(tmp_path):
+    selection = a_selection(a_tail("negative", 500), a_tail("positive", 2_000))
+    save_selection_curves(tmp_path, selection_curves(selection))
+    curves = load_selection_curves(tmp_path)
+    assert [(c.tail, c.n_positions) for c in curves] == [
+        ("negative", 500),
+        ("positive", 2_000),
+    ]
+
+
+def test_the_signed_figure_mirrors_the_negative_tail_to_the_left():
+    selection = a_selection(a_tail("negative", 500), a_tail("positive", 2_000))
+    negative, positive = sorted_curve_figure(selection_curves(selection)).data
+    assert max(negative.x) == 499 and min(positive.x) == 500
+    assert max(negative.y) <= 0 <= min(positive.y)
+    assert negative.y[np.argmin(negative.x)] == -1.0
 
 
 def test_a_curve_saved_with_the_old_polarity_bools_still_loads(tmp_path):
-    curve = selection_curve(a_selection())
+    [curve] = selection_curves(a_selection())
     np.savez(
-        tmp_path / SELECTION_DATA,
+        tmp_path / LEGACY_SELECTION_DATA,
         index=curve.index,
         magnitude=curve.magnitude,
         n_positive=curve.n_positions,
@@ -91,9 +111,8 @@ def test_a_curve_saved_with_the_old_polarity_bools_still_loads(tmp_path):
         negative=True,
         signed=False,
     )
-    loaded = load_selection_curve(tmp_path)
-    assert loaded is not None
-    assert loaded.polarity == "negative" and loaded.n_positions == curve.n_positions
+    [loaded] = load_selection_curves(tmp_path)
+    assert loaded.tail == "negative" and loaded.n_positions == curve.n_positions
 
 
 def test_forest_data_round_trips_and_cuts_root_links(tmp_path):
@@ -109,7 +128,7 @@ def test_forest_data_round_trips_and_cuts_root_links(tmp_path):
 
 def test_the_page_numbers_only_the_sections_it_has_data_for(tmp_path):
     assert page_parts(load_page_data(tmp_path), a_meta()).n_sections == 0
-    save_selection_curve(tmp_path, selection_curve(a_selection()))
+    save_selection_curves(tmp_path, selection_curves(a_selection()))
     write_activation_ranges(
         tmp_path,
         ActivationRanges(clusters={0: [1.0, 2.0], 1: [3.0]}, noise=[0.1, -0.2]),

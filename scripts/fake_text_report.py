@@ -130,7 +130,7 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
 
     meta = ReportMeta(
         neuron_idx=90,
-        pick=ElbowPickMeta(cutoff=0.0809),
+        picks=[ElbowPickMeta(cutoff=0.0809)],
         n_hits=sum(c.n_hits for c in clusters.values()),
         min_uniq_images_per_cluster=2,
         hadamard_shape=HADAMARD_SHAPE,

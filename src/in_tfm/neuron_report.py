@@ -32,7 +32,7 @@ from .activation_ranges import (
 )
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
-from .hit_selection import BucketedPick, ElbowPick, HitSelection
+from .hit_selection import BucketedPick, ElbowPick, HitSelection, TailSelection
 from .html_report import (
     ClusterLink,
     cluster_nav,
@@ -58,8 +58,8 @@ from .report_page import (
     load_page_data,
     page_parts,
     save_forest_data,
-    save_selection_curve,
-    selection_curve,
+    save_selection_curves,
+    selection_curves,
 )
 from .sources import SampleId, SampleSource
 
@@ -166,7 +166,7 @@ def _index_page(
     parts = page_parts(data, meta)
     body = neuron_index(
         title=title,
-        threshold=meta.threshold,
+        threshold_label=threshold_label(meta),
         n_hits=meta.n_hits,
         n_clusters=len(sections),
         page_controls=page_controls,
@@ -178,6 +178,21 @@ def _index_page(
         clusters_step=parts.n_sections + 1,
     )
     return page(title, body, PLOTLY_JS if parts.has_charts else None)
+
+
+def tail_pick_meta(tail: TailSelection) -> ElbowPickMeta | BucketedPickMeta:
+    match tail.pick:
+        case ElbowPick():
+            return ElbowPickMeta(tail=tail.tail, cutoff=tail.threshold)
+        case BucketedPick(bucket_edges=edges):
+            return BucketedPickMeta(
+                tail=tail.tail, floor=tail.threshold, bucket_edges=edges.tolist()
+            )
+
+
+def threshold_label(meta: ReportMeta) -> str:
+    values = " and ".join(f"{t:.4f}" for t in meta.thresholds)
+    return f"threshold{'s' if len(meta.thresholds) > 1 else ''}: {values}"
 
 
 def cluster_counts(labels: Int[np.ndarray, "n_hits"]) -> dict[int, int]:
@@ -313,7 +328,7 @@ class NeuronClusterHits(BaseModel):
         uniq_images = cluster_unique_image_counts(self.labels, self.selection.batch_idx)
         return ReportMeta(
             neuron_idx=self.neuron_idx,
-            pick=self._pick_meta(),
+            picks=[tail_pick_meta(tail) for tail in self.selection.tails],
             n_hits=len(self.labels),
             min_uniq_images_per_cluster=min_uniq_images,
             hadamard_shape=self.hadamard_shape,
@@ -323,14 +338,6 @@ class NeuronClusterHits(BaseModel):
             },
             sample_ids=list(self.sample_ids),
         )
-
-    def _pick_meta(self) -> ElbowPickMeta | BucketedPickMeta:
-        threshold = self.selection.threshold
-        match self.selection.pick:
-            case ElbowPick():
-                return ElbowPickMeta(cutoff=threshold)
-            case BucketedPick(bucket_edges=edges):
-                return BucketedPickMeta(floor=threshold, bucket_edges=edges.tolist())
 
     def _write_activation_ranges(
         self, report_dir: Path, cluster_ids: list[int]
@@ -368,7 +375,7 @@ class NeuronClusterHits(BaseModel):
         report_dir = Path(out_dir) / (name or f"neuron_{self.neuron_idx}")
         report_dir.mkdir(parents=True, exist_ok=True)
 
-        save_selection_curve(report_dir, selection_curve(self.selection))
+        save_selection_curves(report_dir, selection_curves(self.selection))
         if forest is not None:
             save_forest_data(report_dir, forest)
 

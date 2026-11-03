@@ -1,7 +1,7 @@
 """What each strategy returns.
 
 - Strategies see the column already flipped to the tail being explained, so every value here is a magnitude.
-  - `HitSelection.threshold` puts the sign back.
+  - `TailSelection.threshold` puts the sign back.
 """
 
 from typing import Annotated, Literal
@@ -24,7 +24,7 @@ class ElbowPick(BaseModel):
     method: Literal["elbow"] = "elbow"
     cutoff: float
     elbow_idx: int
-    """Index into `HitSelection.sorted_magnitudes`."""
+    """Index into `TailSelection.sorted_magnitudes`."""
 
     @property
     def threshold(self) -> float:

@@ -67,7 +67,7 @@ def cluster_nav(links: Sequence[ClusterLink]) -> str:
 
 def neuron_index(
     title: str,
-    threshold: float,
+    threshold_label: str,
     n_hits: int,
     n_clusters: int,
     page_controls: str,
@@ -82,7 +82,7 @@ def neuron_index(
         "neuron_index.html",
         mixed_hits_page=mixed_hits_page,
         title=title,
-        threshold=threshold,
+        threshold_label=threshold_label,
         n_hits=n_hits,
         n_clusters=n_clusters,
         page_controls=page_controls,
