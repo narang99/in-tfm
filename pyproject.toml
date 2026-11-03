@@ -1,63 +1,56 @@
 [project]
 name = "in-tfm"
 version = "0.1.0"
-description = "Add your description here"
+description = "Clusters a neuron's high-activation hits by which input dimensions drove them"
 readme = "README.md"
 authors = [
     { name = "narang99", email = "hariom2711@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "captum>=0.9.0",
     "datasets>=2.14",
     "hdbscan>=0.8.39",
+    "huggingface-hub>=0.20",
     "jaxtyping>=0.3.11",
     "jinja2>=3.0",
     "lxt>=2.1",
+    "markupsafe>=2.0",
     "matplotlib>=3.8",
+    "networkx>=3.0",
     "nnsight>=0.7.0",
     "numpy>=2.1",
+    "pillow>=10.0",
     "plotly>=5.20",
     "pydantic>=2.7",
     "pydantic-settings>=2.7",
-    "pydicom>=3.0.2",
     "pyyaml>=6",
-    "rad-dino>=0.1.1",
     "scikit-learn>=1.3",
+    "scipy>=1.10",
+    "tokenizers>=0.15",
     "torch>=2.11",
     "torchvision>=0.20",
     "tqdm>=4.66",
-    "transformers>=5.18",
+    "transformers>=5.0",
 ]
 
-# Floors are deliberately low: Colab preinstalls torch/numpy/scikit-learn/transformers built
-# against its own CUDA and ABI, and any floor above those forces uv to reinstall them - which
-# for torch means replacing the cu128 build with a generic PyPI wheel. Raise a floor only for
-# an API this code actually needs.
-#   - transformers >=5.18: 5.x moved to AttentionInterface and dropped
-#     find_pruneable_heads_and_indices; see attribution.py and compat.py. 5.18 also renamed
-#     `Dinov2MLP.activation` to `activation_fn`, which models/rad_dino.py reads. Colab's own
-#     preinstall is 5.18.0, so this floor forces no reinstall.
-#   - nnsight >=0.7: the .trace() context API used in activations.py.
-#   - hdbscan >=0.8.39: known to coexist with cuml without API breaks; see clustering.py.
-#   - datasets >=2.14: only `load_dataset(path, name, split=...)` is used, which is far older than
-#     that. Colab preinstalls datasets, so `uv add`'s resolved version is deliberately not the
-#     floor here - it would pull a reinstall and drag fsspec with it.
+# Floors are deliberately low.
+# - Colab preinstalls torch, numpy, scikit-learn and transformers, built against its own CUDA and ABI.
+# - Any floor above those forces uv to reinstall them.
+#   - For torch that means replacing the cu128 build with a generic PyPI wheel.
+# - Raise a floor only for an API this code actually needs.
+#   - transformers >=5.0: 5.x moved to AttentionInterface and dropped find_pruneable_heads_and_indices.
+#     See attribution/attnlrp.py and compat.py.
+#   - nnsight >=0.7: the .trace() context API used in neuron_capture.py.
+#   - hdbscan >=0.8.39: known to coexist with cuml without API breaks. See clustering.py.
+#   - datasets >=2.14: only `load_dataset(path, name, split=...)` is used, which is far older.
+# - The rest are plain floors well below Colab's preinstalls.
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.3.0",
-    "jupyter>=1.1.1",
     "pytest>=9.1.1",
 ]
 
-[project.scripts]
-in-tfm = "in_tfm:main"
-
 [project.optional-dependencies]
-viz = [
-    "circuitsvis>=1.43.3",
-]
 # The PyPI release pins kornia<=0.4.1, which does not install on a current python.
 # The `dev` branch (see tool.uv.sources) lifts the pin, so this extra needs uv, not pip.
 inception = [

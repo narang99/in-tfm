@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..models.attn_only_2l.model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_WEIGHTS, AttnOnlyForCausalLM
+from ..model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_WEIGHTS, AttnOnlyForCausalLM
 from .config import LOG_FILE, TinyAttnOnlyTrainConfig
 from .corpus import prepare_tokens, story_starts
 from .evaluation import evaluate

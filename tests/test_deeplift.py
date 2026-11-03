@@ -3,8 +3,6 @@ import torch
 from torch import nn
 
 from in_tfm.attribution.deeplift import deeplift_attribution
-from in_tfm.layers import submodule_getter
-from in_tfm.models.stl_inception import StlInception
 
 POSITION = 5
 
@@ -60,16 +58,3 @@ def test_a_nonzero_baseline_is_used():
     x, baseline = torch.randn(1, 3, 16, 16), torch.randn(1, 3, 16, 16)
     attribution = deeplift_attribution(model, x, model.out, select_position, baseline)
     assert attribution.sum().item() == pytest.approx(change_from_baseline(model, model.out, x, baseline).item(), abs=1e-4)
-
-
-@pytest.mark.parametrize(
-    "layer_name", ["stem.0", "block_a.branch_pool.1.0", "block_b.branch_1x1.0", "block_b.branch_3x3.1.0", "block_d.branch_5x5.1.0"]
-)
-def test_attributions_are_complete_across_the_real_model(layer_name):
-    torch.manual_seed(0)
-    model = StlInception().eval()
-    x = torch.randn(1, 3, 96, 96)
-    layer = submodule_getter(layer_name)(model)
-    attribution = deeplift_attribution(model, x, layer, select_position)
-    expected = change_from_baseline(model, layer, x, torch.zeros_like(x))
-    assert attribution.sum().item() == pytest.approx(expected.item(), abs=1e-3, rel=1e-3)

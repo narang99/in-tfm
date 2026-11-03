@@ -3,8 +3,7 @@
 # A hit's Hadamard is over the 2048 MLP dims that feed down_proj.
 #   uv run python scripts/run_neuron_report.py --config configs/gemma3_l11_down_proj_peaks.yaml
 model: google/gemma-3-270m
-target: down_proj
-layer_idx: 11
+layer_name: layers.11.mlp.down_proj
 neurons: [332]
 batch_size: 16
 out_dir: reports/gemma3_l11

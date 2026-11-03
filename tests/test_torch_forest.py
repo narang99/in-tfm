@@ -9,7 +9,6 @@ import pytest
 import torch
 
 from in_tfm.density_peaks import torch_forest, vectorized
-from in_tfm.density_peaks.forest import comparable_rows
 from in_tfm.weighted_jaccard import weighted_jaccard_distances
 
 DISTANCES = ["euclidean", "weighted_jaccard"]

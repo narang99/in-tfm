@@ -22,7 +22,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 from PIL import Image
 
-from in_tfm.models.stl_inception.source import spread_indices
+from in_tfm.models.inception_v1.source import spread_indices
 
 BUCKET_NAME = "narang99-private"
 BUCKET_PREFIX = f"s3://{BUCKET_NAME}/imagenet"

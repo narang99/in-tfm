@@ -3,8 +3,7 @@
 # 10000 hits, not 20000: distance and forest time grow with the square of the hit count, and Colab's T4 has 2 CPUs.
 #   uv run python scripts/run_neuron_report.py --config configs/gemma3_l3_down_proj_peaks.yaml
 model: google/gemma-3-270m
-target: down_proj
-layer_idx: 3
+layer_name: layers.3.mlp.down_proj
 neurons: [133, 163, 189, 320]
 batch_size: 16
 out_dir: reports/gemma3_l3

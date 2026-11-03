@@ -20,7 +20,7 @@ def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
     attention entry is swapped: lxt's `patch_attention` is the broken-on-transformers-5.x path
     described in patch_eager_attention.
 
-    Gemma3RMSNorm gets the same treatment LayerNorm gets in the vision path - stop-gradient
+    Gemma3RMSNorm gets a stop-gradient
     through the normalizing statistic, so relevance flows only through the scaled input.
     """
     from lxt.efficient.models.gemma3 import gemma3_norm

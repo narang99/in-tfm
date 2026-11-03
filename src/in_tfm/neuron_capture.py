@@ -28,7 +28,6 @@ from nnsight.modeling.base import NNsight
 from pydantic import BaseModel, ConfigDict
 from tqdm import tqdm
 
-from .activations import cat_captures
 from .device import default_device, empty_cache
 from .layers import LayerGetter
 from .sources import SampleId, SampleSource
@@ -190,3 +189,18 @@ class NeuronCapture:
     def _release(self) -> None:
         empty_cache()
         gc.collect()
+
+
+def cat_captures(tensors: list[torch.Tensor]) -> torch.Tensor:
+    """Concat only works if all tensors are of the same size
+
+    Text models can have variable sized batches, their `Source`'s are right now hard-coded to return same sized batches
+    Add a specific check with informative error so that a new Source does not accidentally start variable sized batches
+    """
+    widths = {t.shape[1] for t in tensors}
+    if len(widths) > 1:
+        raise ValueError(
+            f"captured batches disagree on sequence width ({sorted(widths)}); a source must "
+            f"pad to a fixed width - see sources.TextSource._encode"
+        )
+    return torch.cat(tensors, dim=0)

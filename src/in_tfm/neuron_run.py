@@ -28,7 +28,7 @@ from .density_peaks import (
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
-from .layers import LayerGetter, submodule_getter, down_proj_getter, fc2_getter, k_proj_getter, q_proj_getter
+from .layers import LayerGetter, submodule_getter
 from .border_pages import write_border_pages
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
@@ -36,7 +36,7 @@ from .neuron_capture import NeuronCapture, merge_positions
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
 from .report_page import ForestData, forest_data
-from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig, Target
+from .run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig, Polarity, RunConfig
 from .sources import SampleSource
 from .token_layout import ConvLayout, IdentityLayout, TokenLayout
 
@@ -49,15 +49,7 @@ def timed(label: str):
 
 
 def layer_getter_for(config: RunConfig) -> LayerGetter:
-    getters = {
-        Target.DOWN_PROJ: down_proj_getter,
-        Target.Q_PROJ: q_proj_getter,
-        Target.K_PROJ: k_proj_getter,
-        Target.FC2: fc2_getter,
-    }
-    if config.target in (Target.CONV, Target.LINEAR):
-        return submodule_getter(config.layer_name)
-    return getters[config.target](config.layer_idx)
+    return submodule_getter(config.layer_name)
 
 
 def layout_for(layer: torch.nn.Module) -> TokenLayout:
@@ -129,12 +121,6 @@ def cluster_hits(
                 hdmd, strategy.min_cluster_size, strategy.selection_method, strategy.min_samples, clustering.distance,
                 clustering.normalise,
             )))
-
-
-def hit_memberships(
-    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
-) -> list[HitMembership]:
-    return cluster_hits(hdmd, clustering, device).memberships
 
 
 def max_entropy_of(clustering: ClusteringConfig) -> float | None:

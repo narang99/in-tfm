@@ -2,7 +2,6 @@
 # Every conv2 channel of the 2/4 network, on the first 100 MNIST test images of each digit.
 # Train it with: uv run python scripts/train_mnist.py --channels.conv1 2 --channels.conv2 4 --out-dir checkpoints/mnist_cnn_2_4
 model: self/mnist-cnn-small
-target: conv
 layer_name: conv2
 neuron_start: 0
 neuron_end: 3

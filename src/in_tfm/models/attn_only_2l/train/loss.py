@@ -2,7 +2,7 @@ import torch
 from jaxtyping import Int
 from torch import nn
 
-from ..models.attn_only_2l.model import AttnOnlyForCausalLM
+from ..model import AttnOnlyForCausalLM
 
 
 def next_token_loss(model: AttnOnlyForCausalLM, windows: Int[torch.Tensor, "batch seq_plus_one"]) -> torch.Tensor:

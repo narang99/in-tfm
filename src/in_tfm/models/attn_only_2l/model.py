@@ -147,8 +147,7 @@ def split_fused_o_proj(state: dict[str, torch.Tensor], head_dim: int) -> dict[st
 
 
 class AttnOnlyAttention(nn.Module):
-    """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj` so `layers.q_proj_getter` and
-    `layers.k_proj_getter` resolve on this model with no special case."""
+    """Named `self_attn` with `q_proj`/`k_proj`/`v_proj`/`o_proj`, so layer paths match the HF decoders."""
 
     def __init__(self, config: AttnOnlyConfig) -> None:
         super().__init__()
@@ -183,7 +182,7 @@ class AttnOnlyAttention(nn.Module):
         self, x: Float[torch.Tensor, "batch seq inner"]
     ) -> Float[torch.Tensor, "batch head seq head_dim"]:
         """Splits head-major, so a flat neuron index is `head * head_dim + dim` - the convention
-        `layers.q_proj_getter` documents and `_converted_state_dict` lays the weights out for."""
+        the README documents and `_converted_state_dict` lays the weights out for."""
         batch, seq, _ = x.shape
         return x.view(batch, seq, self.n_heads, self.head_dim).transpose(1, 2)
 
@@ -280,41 +279,6 @@ def _converted_state_dict(
     return converted
 
 
-def attention_patterns(
-    model: AttnOnlyForCausalLM,
-    input_ids: Int[torch.Tensor, "batch seq"],
-    layer_idx: int,
-) -> Float[torch.Tensor, "batch head seq seq"]:
-    """Attention probabilities for one layer, rebuilt from the hooked `q_proj` and `k_proj`
-    outputs rather than returned by the forward pass.
-
-    The forward pass discards its attention weights, and threading them out would mean either
-    stateful capture or a second return path through every layer. Rebuilding is exact instead of
-    approximate: under shortformer the position is already inside the q_proj and k_proj inputs, so
-    their outputs are the same q and k the model scored with, and the softmax below is the one it
-    applied.
-    """
-    attn = model.model.layers[layer_idx].self_attn
-    captured: dict[str, torch.Tensor] = {}
-    handles = [
-        proj.register_forward_hook(
-            lambda _module, _inp, out, name=name: captured.__setitem__(name, out)
-        )
-        for name, proj in (("q", attn.q_proj), ("k", attn.k_proj))
-    ]
-    try:
-        with torch.no_grad():
-            model(input_ids=input_ids)
-    finally:
-        for handle in handles:
-            handle.remove()
-
-    query, key = (attn._to_heads(captured[name]) for name in ("q", "k"))
-    scores = torch.matmul(query, key.transpose(2, 3)) * attn.scaling
-    mask = causal_additive_mask(None, input_ids.shape[1], scores)
-    return (scores + mask).softmax(dim=-1)
-
-
 def load_attn_only_2l(
     dtype: torch.dtype = torch.float32,
 ) -> tuple[AttnOnlyForCausalLM, AutoTokenizer]:
@@ -344,7 +308,7 @@ BOS_TOKEN = "<|endoftext|>"
 def load_trained_attn_only(
     checkpoint_dir: Path, weights: str = TRAINED_WEIGHTS
 ) -> tuple[AttnOnlyForCausalLM, PreTrainedTokenizerFast]:
-    """A model written by `tiny_attn_only_training`, with the tokenizer trained on its own corpus."""
+    """A model written by `attn_only_2l.train`, with the tokenizer trained on its own corpus."""
     config = AttnOnlyConfig.from_json_file(checkpoint_dir / TRAINED_CONFIG)
     model = AttnOnlyForCausalLM(config)
     state = torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True)

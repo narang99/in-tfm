@@ -28,45 +28,21 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     ATTN_ONLY_2L = "self/attn-only-2l"
-    RAD_DINO = "microsoft/rad-dino"
-    STL_INCEPTION = "self/stl-inception"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
     INCEPTION_V1 = "lucent/inception-v1"
 
 
-Modality = Literal["text", "image", "stl", "mnist", "inception"]
+Modality = Literal["text", "mnist", "inception"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
-    ModelName.RAD_DINO: "image",
-    ModelName.STL_INCEPTION: "stl",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
     ModelName.INCEPTION_V1: "inception",
 }
 
-
-class Target(StrEnum):
-    DOWN_PROJ = "down_proj"
-    Q_PROJ = "q_proj"
-    K_PROJ = "k_proj"
-    FC2 = "fc2"
-    CONV = "conv"
-    LINEAR = "linear"
-
-
-SUPPORTED_TARGETS: dict[ModelName, set[Target]] = {
-    ModelName.GEMMA3_270M: {Target.DOWN_PROJ, Target.Q_PROJ, Target.K_PROJ},
-    ModelName.ATTN_ONLY_2L: {Target.Q_PROJ, Target.K_PROJ, Target.LINEAR},
-    ModelName.RAD_DINO: {Target.FC2},
-    ModelName.STL_INCEPTION: {Target.CONV},
-    ModelName.MNIST_CNN: {Target.CONV, Target.LINEAR},
-    ModelName.MNIST_CNN_SMALL: {Target.CONV, Target.LINEAR},
-    ModelName.INCEPTION_V1: {Target.CONV},
-}
-"""The attention-only model has no MLP, so it has no `down_proj`. Its `o_proj` is a `linear` target. Dinov2 calls its MLP output `fc2`."""
 
 Polarity = Literal["positive", "negative", "signed"]
 """`signed` takes hits from both tails into one space."""
@@ -90,22 +66,6 @@ class TextDataConfig(Section):
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
-
-
-class ImageDataConfig(Section):
-    dcm_dir: Path = Path("dicoms")
-    n_dicoms: int = Field(1000, description="the first n in sorted file order, all of them if there are fewer")
-
-
-class StlDataConfig(Section):
-    dataset: str = Field("tanganke/stl10", description="hf dataset with `image` and `label` columns, 96x96")
-    split: Literal["train", "test"] = "test"
-    n_images: int = Field(1000, description="the first n images of the split in dataset order")
-    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_stl.py, random weights if unset")
-    attribution: Literal["deeplift", "integrated-gradients"] = Field(
-        "deeplift", description="how a hit is explained in pixels, integrated-gradients is the slow reference"
-    )
-    ig_steps: int = Field(128, description="integrated-gradients only: interpolation steps per explained hit")
 
 
 class MnistDataConfig(Section):
@@ -169,16 +129,6 @@ class DensityPeaksConfig(Section):
 
 ClusteringStrategy = Annotated[HdbscanConfig | DensityPeaksConfig, Field(discriminator="method")]
 
-MOVED_TO_STRATEGY = {
-    "method": "method",
-    "min_cluster_size": "hdbscan",
-    "min_samples": "hdbscan",
-    "selection_method": "hdbscan",
-    "k": "density_peaks",
-}
-"""Keys that used to sit directly under `clustering`, and the strategy that now holds each."""
-
-
 class ClusteringConfig(Section):
     """Settings every strategy shares sit here. Each strategy's own settings sit under `strategy`, picked by `method`."""
 
@@ -203,16 +153,6 @@ class ClusteringConfig(Section):
 
     @model_validator(mode="before")
     @classmethod
-    def strategy_keys_are_under_strategy(cls, data: Any) -> Any:
-        """Old files put these keys directly under `clustering`. Say where each went, rather than only that it is unknown."""
-        if isinstance(data, dict) and (moved := sorted(MOVED_TO_STRATEGY.keys() & data.keys())):
-            key = moved[0]
-            where = "strategy.method" if key == "method" else f"strategy.{key}, with strategy.method: {MOVED_TO_STRATEGY[key]}"
-            raise ValueError(f"clustering.{key} moved to clustering.{where}")
-        return data
-
-    @model_validator(mode="before")
-    @classmethod
     def strategy_without_a_method_is_hdbscan(cls, data: Any) -> Any:
         """HDBSCAN is the default, so tuning it should not need its method too, e.g. `--clustering.strategy.min-cluster-size 20`."""
         strategy = data.get("strategy") if isinstance(data, dict) else None
@@ -231,10 +171,10 @@ class RunConfig(BaseSettings):
 
     config: Path | None = Field(None, description="YAML file with defaults for any of the settings below")
     model: ModelName = Field(ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l")
-    target: Target = Field(Target.DOWN_PROJ, description="down_proj: MLP neurons. q_proj / k_proj: neuron index = (kv_)head * head_dim + dim")
-    layer_idx: int = 10
-    layer_name: str | None = Field(
-        None, description="conv and linear only: dotted submodule path, for example block_b.branch_3x3.1.0. Used instead of layer_idx"
+    layer_name: str = Field(
+        "layers.10.mlp.down_proj",
+        description="dotted submodule path of the adapter's model, for example layers.0.self_attn.q_proj. "
+        "q_proj / k_proj neuron index = (kv_)head * head_dim + dim",
     )
     neurons: list[int] | None = Field(None, description="neuron indices, repeat the flag per index. Overrides the range")
     neuron_start: int = 90
@@ -249,8 +189,6 @@ class RunConfig(BaseSettings):
     out_dir: Path = Path("reports")
     device: str = Field(default_factory=default_device)
     text: TextDataConfig = TextDataConfig()
-    image: ImageDataConfig = ImageDataConfig()
-    stl: StlDataConfig = StlDataConfig()
     mnist: MnistDataConfig = MnistDataConfig()
     inception: InceptionDataConfig = InceptionDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
@@ -271,22 +209,9 @@ class RunConfig(BaseSettings):
         return (init_settings,)
 
     @model_validator(mode="after")
-    def target_exists_on_model(self) -> "RunConfig":
-        if self.target not in SUPPORTED_TARGETS[self.model]:
-            options = sorted(t.value for t in SUPPORTED_TARGETS[self.model])
-            raise ValueError(f"{self.model.value} has no {self.target.value}, choose one of {options}")
-        return self
-
-    @model_validator(mode="after")
-    def conv_target_names_its_layer(self) -> "RunConfig":
-        if self.target in (Target.CONV, Target.LINEAR) and self.layer_name is None:
-            raise ValueError(f"the {self.target.value} target needs layer_name, a dotted submodule path")
-        return self
-
-    @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "image", "stl", "mnist", "inception"} - {self.modality}
+        others = {"text", "mnist", "inception"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self

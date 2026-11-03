@@ -65,11 +65,11 @@ def test_an_adapter_refuses_the_other_networks_weights():
 
 
 def test_both_networks_are_models_of_their_own():
-    small = load_run_config(["--model", "self/mnist-cnn-small", "--target", "conv", "--layer-name", "conv1"])
+    small = load_run_config(["--model", "self/mnist-cnn-small", "--layer-name", "conv1"])
     assert small.model is ModelName.MNIST_CNN_SMALL
     assert small.modality == "mnist"
     with pytest.raises(ValueError, match="mnist data"):
-        load_run_config(["--model", "self/mnist-cnn", "--target", "conv", "--layer-name", "conv1", "--stl.n-images", "3"])
+        load_run_config(["--model", "self/mnist-cnn", "--layer-name", "conv1", "--text.n-samples", "3"])
 
 
 def test_first_per_class_takes_the_same_number_of_each_digit_in_order():

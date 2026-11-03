@@ -8,7 +8,7 @@
 - Each eval line prints the train and val loss.
 """
 
-from in_tfm.tiny_attn_only_training import TinyAttnOnlyTrainConfig, train
+from in_tfm.models.attn_only_2l.train import TinyAttnOnlyTrainConfig, train
 
 
 def main() -> None:

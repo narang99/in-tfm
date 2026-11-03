@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from ..neuron_capture import ScanResult
 
 RANGES_NAME = "activation_ranges.json"
-PLOT_NAME = "activation_ranges.jpg"
 NOISE_SAMPLE_SIZE = 1000
 
 
@@ -46,7 +45,6 @@ def cluster_activations(
 
 
 def write_activation_ranges(report_dir: Path, ranges: ActivationRanges) -> None:
-    """The report page draws it as a chart. `figure.save_activation_range_plot` drew the older image of it."""
     (report_dir / RANGES_NAME).write_text(ranges.model_dump_json())
 
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from in_tfm.run_config import DensityPeaksConfig, HdbscanConfig, ModelName, Target, load_run_config
+from in_tfm.run_config import DensityPeaksConfig, HdbscanConfig, ModelName, load_run_config
 
 
 def write_yaml(tmp_path: Path, text: str) -> str:
@@ -19,15 +19,15 @@ def test_defaults_need_no_arguments():
 
 
 def test_file_sets_defaults(tmp_path):
-    path = write_yaml(tmp_path, "layer_idx: 3\nclustering: {strategy: {method: hdbscan, min_cluster_size: 20}}\n")
+    path = write_yaml(tmp_path, "layer_name: layers.3.mlp.down_proj\nclustering: {strategy: {method: hdbscan, min_cluster_size: 20}}\n")
     config = load_run_config(["--config", path])
-    assert config.layer_idx == 3
+    assert config.layer_name == "layers.3.mlp.down_proj"
     assert config.clustering.strategy.min_cluster_size == 20
 
 
 def test_flags_override_the_file(tmp_path):
-    path = write_yaml(tmp_path, "layer_idx: 3\n")
-    assert load_run_config(["--config", path, "--layer-idx", "5"]).layer_idx == 5
+    path = write_yaml(tmp_path, "layer_name: layers.3.mlp.down_proj\n")
+    assert load_run_config(["--config", path, "--layer-name", "layers.5.mlp.down_proj"]).layer_name == "layers.5.mlp.down_proj"
 
 
 def test_a_flag_overrides_one_key_of_a_section_and_keeps_the_rest(tmp_path):
@@ -64,17 +64,6 @@ def test_a_strategy_without_a_method_is_hdbscan():
         load_run_config(["--clustering.strategy.k", "7"])
 
 
-@pytest.mark.parametrize("old_key, where", [
-    ("min_cluster_size: 20", "clustering.strategy.min_cluster_size, with strategy.method: hdbscan"),
-    ("k: 7", "clustering.strategy.k, with strategy.method: density_peaks"),
-    ("method: density_peaks", "clustering.strategy.method"),
-])
-def test_an_old_flat_key_says_where_it_moved(tmp_path, old_key, where):
-    path = write_yaml(tmp_path, f"clustering: {{{old_key}}}\n")
-    with pytest.raises(ValidationError, match=where):
-        load_run_config(["--config", path])
-
-
 @pytest.mark.parametrize("path", sorted(Path("configs").glob("*.yaml")), ids=lambda path: path.name)
 def test_every_checked_in_config_loads(path):
     load_run_config(["--config", str(path)])
@@ -89,12 +78,7 @@ def test_neuron_range_is_inclusive():
 
 
 def test_model_is_given_by_its_value():
-    assert load_run_config(["--model", "self/attn-only-2l", "--target", "q_proj"]).model is ModelName.ATTN_ONLY_2L
-
-
-def test_a_target_the_model_lacks_is_rejected_up_front():
-    with pytest.raises(ValidationError, match="has no down_proj"):
-        load_run_config(["--model", "self/attn-only-2l"])
+    assert load_run_config(["--model", "self/attn-only-2l"]).model is ModelName.ATTN_ONLY_2L
 
 
 def test_a_typo_in_the_file_is_an_error(tmp_path):
@@ -104,40 +88,5 @@ def test_a_typo_in_the_file_is_an_error(tmp_path):
 
 
 def test_environment_variables_do_not_reach_the_config(monkeypatch):
-    monkeypatch.setenv("LAYER_IDX", "99")
-    monkeypatch.setenv("TARGET", Target.K_PROJ.value)
-    config = load_run_config([])
-    assert (config.layer_idx, config.target) == (10, Target.DOWN_PROJ)
-
-
-def test_rad_dino_takes_fc2_and_not_the_language_model_targets():
-    config = load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2"])
-    assert config.modality == "image"
-    with pytest.raises(ValidationError, match="has no down_proj"):
-        load_run_config(["--model", "microsoft/rad-dino"])
-
-
-def test_a_data_section_for_the_other_modality_is_rejected():
-    with pytest.raises(ValidationError, match="reads image data, but the text section was set"):
-        load_run_config(["--model", "microsoft/rad-dino", "--target", "fc2", "--text.n-samples", "5"])
-    with pytest.raises(ValidationError, match="reads text data, but the image section was set"):
-        load_run_config(["--image.n-dicoms", "5"])
-
-
-def test_conv_target_needs_a_layer_name():
-    with pytest.raises(ValidationError, match="layer_name"):
-        load_run_config(["--model", "self/stl-inception", "--target", "conv"])
-
-
-def test_the_stl_model_rejects_the_other_modalities_sections():
-    with pytest.raises(ValidationError, match="reads stl data, but the text section was set"):
-        load_run_config(
-            ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0", "--text.n-samples", "5"]
-        )
-
-
-def test_attribution_defaults_to_deeplift_and_takes_integrated_gradients():
-    flags = ["--model", "self/stl-inception", "--target", "conv", "--layer-name", "stem.0"]
-    assert load_run_config(flags).stl.attribution == "deeplift"
-    config = load_run_config([*flags, "--stl.attribution", "integrated-gradients", "--stl.ig-steps", "64"])
-    assert (config.stl.attribution, config.stl.ig_steps) == ("integrated-gradients", 64)
+    monkeypatch.setenv("LAYER_NAME", "layers.0.self_attn.k_proj")
+    assert load_run_config([]).layer_name == "layers.10.mlp.down_proj"

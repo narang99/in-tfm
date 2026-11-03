@@ -25,7 +25,7 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from tqdm import tqdm
 
-from .activation_ranges import ActivationRanges, PLOT_NAME, RANGES_NAME, cluster_activations, write_activation_ranges
+from .activation_ranges import ActivationRanges, cluster_activations, write_activation_ranges
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection
@@ -33,24 +33,16 @@ from .html_report import (
     ClusterLink,
     cluster_nav,
     cluster_section,
-    details,
     neuron_index,
     page,
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
 from .report_page import (
-    MIXED_HITS_PAGE, PLOTLY_JS, SELECTION_DATA, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
+    PLOTLY_JS, ForestData, PageData, cluster_stats_html, load_page_data, page_parts, save_forest_data,
     save_selection_curve, selection_curve,
 )
-from .report_meta import (
-    BucketedPickMeta,
-    ClusterMeta,
-    ElbowPickMeta,
-    ReportMeta,
-    load_report_meta,
-    write_report_meta,
-)
+from .report_meta import BucketedPickMeta, ClusterMeta, ElbowPickMeta, ReportMeta, load_report_meta, write_report_meta
 from .sources import SampleId, SampleSource
 
 AttrFn = Callable[..., np.ndarray]
@@ -126,28 +118,6 @@ def _cluster_nav(meta: ReportMeta) -> str:
     )
 
 
-def _activation_plot(meta: ReportMeta) -> str:
-    """Reports written before `selection.npz` keep their saved image."""
-    match meta.pick:
-        case ElbowPickMeta():
-            return details("activation threshold (elbow plot)", '<img class="elbow" src="elbow.png" alt="elbow plot">')
-        case BucketedPickMeta():
-            return details("activation buckets", '<img class="elbow" src="buckets.png" alt="bucket edges plot">')
-
-
-def _activation_ranges_plot(report_dir: Path) -> str:
-    """Absent from reports written before the plot existed, and for a neuron with no clusters."""
-    if not (report_dir / PLOT_NAME).exists():
-        return ""
-    return details("activation ranges per cluster", f'<img src="{PLOT_NAME}" alt="activation range per cluster">')
-
-
-def _legacy_plots(report_dir: Path, meta: ReportMeta) -> str:
-    """The images a report saved before its charts had data files. Each is shown only if its chart is missing."""
-    plots = "" if (report_dir / SELECTION_DATA).exists() else _activation_plot(meta)
-    return plots if (report_dir / RANGES_NAME).exists() else plots + _activation_ranges_plot(report_dir)
-
-
 def _index_page(
     report_dir: Path,
     data: PageData,
@@ -164,7 +134,6 @@ def _index_page(
         n_hits=meta.n_hits,
         n_clusters=len(sections),
         page_controls=page_controls,
-        activation_plot=_legacy_plots(report_dir, meta),
         cluster_nav=_cluster_nav(meta),
         sections=sections,
         mixed_hits_page=mixed_hits_page,

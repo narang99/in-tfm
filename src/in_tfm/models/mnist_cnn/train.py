@@ -16,10 +16,38 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
-from .device import default_device
-from .models.mnist_cnn import MnistCnn, MnistCnnChannels
-from .stl_training import accuracy, train_one_epoch
+from ...device import default_device
+from .model import MnistCnn, MnistCnnChannels
+
+
+@torch.no_grad()
+def accuracy(model: nn.Module, loader: DataLoader, device: str) -> float:
+    model.eval()
+    correct = 0
+    for images, labels in loader:
+        correct += (model(images.to(device)).argmax(1).cpu() == labels).sum().item()
+    return correct / len(loader.dataset)
+
+
+def train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    device: str,
+) -> float:
+    model.train()
+    total = 0.0
+    for images, labels in tqdm(loader, desc="train"):
+        optimizer.zero_grad()
+        loss = nn.functional.cross_entropy(model(images.to(device)), labels.to(device))
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+        total += loss.item()
+    return total / len(loader)
 
 
 class MnistTrainConfig(BaseSettings):
