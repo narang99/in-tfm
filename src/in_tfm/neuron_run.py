@@ -70,10 +70,6 @@ def layer_getter_for(config: RunConfig) -> LayerGetter:
     return submodule_getter(config.layer_name)
 
 
-def polarities_for(config: RunConfig) -> list[Polarity]:
-    return ["positive", "negative"] if config.polarity == "both" else [config.polarity]
-
-
 def clustered_rows(
     rows: Float[torch.Tensor, "n_hits hidden"],
     weight: torch.Tensor,
@@ -302,9 +298,7 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
         f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded"
     )
 
-    targets = [
-        (n, polarity) for n in config.neuron_idxs for polarity in polarities_for(config)
-    ]
+    targets = [(n, config.polarity) for n in config.neuron_idxs]
     selections = {
         (n, polarity): select_hits(scan, n, polarity, config.hits, config.seed)
         for (n, polarity) in targets

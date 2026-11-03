@@ -212,10 +212,10 @@ class RunConfig(BaseSettings):
     )
     neuron_start: int = 90
     neuron_end: int = Field(90, description="inclusive")
-    polarity: Literal["positive", "negative", "both", "signed"] = Field(
+    polarity: Polarity = Field(
         "positive",
         description="which tail of the activation distribution counts as a hit. "
-        "both: each tail in its own space. signed: both tails sampled and clustered together, bucketed only",
+        "signed: both tails sampled and clustered together, bucketed only",
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
