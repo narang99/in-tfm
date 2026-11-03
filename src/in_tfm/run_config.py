@@ -251,6 +251,14 @@ class RunConfig(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def signed_polarity_is_bucketed(self) -> "RunConfig":
+        if self.polarity == "signed" and self.hits.method != "bucketed":
+            raise ValueError(
+                "signed polarity needs hits.method bucketed: an elbow only exists on one tail"
+            )
+        return self
+
     @property
     def modality(self) -> Modality:
         return MODALITY[self.model]

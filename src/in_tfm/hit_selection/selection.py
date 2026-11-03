@@ -56,10 +56,30 @@ def positive_sorted_activations(
 def tail_column(
     scan: ScanResult, neuron_idx: int, polarity: Polarity
 ) -> Float[torch.Tensor, "batch seq 1"]:
-    """Strategies only look at positive values, so the negative tail is found by negating the column.
-    The signed column is left as it is, for the bucketed strategy to read both tails."""
+    """The column the strategies read, where a hit is any value whose magnitude passes the threshold.
+
+    - The negative tail is negated, so its hits sit at the top like the positive tail's.
+    - A one-tailed column has its other side zeroed, so a magnitude test cannot pick from it.
+    - The signed column is left as it is, so both tails are hits."""
     column = scan.neuron_column(neuron_idx)
-    return -column if polarity == "negative" else column
+    match polarity:
+        case "positive":
+            return column.clamp(min=0)
+        case "negative":
+            return (-column).clamp(min=0)
+        case "signed":
+            return column
+
+
+def sorted_curve(
+    column: Float[torch.Tensor, "batch seq 1"],
+    valid_mask: Bool[torch.Tensor, "batch seq"],
+    polarity: Polarity,
+) -> Float[torch.Tensor, "n_pos"]:
+    """A one-tailed curve skips the zeroed side, which would otherwise flatten it and move the elbow."""
+    if polarity == "signed":
+        return sorted_valid_values(column, valid_mask)
+    return positive_sorted_activations(column, 0, valid_mask)
 
 
 def sorted_valid_values(
@@ -75,17 +95,12 @@ def run_strategy(
     scan: ScanResult,
     hits: HitSelectionConfig,
     seed: int,
-    signed: bool,
 ) -> tuple[PickedPositions, Pick]:
     match hits.method:
         case "elbow":
-            if signed:
-                raise ValueError(
-                    "signed polarity needs hits.method bucketed: an elbow only exists on one tail"
-                )
             return elbow_hits(column, sorted_magnitudes, scan, hits, seed)
         case "bucketed":
-            return bucketed_hits(column, sorted_magnitudes, scan, hits, seed, signed)
+            return bucketed_hits(column, sorted_magnitudes, scan, hits, seed)
 
 
 def select_hits(
@@ -97,12 +112,8 @@ def select_hits(
 ) -> HitSelection:
     """Positions to cluster, capped at `max_hits`."""
     column = tail_column(scan, neuron_idx, polarity)
-    signed = polarity == "signed"
-    if signed:
-        sorted_magnitudes = sorted_valid_values(column, scan.valid_mask)
-    else:
-        sorted_magnitudes = positive_sorted_activations(column, 0, scan.valid_mask)
-    picked, pick = run_strategy(column, sorted_magnitudes, scan, hits, seed, signed)
+    sorted_magnitudes = sorted_curve(column, scan.valid_mask, polarity)
+    picked, pick = run_strategy(column, sorted_magnitudes, scan, hits, seed)
     selection = HitSelection(
         polarity=polarity,
         batch_idx=picked.batch_idx,

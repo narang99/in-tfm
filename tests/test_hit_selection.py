@@ -4,7 +4,7 @@ import torch
 
 from in_tfm.hit_selection import BucketedPick, select_hits
 from in_tfm.neuron_capture import ScanResult
-from in_tfm.run_config import HitSelectionConfig
+from in_tfm.run_config import HitSelectionConfig, load_run_config
 
 BATCH, SEQ = 40, 50
 
@@ -74,9 +74,19 @@ def test_signed_selection_takes_both_tails_beyond_the_magnitude_floor(scan):
     assert selection.token_idx.max() < 40
 
 
-def test_signed_selection_refuses_an_elbow(scan):
+def test_a_signed_config_refuses_an_elbow():
     with pytest.raises(ValueError, match="bucketed"):
-        select_hits(scan, 7, "signed", HitSelectionConfig(method="elbow"), seed=0)
+        load_run_config(
+            ["--layer-name", "x", "--polarity", "signed", "--hits.method", "elbow"]
+        )
+
+
+@pytest.mark.parametrize("polarity", ["positive", "negative"])
+def test_a_one_tailed_bucketed_selection_never_takes_the_other_tail(scan, polarity):
+    hits = HitSelectionConfig(method="bucketed", max_hits=10_000)
+    selection = select_hits(scan, 7, polarity, hits, seed=0)
+    values = values_at(scan, selection)
+    assert ((values > 0) if polarity == "positive" else (values < 0)).all()
 
 
 def test_bucketed_selection_labels_every_kept_hit(scan):

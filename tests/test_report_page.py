@@ -15,7 +15,7 @@ from in_tfm.report_page import (
     save_selection_curve,
     selection_curve,
 )
-from in_tfm.report_page.data import touching_counts
+from in_tfm.report_page.data import SELECTION_DATA, touching_counts
 
 
 def two_blobs(n: int = 60) -> np.ndarray:
@@ -68,8 +68,7 @@ def test_a_long_curve_is_thinned_but_keeps_its_tail(tmp_path):
     assert (
         curve.elbow_idx == 9_000
         and curve.bucket_edges is None
-        and not curve.negative
-        and not curve.signed
+        and curve.polarity == "positive"
     )
 
 
@@ -78,7 +77,23 @@ def test_a_signed_curve_round_trips_and_cuts_both_tails(tmp_path):
     save_selection_curve(tmp_path, selection_curve(selection))
     curve = load_selection_curve(tmp_path)
     assert curve is not None
-    assert curve.signed and not curve.negative
+    assert curve.polarity == "signed"
+
+
+def test_a_curve_saved_with_the_old_polarity_bools_still_loads(tmp_path):
+    curve = selection_curve(a_selection())
+    np.savez(
+        tmp_path / SELECTION_DATA,
+        index=curve.index,
+        magnitude=curve.magnitude,
+        n_positive=curve.n_positions,
+        threshold=curve.threshold,
+        negative=True,
+        signed=False,
+    )
+    loaded = load_selection_curve(tmp_path)
+    assert loaded is not None
+    assert loaded.polarity == "negative" and loaded.n_positions == curve.n_positions
 
 
 def test_forest_data_round_trips_and_cuts_root_links(tmp_path):

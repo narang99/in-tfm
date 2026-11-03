@@ -11,12 +11,14 @@ drowned out.
 Names used below:
 - A raw bucket is one of the `n_buckets` equal-width slices.
 - A group is one or more neighbouring raw buckets after merging. Group 0 is the lowest.
-- A candidate is a value above the floor. `candidate_idx` arrays index into the candidates, not into all values.
+- A candidate is a value whose magnitude is above the floor. `candidate_idx` arrays index into the candidates, not into all values.
 
-Signed sampling takes both tails at once.
-- A candidate is a value whose magnitude is above the floor.
-- The buckets span from the lowest candidate to the highest, so each tail gets buckets in proportion to its range.
-- The buckets around zero hold nothing when the floor is above zero, and merge into a neighbour.
+Values come from a tail column, see `hit_selection.selection.tail_column`.
+- A one-tailed column has its other side zeroed, so only its own tail has candidates.
+- The buckets span from the floor, or the lowest candidate when it sits below the floor, to the max.
+  - Only a signed column has candidates below the floor, its negative tail.
+  - Each tail then gets buckets in proportion to its range.
+  - The buckets around zero hold nothing when the floor is above zero, and merge into a neighbour.
 """
 
 import numpy as np
@@ -31,7 +33,7 @@ from ..picks import BucketedPick, PickedPositions
 
 class BucketLayout(BaseModel):
     raw_edges: list[float]
-    """`n_buckets + 1` edges, from the floor to the max. Signed sampling starts them at the lowest candidate."""
+    """`n_buckets + 1` edges, from the lowest edge to the max."""
     groups: list[list[int]]
     """The raw buckets in each group, lowest group first."""
 
@@ -165,9 +167,8 @@ def bucketed_sample(
     floor: float,
     min_bucket_size: int,
     rng: np.random.Generator,
-    signed: bool = False,
 ) -> BucketedSample:
-    candidate_value_idx = np.flatnonzero((np.abs(values) if signed else values) > floor)
+    candidate_value_idx = np.flatnonzero(np.abs(values) > floor)
     if len(candidate_value_idx) == 0:
         return BucketedSample(
             kept_value_idx=candidate_value_idx,
@@ -176,7 +177,7 @@ def bucketed_sample(
             layout=None,
         )
     candidate_values = values[candidate_value_idx]
-    lowest_edge = float(candidate_values.min()) if signed else floor
+    lowest_edge = min(floor, float(candidate_values.min()))
     layout = plan_buckets(candidate_values, n_buckets, lowest_edge, min_bucket_size)
     group_of_candidate = group_of_each_value(candidate_values, layout)
     quotas = bucket_quotas(
@@ -213,15 +214,8 @@ def bucketed_hits(
     scan: ScanResult,
     hits: HitSelectionConfig,
     seed: int,
-    signed: bool = False,
 ) -> tuple[PickedPositions, BucketedPick]:
-    """With `signed`, `sorted_magnitudes` holds every valid value, negatives first."""
-    largest = (
-        max(-sorted_magnitudes[0].item(), sorted_magnitudes[-1].item())
-        if signed
-        else sorted_magnitudes[-1].item()
-    )
-    floor = hits.bucket_floor_fraction * largest
+    floor = hits.bucket_floor_fraction * sorted_magnitudes.abs().max().item()
     values, batch_idx, token_idx = valid_values_and_positions(column, scan.valid_mask)
     sample = bucketed_sample(
         values,
@@ -230,7 +224,6 @@ def bucketed_hits(
         floor,
         hits.min_bucket_size,
         np.random.default_rng(seed),
-        signed,
     )
     if sample.layout is None:
         raise ValueError(

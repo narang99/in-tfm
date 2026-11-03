@@ -49,9 +49,9 @@ def activations_section(curve: SelectionCurve | None) -> PageSection | None:
         key="activations",
         title="Activations and the threshold",
         lede_html=signed_lede(curve)
-        if curve.signed
+        if curve.polarity == "signed"
         else (
-            f"{curve.n_positive:,} positions fire in this tail. Sorted low to high, most sit in a long flat stretch "
+            f"{curve.n_positions:,} positions fire in this tail. Sorted low to high, most sit in a long flat stretch "
             f"and a few shoot up at the end. Hits are the positions at or past <b>{curve.threshold:.4g}</b>."
         ),
         panes=panes,
@@ -66,7 +66,7 @@ def activations_section(curve: SelectionCurve | None) -> PageSection | None:
 
 def signed_lede(curve: SelectionCurve) -> str:
     return (
-        f"Both tails are hits. The curve is all {curve.n_positive:,} positions, sorted from the most negative to the "
+        f"Both tails are hits. The curve is all {curve.n_positions:,} positions, sorted from the most negative to the "
         f"most positive. Hits are the positions whose magnitude is at or past <b>{curve.threshold:.4g}</b>."
     )
 
@@ -93,7 +93,7 @@ def sorted_curve_figure(curve: SelectionCurve) -> go.Figure:
 def add_elbow(fig: go.Figure, curve: SelectionCurve) -> None:
     fig.add_vrect(
         x0=curve.elbow_idx,
-        x1=curve.n_positive - 1,
+        x1=curve.n_positions - 1,
         fillcolor=MARK,
         opacity=0.1,
         line_width=0,

@@ -4,8 +4,9 @@
 - `forest.npz`: the density-peak forest. Only density-peak reports have it, so its sections are optional.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..density_peaks import DensityPeakForest, ForestTrees, PeakDistance, log_density
 from ..hit_selection import BucketedPick, ElbowPick, HitSelection
+from ..run_config import Polarity
 from .up_close import up_close_layout
 
 SELECTION_DATA = "selection.npz"
@@ -27,13 +29,11 @@ class SelectionCurve(BaseModel):
     index: Int[np.ndarray, "n_shown"]
     """Position of each shown value in the full sorted curve."""
     magnitude: Float[np.ndarray, "n_shown"]
-    n_positive: int
+    n_positions: int
+    """Positions on the full curve. A one-tailed curve holds its tail, a signed one every position."""
     threshold: float
     """As a magnitude, so it sits on the curve whatever the polarity."""
-    negative: bool
-    """The hits are the negative tail, so a signed axis puts them below -threshold."""
-    signed: bool = False
-    """The hits are both tails, so the curve holds every value and the threshold is a magnitude floor."""
+    polarity: Polarity
     elbow_idx: int | None
     bucket_edges: Float[np.ndarray, "n_edges"] | None
 
@@ -53,10 +53,9 @@ def selection_curve(selection: HitSelection) -> SelectionCurve:
     return SelectionCurve(
         index=index,
         magnitude=magnitudes[index],
-        n_positive=len(magnitudes),
+        n_positions=len(magnitudes),
         threshold=pick.threshold,
-        negative=selection.polarity == "negative",
-        signed=selection.polarity == "signed",
+        polarity=selection.polarity,
         elbow_idx=pick.elbow_idx if isinstance(pick, ElbowPick) else None,
         bucket_edges=pick.bucket_edges if isinstance(pick, BucketedPick) else None,
     )
@@ -72,12 +71,20 @@ def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
         report_dir / SELECTION_DATA,
         index=curve.index,
         magnitude=curve.magnitude,
-        n_positive=curve.n_positive,
+        n_positions=curve.n_positions,
         threshold=curve.threshold,
-        negative=curve.negative,
-        signed=curve.signed,
+        polarity=curve.polarity,
         **optional,
     )
+
+
+def saved_polarity(data: Mapping[str, np.ndarray]) -> Polarity:
+    """Older reports saved two bools, `negative` and `signed`, in place of the polarity."""
+    if "polarity" in data:
+        return cast(Polarity, str(data["polarity"]))
+    if "signed" in data and bool(data["signed"]):
+        return "signed"
+    return "negative" if bool(data["negative"]) else "positive"
 
 
 def load_selection_curve(report_dir: Path) -> SelectionCurve | None:
@@ -88,10 +95,11 @@ def load_selection_curve(report_dir: Path) -> SelectionCurve | None:
     return SelectionCurve(
         index=data["index"],
         magnitude=data["magnitude"],
-        n_positive=int(data["n_positive"]),
+        n_positions=int(
+            data["n_positions"] if "n_positions" in data else data["n_positive"]
+        ),
         threshold=float(data["threshold"]),
-        negative=bool(data["negative"]),
-        signed=bool(data["signed"]) if "signed" in data else False,
+        polarity=saved_polarity(data),
         elbow_idx=int(data["elbow_idx"]) if "elbow_idx" in data else None,
         bucket_edges=data["bucket_edges"] if "bucket_edges" in data else None,
     )

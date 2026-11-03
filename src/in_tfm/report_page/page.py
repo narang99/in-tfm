@@ -66,11 +66,18 @@ def page_sections(data: PageData, meta: ReportMeta) -> list[PageSection]:
     return [section for section in built if section is not None]
 
 
+def curve_positions_name(curve: SelectionCurve) -> str:
+    return "positions" if curve.polarity == "signed" else "positions in the tail"
+
+
 def stat_tiles(data: PageData, meta: ReportMeta) -> list[StatTile]:
     tiles = []
     if data.curve is not None:
         tiles.append(
-            StatTile(value=f"{data.curve.n_positive:,}", name="positions in the tail")
+            StatTile(
+                value=f"{data.curve.n_positions:,}",
+                name=curve_positions_name(data.curve),
+            )
         )
     tiles += [
         StatTile(value=f"{meta.n_hits:,}", name="hits"),
