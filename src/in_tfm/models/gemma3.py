@@ -2,7 +2,10 @@ from functools import partial
 
 import torch
 
+# isort: split
 from .. import compat  # noqa: F401  (must precede any lxt import, see compat.py)
+
+# isort: split
 from lxt.efficient.core import monkey_patch
 from lxt.efficient.patches import dropout_forward, gated_mlp_forward, patch_method
 from transformers import AutoModelForCausalLM

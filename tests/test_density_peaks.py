@@ -13,7 +13,6 @@ from in_tfm.density_peaks import (
     vectorized,
 )
 
-
 ANY_DENSITY = float("-inf")
 
 

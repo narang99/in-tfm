@@ -5,8 +5,8 @@ import torch
 from in_tfm.activation_ranges import (
     ActivationRanges,
     cluster_activations,
-    sample_noise,
     load_activation_ranges,
+    sample_noise,
     write_activation_ranges,
 )
 from in_tfm.hit_selection import select_hits

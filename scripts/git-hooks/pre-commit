@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs ruff format on the staged python files, then re-stages them.
+# Sorts imports and runs ruff format on the staged python files, then re-stages them.
 # A file that also has unstaged changes is only checked.
 # Re-staging it would sweep its unstaged hunks into the commit.
 
@@ -14,13 +14,14 @@ while IFS= read -r path; do
 done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi')
 
 if [ ${#full[@]} -gt 0 ]; then
+    uvx ruff check --select I --fix "${full[@]}" || exit 1
     uvx ruff format "${full[@]}" || exit 1
     git add -- "${full[@]}"
 fi
 
-if [ ${#partial[@]} -gt 0 ] && ! uvx ruff format --check "${partial[@]}"; then
-    echo "pre-commit: these files are partly staged and need formatting." >&2
-    echo "Run ruff format on them, stage them again, then commit:" >&2
+if [ ${#partial[@]} -gt 0 ] && ! { uvx ruff check --select I "${partial[@]}" && uvx ruff format --check "${partial[@]}"; }; then
+    echo "pre-commit: these files are partly staged and need import sorting or formatting." >&2
+    echo "Run ruff check --select I --fix and ruff format on them, stage them again, then commit:" >&2
     printf '  %s\n' "${partial[@]}" >&2
     exit 1
 fi

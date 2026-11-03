@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
+from .border_pages import write_border_pages
 from .cluster_membership import (
     NOISE_LABEL,
     ClusterProbabilities,
@@ -41,7 +42,6 @@ from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, submodule_getter
-from .border_pages import write_border_pages
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions

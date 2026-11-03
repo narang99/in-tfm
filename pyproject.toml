@@ -74,3 +74,6 @@ allowed-unresolved-imports = ["triton", "triton.**", "cuml", "cuml.**", "lucent"
 [tool.ty.rules]
 # torch declares `forward` as a callable attribute, so every `def forward` override is flagged.
 invalid-mutable-override = "ignore"
+
+[tool.ruff.lint]
+extend-select = ["I"]

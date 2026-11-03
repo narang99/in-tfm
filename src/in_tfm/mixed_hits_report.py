@@ -17,8 +17,8 @@ from pydantic import BaseModel
 from .attribution import compute_attnlrp_relevance
 from .html_report import page, render_template
 from .neuron_report import AttrFn, NeuronClusterHits
-from .report_page import MIXED_HITS_PAGE
 from .presenters import ClusterArtifacts
+from .report_page import MIXED_HITS_PAGE
 from .viz import render_hadamard_tiles
 
 ENTROPY_BINS = 4

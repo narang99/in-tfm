@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict
 from ..sources import SampleId
 from .artifacts import ClusterArtifacts
 
-
 HadamardShape = tuple[int, int]
 """(height, width) that a flat Hadamard vector reshapes to for display. The vector has no
 inherent 2D layout, so this is a display choice made where the vector's length is known."""

@@ -32,6 +32,6 @@ These should be strictly adhered to in both code, documentation, readmes, PR, co
 
 # Formatting
 
-- `scripts/git-hooks/pre-commit` runs `ruff format` on staged python files at commit time.
+- `scripts/git-hooks/pre-commit` sorts imports and runs `ruff format` on staged python files at commit time.
   - Install it once per clone with `ln -s ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit`.
   - A partly staged file is only checked, so its unstaged hunks never get committed.

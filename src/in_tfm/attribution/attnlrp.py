@@ -12,7 +12,10 @@ import numpy as np
 import torch
 from jaxtyping import Float
 
+# isort: split
 from .. import compat  # noqa: F401  (import order matters - see compat.py)
+
+# isort: split
 from lxt.efficient.patches import check_already_patched, wrap_attention_forward
 
 from ..layers import LayerGetter

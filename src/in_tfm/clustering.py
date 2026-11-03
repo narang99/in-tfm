@@ -14,7 +14,6 @@ from jaxtyping import Float, Int
 
 from .weighted_jaccard import weighted_jaccard_distances
 
-
 ClusterSelectionMethod = Literal["eom", "leaf"]
 ClusteringDistance = Literal["euclidean", "weighted_jaccard"]
 
