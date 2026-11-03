@@ -3,7 +3,7 @@ import torch
 from jaxtyping import Int
 from pydantic import BaseModel
 
-from ..models.attn_only_2l.model import AttnOnlyForCausalLM
+from ..model import AttnOnlyForCausalLM
 from .config import TinyAttnOnlyTrainConfig
 from .loss import next_token_loss
 from .windows import sample_windows

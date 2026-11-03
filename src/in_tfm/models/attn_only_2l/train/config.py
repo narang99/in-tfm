@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..device import default_device
+from ....device import default_device
 
 TOKENS_FILE = "{split}_tokens.npy"
 LOG_FILE = "train_log.jsonl"

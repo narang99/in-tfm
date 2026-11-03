@@ -8,7 +8,7 @@
 - 2 and 4 channels, the smallest network, reach about 94.2%.
 """
 
-from in_tfm.mnist_training import MnistTrainConfig, split_as_tensors, train
+from in_tfm.models.mnist_cnn.train import MnistTrainConfig, split_as_tensors, train
 
 
 def main() -> None:

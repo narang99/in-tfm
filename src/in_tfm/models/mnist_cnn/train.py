@@ -18,8 +18,8 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from .device import default_device
-from .models.mnist_cnn import MnistCnn, MnistCnnChannels
+from ...device import default_device
+from .model import MnistCnn, MnistCnnChannels
 
 
 @torch.no_grad()

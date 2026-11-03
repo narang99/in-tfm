@@ -10,7 +10,7 @@ from datasets import load_dataset
 from jaxtyping import Int
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
-from ..models.attn_only_2l.model import BOS_TOKEN, TRAINED_TOKENIZER
+from ..model import BOS_TOKEN, TRAINED_TOKENIZER
 from .config import TOKENS_FILE, TinyAttnOnlyTrainConfig
 
 

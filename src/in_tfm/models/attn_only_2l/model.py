@@ -308,7 +308,7 @@ BOS_TOKEN = "<|endoftext|>"
 def load_trained_attn_only(
     checkpoint_dir: Path, weights: str = TRAINED_WEIGHTS
 ) -> tuple[AttnOnlyForCausalLM, PreTrainedTokenizerFast]:
-    """A model written by `tiny_attn_only_training`, with the tokenizer trained on its own corpus."""
+    """A model written by `attn_only_2l.train`, with the tokenizer trained on its own corpus."""
     config = AttnOnlyConfig.from_json_file(checkpoint_dir / TRAINED_CONFIG)
     model = AttnOnlyForCausalLM(config)
     state = torch.load(checkpoint_dir / weights, map_location="cpu", weights_only=True)

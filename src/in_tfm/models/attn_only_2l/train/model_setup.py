@@ -2,7 +2,7 @@ import math
 
 from torch import nn
 
-from ..models.attn_only_2l.model import AttnOnlyConfig, AttnOnlyForCausalLM
+from ..model import AttnOnlyConfig, AttnOnlyForCausalLM
 from .config import TinyAttnOnlyTrainConfig
 
 

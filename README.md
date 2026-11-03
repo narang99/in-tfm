@@ -84,8 +84,10 @@
 - The adapters so far:
   - `gemma3.py`.
   - `attn_only_2l/`, a directory since it carries its own model code in `model.py`.
+    - `train/` trains our own 2-layer attn-only model on TinyStories.
   - `inception_v1/`.
-  - `mnist_cnn/`, with its training in `mnist_training.py`.
+  - `mnist_cnn/`, with its training in `train.py`.
+- A model we train ourselves is a directory, and its training sits beside it in `train.py` or `train/`.
 - A decoder language model only needs `DecoderTextAdapter` and a patch. See `gemma3.py`.
 - `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads.
   - Add the new adapter to its fixture.
@@ -100,7 +102,6 @@
   - `attribution/`: AttnLRP and DeepLift, one file each.
   - `report_page/`, `report_templates/`: the report's Plotly sections and its jinja templates.
   - `sources/`: where text samples come from. InceptionV1's source lives with its adapter.
-  - `tiny_attn_only_training/`: trains our own 2-layer attn-only model on TinyStories.
 - `scripts/`:
   - `run_neuron_report.py`: the reports.
   - `prepare_inception_images.py`: the InceptionV1 image pool.

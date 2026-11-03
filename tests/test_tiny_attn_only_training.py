@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from in_tfm.models.attn_only_2l.model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_TOKENIZER, load_trained_attn_only
-from in_tfm.tiny_attn_only_training import (
+from in_tfm.models.attn_only_2l.train import (
     ModelShape, TinyAttnOnlyTrainConfig, build_model, encode_stories, next_token_loss, sample_windows, save_weights,
     story_starts, train_bpe,
 )
