@@ -56,7 +56,7 @@ from .run_config import (
     RunConfig,
 )
 from .sources import SampleSource
-from .token_layout import ConvLayout, IdentityLayout, TokenLayout
+from .token_layout import TokenLayout
 
 
 @contextmanager
@@ -68,10 +68,6 @@ def timed(label: str):
 
 def layer_getter_for(config: RunConfig) -> LayerGetter:
     return submodule_getter(config.layer_name)
-
-
-def layout_for(layer: torch.nn.Module) -> TokenLayout:
-    return ConvLayout(layer) if isinstance(layer, torch.nn.Conv2d) else IdentityLayout()
 
 
 def polarities_for(config: RunConfig) -> list[Polarity]:
@@ -202,15 +198,15 @@ def prepare_run[SamplesT, SourceT: SampleSource](
         "normalised inputs" if config.clustering.on == "input" else "hadamard products"
     )
     presenter = adapter.make_presenter(source, clustered_label)
-    layout = layout_for(layer_getter_for(config)(module))
+    layout = adapter.layout_for(layer_getter_for(config)(module))
     capture = NeuronCapture(
         model,
         source,
         layer_getter_for(config),
+        layout,
         config.neuron_idxs,
         config.batch_size,
         config.device,
-        layout,
     )
     return PreparedRun(
         module=module,

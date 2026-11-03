@@ -13,6 +13,7 @@ from in_tfm.models.attn_only_2l import (
 )
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.sources import ModelBatch
+from in_tfm.token_layout import SequenceLayout
 
 N_HEADS, HEAD_DIM, HIDDEN, VOCAB, MAX_LENGTH = 2, 4, 8, 20, 6
 
@@ -76,6 +77,11 @@ def adapter(request):
 def test_getter_weight_rows_match_the_layer_output_width(adapter):
     weight = submodule_getter("layers.0.self_attn.q_proj")(adapter.get_model()).weight
     assert weight.shape == (N_HEADS * HEAD_DIM, HIDDEN)
+
+
+def test_a_text_layer_has_a_sequence_layout(adapter):
+    layer = submodule_getter("layers.0.self_attn.q_proj")(adapter.get_model())
+    assert isinstance(adapter.layout_for(layer), SequenceLayout)
 
 
 def test_patch_runs_once(adapter, monkeypatch):

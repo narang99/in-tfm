@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBas
 from ..attribution import compute_attnlrp_relevance
 from ..presenters import TextPresenter
 from ..sources import TextSource
+from ..token_layout import SequenceLayout, TokenLayout
 from .base import reject_nnsight_wrapped
 
 
@@ -55,6 +56,9 @@ class DecoderTextAdapter(ABC):
 
     @abstractmethod
     def _apply_attn_lrp_patch(self) -> None: ...
+
+    def layout_for(self, layer: torch.nn.Module) -> TokenLayout:
+        return SequenceLayout()
 
     def make_source(self, samples: Sequence[str]) -> TextSource:
         return TextSource(

@@ -1,8 +1,10 @@
 """How a layer's tensors map onto the `(batch, seq, hidden)` shape the pipeline works in.
 
-- A linear layer already has that shape, so its layout is the identity.
-  - A linear layer after a flatten has no position axis, so it gets one of length 1.
-    - Each sample is then a single position, and a hit is a whole sample.
+- The model's adapter picks the layout for a layer, see `ModelAdapter.layout_for`.
+- A linear layer in a sequence model already has that shape, so `SequenceLayout` passes it through.
+- A linear layer after a flatten has no position axis, so `SingleTokenLayout` adds one of length 1.
+  - Each sample is then a single position, and a hit is a whole sample.
+- Each layout checks the number of dims it was given, so a layer given the wrong layout raises.
 - A conv is a linear map over unfolded patches, so it can be viewed the same way.
   - `seq` is the output grid flattened row by row, so `token_idx = y * width + x`.
   - The input becomes the patch each output position reads, flattened to `C_in * k * k`.
@@ -33,18 +35,48 @@ class TokenLayout(Protocol):
     ) -> Float[torch.Tensor, "out_hidden hidden"]: ...
 
 
-def with_position_axis(tensor: torch.Tensor) -> torch.Tensor:
-    return tensor.unsqueeze(1) if tensor.ndim == 2 else tensor
+def require_ndim(tensor: torch.Tensor, ndim: int, layout: str) -> None:
+    if tensor.ndim != ndim:
+        raise ValueError(
+            f"{layout} expects {ndim}-d tensors, got shape {tuple(tensor.shape)}"
+        )
 
 
-class IdentityLayout:
-    def inputs(self, layer_input: torch.Tensor) -> torch.Tensor:
-        return with_position_axis(layer_input)
+class SequenceLayout:
+    def inputs(
+        self, layer_input: Float[torch.Tensor, "batch seq hidden"]
+    ) -> Float[torch.Tensor, "batch seq hidden"]:
+        require_ndim(layer_input, 3, "SequenceLayout")
+        return layer_input
 
-    def outputs(self, layer_output: torch.Tensor) -> torch.Tensor:
-        return with_position_axis(layer_output)
+    def outputs(
+        self, layer_output: Float[torch.Tensor, "batch seq out_hidden"]
+    ) -> Float[torch.Tensor, "batch seq out_hidden"]:
+        require_ndim(layer_output, 3, "SequenceLayout")
+        return layer_output
 
-    def weight(self, layer_weight: torch.Tensor) -> torch.Tensor:
+    def weight(
+        self, layer_weight: Float[torch.Tensor, "out_hidden hidden"]
+    ) -> Float[torch.Tensor, "out_hidden hidden"]:
+        return layer_weight
+
+
+class SingleTokenLayout:
+    def inputs(
+        self, layer_input: Float[torch.Tensor, "batch hidden"]
+    ) -> Float[torch.Tensor, "batch 1 hidden"]:
+        require_ndim(layer_input, 2, "SingleTokenLayout")
+        return layer_input.unsqueeze(1)
+
+    def outputs(
+        self, layer_output: Float[torch.Tensor, "batch out_hidden"]
+    ) -> Float[torch.Tensor, "batch 1 out_hidden"]:
+        require_ndim(layer_output, 2, "SingleTokenLayout")
+        return layer_output.unsqueeze(1)
+
+    def weight(
+        self, layer_weight: Float[torch.Tensor, "out_hidden hidden"]
+    ) -> Float[torch.Tensor, "out_hidden hidden"]:
         return layer_weight
 
 
@@ -84,3 +116,12 @@ class ConvLayout:
         self, layer_weight: Float[torch.Tensor, "c_out c_in kh kw"]
     ) -> Float[torch.Tensor, "c_out patch"]:
         return layer_weight.flatten(1)
+
+
+def image_layer_layout(layer: torch.nn.Module) -> TokenLayout:
+    """For the image models, where every `Linear` comes after a flatten."""
+    if isinstance(layer, torch.nn.Conv2d):
+        return ConvLayout(layer)
+    if isinstance(layer, torch.nn.Linear):
+        return SingleTokenLayout()
+    raise ValueError(f"no token layout for a {type(layer).__name__} in an image model")

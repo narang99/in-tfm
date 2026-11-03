@@ -31,7 +31,7 @@ from tqdm import tqdm
 from .device import default_device, empty_cache
 from .layers import LayerGetter
 from .sources import SampleId, SampleSource
-from .token_layout import IdentityLayout, TokenLayout
+from .token_layout import TokenLayout
 
 
 class ScanResult(BaseModel):
@@ -88,12 +88,12 @@ class NeuronCapture:
         model: NNsight,
         source: SampleSource,
         layer_getter: LayerGetter,
+        layout: TokenLayout,
         neuron_idxs: Sequence[int],
         batch_size: int = 8,
         device: str | None = None,
-        layout: TokenLayout | None = None,
     ) -> None:
-        self.layout = layout or IdentityLayout()
+        self.layout = layout
         self.device = device or default_device()
         self.model = model.to(torch.device(self.device))
         self.source = source
