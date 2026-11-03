@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from in_tfm.layers import submodule_getter
-from in_tfm.token_layout import ConvLayout, grid_shape
+from in_tfm.token_layout import ConvLayout
 
 
 @pytest.mark.parametrize("kernel_size,stride", [(1, 1), (3, 1), (5, 1), (3, 2)])
@@ -18,7 +18,7 @@ def test_flat_token_index_is_row_major_over_the_output_grid():
     conv = torch.nn.Conv2d(1, 1, 1)
     out = conv(torch.randn(1, 1, 3, 4))
     tokens = ConvLayout(conv).outputs(out)
-    y, x = divmod(6, grid_shape(out)[1])
+    y, x = divmod(6, out.shape[-1])
     assert tokens[0, 6, 0] == out[0, 0, y, x]
 
 

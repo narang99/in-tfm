@@ -62,7 +62,3 @@ class ConvLayout:
 
     def weight(self, layer_weight: Float[torch.Tensor, "c_out c_in kh kw"]) -> Float[torch.Tensor, "c_out patch"]:
         return layer_weight.flatten(1)
-
-
-def grid_shape(layer_output: Float[torch.Tensor, "batch c h w"]) -> tuple[int, int]:
-    return layer_output.shape[-2], layer_output.shape[-1]

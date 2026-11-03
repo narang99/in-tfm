@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Fake cached payload for the text presenter, so its html can be iterated on with no model.
 
-Writes `meta.json`, `elbow.png` and per-cluster `hits.pt` in the same layout `write_report`
+Writes `meta.json` and per-cluster `hits.pt` in the same layout `write_report`
 caches, then calls `render_report`. Re-run after every presenter edit:
 
     uv run python scripts/fake_text_report.py
@@ -20,7 +20,6 @@ import torch
 from in_tfm.neuron_report import cluster_dir_for, render_report, save_hits
 from in_tfm.presenters import ClusterHit, TextPresenter
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta, write_report_meta
-from in_tfm.viz import save_elbow_plot
 
 HADAMARD_SHAPE = (8, 16)
 HIDDEN = HADAMARD_SHAPE[0] * HADAMARD_SHAPE[1]
@@ -137,8 +136,6 @@ def write_fake_cache(report_dir: Path, source: StubSource) -> None:
         sample_ids=sample_ids,
     )
     write_report_meta(report_dir, meta)
-    elbow = np.sort(np.random.default_rng(0).exponential(0.2, 400))[::-1].copy()
-    save_elbow_plot(elbow, 40, report_dir / "elbow.png")
 
 
 def main() -> None:

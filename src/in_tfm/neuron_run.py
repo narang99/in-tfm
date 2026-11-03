@@ -130,12 +130,6 @@ def cluster_hits(
             )))
 
 
-def hit_memberships(
-    hdmd: Float[np.ndarray, "n_hits hidden"], clustering: ClusteringConfig, device: str | None = None,
-) -> list[HitMembership]:
-    return cluster_hits(hdmd, clustering, device).memberships
-
-
 def max_entropy_of(clustering: ClusteringConfig) -> float | None:
     """Only density peaks gives soft probabilities. HDBSCAN's are one-hot, so it needs no threshold."""
     match clustering.strategy:

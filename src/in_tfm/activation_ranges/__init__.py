@@ -1,5 +1,4 @@
 from .ranges import (
-    PLOT_NAME,
     RANGES_NAME,
     ActivationRanges,
     cluster_activations,
@@ -10,7 +9,6 @@ from .ranges import (
 )
 
 __all__ = [
-    "PLOT_NAME",
     "RANGES_NAME",
     "ActivationRanges",
     "cluster_activations",

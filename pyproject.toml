@@ -51,9 +51,6 @@ dev = [
     "pytest>=9.1.1",
 ]
 
-[project.scripts]
-in-tfm = "in_tfm:main"
-
 [project.optional-dependencies]
 viz = [
     "circuitsvis>=1.43.3",

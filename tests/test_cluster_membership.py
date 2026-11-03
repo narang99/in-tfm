@@ -5,7 +5,7 @@ from in_tfm.cluster_membership import (
     NOISE_LABEL, ClusterProbabilities, HitMembership, Noise, confident_labels, membership_entropy, most_probable_labels,
     one_hot_memberships, probability_matrix,
 )
-from in_tfm.neuron_run import hit_memberships
+from in_tfm.neuron_run import cluster_hits
 from in_tfm.run_config import ClusteringConfig, DensityPeaksConfig, HdbscanConfig
 
 
@@ -40,7 +40,7 @@ def test_the_most_probable_label_breaks_ties_toward_the_lower_cluster():
 def test_every_strategy_returns_one_probability_vector_per_hit():
     points = two_blobs()
     for strategy in (DensityPeaksConfig(k=3), HdbscanConfig(min_cluster_size=5)):
-        memberships = hit_memberships(points, ClusteringConfig(strategy=strategy))
+        memberships = cluster_hits(points, ClusteringConfig(strategy=strategy)).memberships
         assert len(memberships) == len(points)
         for m in memberships:
             if isinstance(m, ClusterProbabilities):

@@ -2,10 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.activation_ranges.plot import get_noise_range, grid_dims_for_labels, shorth
-from in_tfm.activation_ranges.figure import panels_needed, round_robin_panels, sorted_by_mean_descending
 from in_tfm.activation_ranges import (
-    PLOT_NAME,
     ActivationRanges,
     cluster_activations,
     sample_noise,
@@ -14,7 +11,6 @@ from in_tfm.activation_ranges import (
 )
 from in_tfm.hit_selection import select_hits
 from in_tfm.neuron_capture import ScanResult
-from in_tfm.neuron_report import _activation_ranges_plot
 from in_tfm.run_config import HitSelectionConfig
 
 BATCH, SEQ = 40, 50
@@ -57,23 +53,6 @@ def test_clusters_get_the_activations_of_their_own_hits_and_noise_is_left_out():
     assert cluster_activations(labels, activations, [0, 1]) == {0: [1.0], 1: [2.0, 4.0]}
 
 
-@pytest.mark.parametrize("n_labels, panels", [(0, 1), (1, 1), (8, 1), (9, 2), (40, 5)])
-def test_about_eight_clusters_share_a_panel(n_labels, panels):
-    assert panels_needed(n_labels) == panels
-
-
-def test_the_panels_fit_in_a_near_square_grid():
-    assert grid_dims_for_labels(40) == (2, 3)
-
-
-def test_round_robin_gives_every_panel_a_high_and_a_low_cluster():
-    by_points = {i: [float(i)] for i in range(12)}
-    ranked = list(sorted_by_mean_descending(by_points))
-    assert ranked[0] == 11
-    panels = round_robin_panels(ranked, 3)
-    assert panels == [[11, 8, 5, 2], [10, 7, 4, 1], [9, 6, 3, 0]]
-
-
 def test_ranges_round_trip_as_json_without_an_image(tmp_path):
     rng = np.random.default_rng(0)
     ranges = ActivationRanges(
@@ -82,27 +61,3 @@ def test_ranges_round_trip_as_json_without_an_image(tmp_path):
     assert load_activation_ranges(tmp_path) is None
     write_activation_ranges(tmp_path, ranges)
     assert load_activation_ranges(tmp_path) == ranges
-    assert not (tmp_path / PLOT_NAME).exists(), "the page draws the ranges as a chart now"
-
-
-def test_an_older_reports_image_still_gets_a_collapsed_section(tmp_path):
-    assert _activation_ranges_plot(tmp_path) == ""
-    (tmp_path / PLOT_NAME).write_bytes(b"jpg")
-    section = _activation_ranges_plot(tmp_path)
-    assert PLOT_NAME in section
-    assert "<details>" in section
-    assert "elbow" not in section, "the elbow class caps an image at 420px, far too small for this figure"
-
-
-def loop_shorth(data, coverage):
-    """The original hiccup-ide loop, which the vectorised version has to agree with."""
-    ordered, window = np.sort(data), int(np.ceil(coverage * len(data)))
-    best = min(range(len(ordered) - window + 1), key=lambda i: ordered[i + window - 1] - ordered[i])
-    return ordered[best], ordered[best + window - 1]
-
-
-@pytest.mark.parametrize("n", [1, 2, 10, 101, 1000])
-def test_shorth_matches_the_loop_it_replaced(n):
-    data = np.random.default_rng(n).standard_cauchy(n)
-    assert shorth(data, 0.9) == loop_shorth(data, 0.9)
-    assert get_noise_range(data) == loop_shorth(data, 0.9)
