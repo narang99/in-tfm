@@ -30,6 +30,7 @@ def test_file_sets_defaults(tmp_path):
     )
     config = load_run_config(["--config", path])
     assert config.layer_name == "layers.3.mlp.down_proj"
+    assert isinstance(config.clustering.strategy, HdbscanConfig)
     assert config.clustering.strategy.min_cluster_size == 20
 
 

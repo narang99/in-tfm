@@ -14,7 +14,7 @@ def find_pruneable_heads_and_indices(
     n_heads: int,
     head_size: int,
     already_pruned_heads: set[int],
-) -> tuple[set[int], torch.LongTensor]:
+) -> tuple[set[int], torch.Tensor]:
     """Find the heads and flattened indices to keep, accounting for already-pruned heads.
 
     Restores a `transformers.pytorch_utils` function that newer `transformers` versions
@@ -23,15 +23,17 @@ def find_pruneable_heads_and_indices(
     so importing lxt breaks without this.
     """
     mask = torch.ones(n_heads, head_size, dtype=torch.bool)
-    heads = set(heads) - already_pruned_heads
+    to_prune = set(heads) - already_pruned_heads
 
-    for head in heads:
+    for head in to_prune:
         # Shift the head index left by however many smaller heads were already removed earlier.
         shifted_head = head - sum(1 for h in already_pruned_heads if h < head)
         mask[shifted_head] = False
 
     index = torch.arange(n_heads * head_size)[mask.view(-1)].long()
-    return heads, index
+    return to_prune, index
 
 
-pytorch_utils.find_pruneable_heads_and_indices = find_pruneable_heads_and_indices
+setattr(
+    pytorch_utils, "find_pruneable_heads_and_indices", find_pruneable_heads_and_indices
+)

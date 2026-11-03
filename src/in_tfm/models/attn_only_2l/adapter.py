@@ -14,7 +14,7 @@ def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
     - The patch is scoped to this module's own `eager_attention_forward`, so it cannot reach
       any other architecture.
     """
-    model.config._attn_implementation = "eager"
+    text.force_eager_attention(model)
     patch_eager_attention(attn_only_model)
 
 

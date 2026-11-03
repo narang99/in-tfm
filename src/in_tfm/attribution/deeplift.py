@@ -148,6 +148,7 @@ def deeplift_attribution(
             return relu_surrogate(inputs[0], x0, y0)
         if isinstance(module, nn.LocalResponseNorm):
             return response_norm_surrogate(inputs[0], x0, output, y0)
+        assert isinstance(module, nn.MaxPool2d)
         return maxpool_surrogate(module, inputs[0], x0, y0)
 
     handles = [m.register_forward_hook(record) for m in nonlinear]

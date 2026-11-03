@@ -85,8 +85,12 @@ def triton_distances(
     a, b = a.contiguous(), b.contiguous()
     out = torch.empty((len(a), len(b)), dtype=torch.float32, device=a.device)
     jaccard = distance == "weighted_jaccard"
-    sums_a = sums_a.contiguous() if jaccard else a
-    sums_b = sums_b.contiguous() if jaccard else b
+    if jaccard:
+        assert sums_a is not None and sums_b is not None
+        sums_a, sums_b = sums_a.contiguous(), sums_b.contiguous()
+    else:
+        # The kernel never reads the sums for euclidean, any tensor fills the slot.
+        sums_a, sums_b = a, b
     grid = lambda meta: (
         triton.cdiv(len(a), meta["BM"]),
         triton.cdiv(len(b), meta["BN"]),

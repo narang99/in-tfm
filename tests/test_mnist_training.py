@@ -1,12 +1,12 @@
 import torch
 
+from in_tfm.models.mnist_cnn import MnistCnn, MnistCnnChannels
 from in_tfm.models.mnist_cnn.train import (
     MnistTensors,
     MnistTrainConfig,
     load_checkpoint,
     train,
 )
-from in_tfm.models.mnist_cnn import MnistCnn, MnistCnnChannels
 
 
 def tiny_split(n: int) -> MnistTensors:

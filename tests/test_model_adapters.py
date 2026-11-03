@@ -1,7 +1,9 @@
+from typing import cast
+
 import pytest
 import torch
 from nnsight import NNsight
-from transformers import Gemma3ForCausalLM, Gemma3TextConfig
+from transformers import Gemma3ForCausalLM, Gemma3TextConfig, PreTrainedTokenizerBase
 
 from in_tfm.layers import submodule_getter
 from in_tfm.models.attn_only_2l import (
@@ -29,6 +31,11 @@ class FakeTokenizer:
         return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
 
 
+def fake_tokenizer() -> PreTrainedTokenizerBase:
+    """Only the calls the adapters make, so it is cast rather than a real subclass."""
+    return cast(PreTrainedTokenizerBase, FakeTokenizer())
+
+
 def tiny_attn_only_adapter() -> AttnOnly2LAdapter:
     config = AttnOnlyConfig(
         hidden_size=HIDDEN,
@@ -39,7 +46,7 @@ def tiny_attn_only_adapter() -> AttnOnly2LAdapter:
         vocab_size=VOCAB,
     )
     return AttnOnly2LAdapter(
-        AttnOnlyForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH
+        AttnOnlyForCausalLM(config), fake_tokenizer(), max_length=MAX_LENGTH
     )
 
 
@@ -55,7 +62,7 @@ def tiny_gemma3_adapter() -> Gemma3Adapter:
         max_position_embeddings=MAX_LENGTH,
     )
     return Gemma3Adapter(
-        Gemma3ForCausalLM(config), FakeTokenizer(), max_length=MAX_LENGTH
+        Gemma3ForCausalLM(config), fake_tokenizer(), max_length=MAX_LENGTH
     )
 
 

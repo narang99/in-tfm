@@ -14,7 +14,6 @@ from jaxtyping import Float, Int
 
 from .weighted_jaccard import weighted_jaccard_distances
 
-
 ClusterSelectionMethod = Literal["eom", "leaf"]
 ClusteringDistance = Literal["euclidean", "weighted_jaccard"]
 
@@ -28,7 +27,7 @@ class HDBSCANBackend(Protocol):
         cluster_selection_method: ClusterSelectionMethod,
         min_samples: int | None,
     ) -> None: ...
-    def fit(self, points: Float[np.ndarray, "n_points dim"]) -> object: ...
+    def fit(self, points: Float[np.ndarray, "n_points dim"], /) -> object: ...
 
     labels_: Int[np.ndarray, "n_points"]
 

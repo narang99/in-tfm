@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from sklearn.preprocessing import normalize
 
 from .activation_ranges import sample_noise
+from .border_pages import write_border_pages
 from .cluster_membership import (
     NOISE_LABEL,
     ClusterProbabilities,
@@ -41,7 +42,6 @@ from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, submodule_getter
-from .border_pages import write_border_pages
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import NeuronCapture, merge_positions
@@ -191,12 +191,12 @@ class PreparedRun(BaseModel):
     attr_fn: AttrFn
 
 
-def prepare_run[SamplesT](
-    config: RunConfig, adapter: ModelAdapter[SamplesT], samples: SamplesT
+def prepare_run[SamplesT, SourceT: SampleSource](
+    config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> PreparedRun:
     module = adapter.get_model()
     adapter.patch_for_attn_lrp()  # before NNsight wraps: it stores each module's forward at wrap time
-    model = NNsight(module).to(config.device)
+    model = NNsight(module).to(torch.device(config.device))
     source = adapter.make_source(samples)
     clustered_label = (
         "normalised inputs" if config.clustering.on == "input" else "hadamard products"
@@ -294,8 +294,8 @@ def report_neuron(
     print(f"[{tag}] report -> {report_path}")
 
 
-def run_neuron_reports[SamplesT](
-    config: RunConfig, adapter: ModelAdapter[SamplesT], samples: SamplesT
+def run_neuron_reports[SamplesT, SourceT: SampleSource](
+    config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> None:
     run = prepare_run(config, adapter, samples)
 
@@ -326,9 +326,11 @@ def run_neuron_reports[SamplesT](
         f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
     )
 
-    run.model.to("cpu")
+    run.model.to(torch.device("cpu"))
     empty_cache()
-    weight = run.layout.weight(layer_getter_for(config)(run.module).weight)
+    layer_weight = layer_getter_for(config)(run.module).weight
+    assert isinstance(layer_weight, torch.Tensor)
+    weight = run.layout.weight(layer_weight)
 
     for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
         report_neuron(

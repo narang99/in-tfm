@@ -12,7 +12,7 @@
 """
 
 from .config import LOG_FILE, TOKENS_FILE, ModelShape, TinyAttnOnlyTrainConfig
-from .corpus import encode_stories, prepare_tokens, story_starts, train_bpe
+from .corpus import bos_id, encode_stories, prepare_tokens, story_starts, train_bpe
 from .loop import lr_at, save_weights, train
 from .loss import next_token_loss
 from .model_setup import build_model, init_weights
@@ -23,6 +23,7 @@ __all__ = [
     "TOKENS_FILE",
     "ModelShape",
     "TinyAttnOnlyTrainConfig",
+    "bos_id",
     "build_model",
     "encode_stories",
     "init_weights",

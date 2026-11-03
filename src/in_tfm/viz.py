@@ -4,7 +4,7 @@ attribution heatmap onto its source image.
 
 import math
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -71,7 +71,7 @@ def _plot_single_channel_red_green_black(
     axs = axs.flatten() if len(images) > 1 else [axs]
 
     for i, img in enumerate(images):
-        params = {}
+        params: dict[str, Any] = {}
         if viztype == "gray":
             params["cmap"] = "gray"
         else:
@@ -156,7 +156,7 @@ def to_pil(img: np.ndarray | torch.Tensor, size: tuple[int, int]) -> Image.Image
         img = img.transpose(1, 2, 0)
     img = (img - img.min()) / (img.max() - img.min() + 1e-8)
     img = (img * 255).astype(np.uint8)
-    return Image.fromarray(img).resize(size, Image.BILINEAR)
+    return Image.fromarray(img).resize(size, Image.Resampling.BILINEAR)
 
 
 def apply_cmap(
@@ -165,7 +165,7 @@ def apply_cmap(
     vmin: float,
     vmax: float,
     size: tuple[int, int],
-    interpolation: int = Image.NEAREST,
+    interpolation: int = Image.Resampling.NEAREST,
 ) -> Image.Image:
     arr = np.clip((arr - vmin) / (vmax - vmin + 1e-8), 0, 1)
     rgba = (cmap(arr) * 255).astype(np.uint8)  # cmap returns (H,W,4)
@@ -191,6 +191,11 @@ def mk_overlay(
         return base
     overlay = overlay / np.abs(overlay).max()
     heat = apply_cmap(
-        overlay, cmap, vmin=-1, vmax=1, size=size, interpolation=Image.BILINEAR
+        overlay,
+        cmap,
+        vmin=-1,
+        vmax=1,
+        size=size,
+        interpolation=Image.Resampling.BILINEAR,
     )
     return Image.blend(base, heat, alpha=alpha)

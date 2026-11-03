@@ -12,7 +12,10 @@ import numpy as np
 import torch
 from jaxtyping import Float
 
+# isort: split
 from .. import compat  # noqa: F401  (import order matters - see compat.py)
+
+# isort: split
 from lxt.efficient.patches import check_already_patched, wrap_attention_forward
 
 from ..layers import LayerGetter
@@ -32,7 +35,7 @@ def patch_eager_attention(module: types.ModuleType) -> bool:
     new_forward = wrap_attention_forward(module.eager_attention_forward)
     if check_already_patched(module.eager_attention_forward, new_forward):
         return False
-    module.eager_attention_forward = new_forward
+    setattr(module, "eager_attention_forward", new_forward)
     return True
 
 

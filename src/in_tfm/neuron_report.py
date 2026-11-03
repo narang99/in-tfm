@@ -42,6 +42,14 @@ from .html_report import (
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
+from .report_meta import (
+    BucketedPickMeta,
+    ClusterMeta,
+    ElbowPickMeta,
+    ReportMeta,
+    load_report_meta,
+    write_report_meta,
+)
 from .report_page import (
     PLOTLY_JS,
     ForestData,
@@ -52,14 +60,6 @@ from .report_page import (
     save_forest_data,
     save_selection_curve,
     selection_curve,
-)
-from .report_meta import (
-    BucketedPickMeta,
-    ClusterMeta,
-    ElbowPickMeta,
-    ReportMeta,
-    load_report_meta,
-    write_report_meta,
 )
 from .sources import SampleId, SampleSource
 
@@ -188,7 +188,7 @@ def cluster_counts(labels: Int[np.ndarray, "n_hits"]) -> dict[int, int]:
 
 def clusters_by_frequency(labels: Int[np.ndarray, "n_hits"]) -> list[int]:
     counts = cluster_counts(labels)
-    return sorted(counts, key=counts.get, reverse=True)
+    return sorted(counts, key=lambda cid: counts[cid], reverse=True)
 
 
 def cluster_unique_image_counts(

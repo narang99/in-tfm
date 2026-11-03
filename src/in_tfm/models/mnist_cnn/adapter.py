@@ -13,12 +13,12 @@ from datasets import load_dataset
 
 from ...attribution import compute_deeplift_relevance
 from ...layers import submodule_getter
-from .train import load_checkpoint
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
 from ..base import reject_nnsight_wrapped
 from .model import IMAGE_SIZE, MnistCnn, MnistCnnChannels
 from .source import MnistSource, Unnormalized
+from .train import load_checkpoint
 
 
 def positions_in_output(output: torch.Tensor) -> int:

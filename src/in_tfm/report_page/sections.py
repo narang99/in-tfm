@@ -107,6 +107,7 @@ def add_elbow(fig: go.Figure, curve: SelectionCurve) -> None:
 
 def add_bucket_edges(fig: go.Figure, curve: SelectionCurve) -> None:
     """Edges are activation values, so each sits at the first shown value at or above it. The last edge is the max."""
+    assert curve.bucket_edges is not None
     for edge in curve.bucket_edges[:-1]:
         position = int(
             curve.index[

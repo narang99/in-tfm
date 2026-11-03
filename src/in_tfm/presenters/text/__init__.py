@@ -20,7 +20,6 @@ from ..base import ClusterHit, HadamardShape
 from .colored_tokens import display_text, symmetric_scale, token_views
 from .views import FiringChip, HitView, RelevanceChip, SinkViews, TextClusterView
 
-
 HADAMARD_TILE_GAP = 32
 """Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
 pad of 4 reads as one block, since the tiles are dark and the gap is black."""

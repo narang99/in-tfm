@@ -62,6 +62,7 @@ class TorchRows:
         diff = self.exact[a] - self.exact[b]
         if self.distance == "euclidean":
             return diff.square().sum(dim=1).sqrt()
+        assert self.exact_sums is not None
         both = self.exact_sums[a] + self.exact_sums[b]
         return weighted_jaccard_from_l1(diff.abs().sum(dim=1)[:, None], both[:, None])[
             :, 0
@@ -110,6 +111,7 @@ def float32_distances(
         return triton_distances(a, b, sums_a, sums_b, distance)
     if distance == "euclidean":
         return torch.cdist(a, b, p=2.0, compute_mode="donot_use_mm_for_euclid_dist")
+    assert sums_a is not None and sums_b is not None
     return weighted_jaccard_from_l1(
         torch.cdist(a, b, p=1.0), sums_a[:, None] + sums_b[None, :]
     )

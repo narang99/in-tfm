@@ -95,7 +95,7 @@ class NeuronCapture:
     ) -> None:
         self.layout = layout or IdentityLayout()
         self.device = device or default_device()
-        self.model = model.to(self.device)
+        self.model = model.to(torch.device(self.device))
         self.source = source
         self.layer_getter = layer_getter
         self.neuron_idxs = list(neuron_idxs)

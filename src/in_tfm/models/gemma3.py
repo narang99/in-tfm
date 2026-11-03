@@ -2,10 +2,13 @@ from functools import partial
 
 import torch
 
+# isort: split
 from .. import compat  # noqa: F401  (must precede any lxt import, see compat.py)
+
+# isort: split
 from lxt.efficient.core import monkey_patch
 from lxt.efficient.patches import dropout_forward, gated_mlp_forward, patch_method
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 from transformers.models.gemma3 import modeling_gemma3
 from transformers.models.gemma3.modeling_gemma3 import Gemma3MLP, Gemma3RMSNorm
 
@@ -31,7 +34,7 @@ def patch_gemma3_for_attn_lrp(model: torch.nn.Module) -> None:
         torch.nn.Dropout: partial(patch_method, dropout_forward),
         modeling_gemma3: patch_eager_attention,
     }
-    model.config._attn_implementation = "eager"
+    text.force_eager_attention(model)
     monkey_patch(model, patch_map=patch_map, verbose=True)
 
 
@@ -43,7 +46,7 @@ class Gemma3Adapter(text.DecoderTextAdapter):
         max_length: int = 128,
         dtype: torch.dtype = torch.float32,
     ) -> "Gemma3Adapter":
-        tokenizer = AutoTokenizer.from_pretrained(name)
+        tokenizer = text.load_tokenizer(name)
         hf_model = AutoModelForCausalLM.from_pretrained(name, dtype=dtype)
         return cls(hf_model, tokenizer, max_length)
 
