@@ -5,6 +5,7 @@
 - A library for studying individual neurons in a neural network.
   - Language models: `google/gemma-3-270m`, and a 2-layer attention-only model.
   - Vision: InceptionV1 (lucent's port of the lucid model).
+  - A two-conv MNIST network, small enough for quick end-to-end tests.
 - For one neuron, it answers what kind of input makes the neuron fire, and whether that generalises.
   - It clusters many high-activation hits, so a finding is a claim about a group of inputs.
   - It is not a single anecdote of "what activates it once".
@@ -43,7 +44,7 @@
 - One HTML report per neuron, `<out_dir>/neuron_<idx>/index.html`.
   - Plotly sections: the activation curve, each cluster's activation range, and for density peaks the forest.
   - Per cluster: the firing tokens (language) or image crops (vision) of a few sampled hits.
-  - Attribution shading: AttnLRP for language models, DeepLift for InceptionV1.
+  - Attribution shading: AttnLRP for language models, DeepLift for the vision models.
   - Each cluster's mean Hadamard vector, `mean.pt`, for comparing clusters across runs.
 - Density peaks adds two more pages.
   - `mixed_hits.html`: hits whose probability is split between clusters.
@@ -84,6 +85,7 @@
   - `gemma3.py`.
   - `attn_only_2l/`, a directory since it carries its own model code in `model.py`.
   - `inception_v1/`.
+  - `mnist_cnn/`, with its training in `mnist_training.py`.
 - A decoder language model only needs `DecoderTextAdapter` and a patch. See `gemma3.py`.
 - `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads.
   - Add the new adapter to its fixture.
@@ -103,6 +105,7 @@
   - `run_neuron_report.py`: the reports.
   - `prepare_inception_images.py`: the InceptionV1 image pool.
   - `train_tiny_attn_only.py`: trains the tiny attn-only model.
+  - `train_mnist.py`: trains the MNIST network.
   - `bench_forest.py`: times the torch forest against a saved one, the regression check for the GPU path.
   - `fake_text_report.py`: renders a text report from fake data, to iterate on the html with no model.
 - `configs/`: one YAML per experiment.

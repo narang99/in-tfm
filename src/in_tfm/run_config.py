@@ -28,14 +28,18 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     ATTN_ONLY_2L = "self/attn-only-2l"
+    MNIST_CNN = "self/mnist-cnn"
+    MNIST_CNN_SMALL = "self/mnist-cnn-small"
     INCEPTION_V1 = "lucent/inception-v1"
 
 
-Modality = Literal["text", "inception"]
+Modality = Literal["text", "mnist", "inception"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
+    ModelName.MNIST_CNN: "mnist",
+    ModelName.MNIST_CNN_SMALL: "mnist",
     ModelName.INCEPTION_V1: "inception",
 }
 
@@ -62,6 +66,13 @@ class TextDataConfig(Section):
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
+
+
+class MnistDataConfig(Section):
+    dataset: str = Field("ylecun/mnist", description="hf dataset with a grayscale `image` and a `label` column, 28x28")
+    split: Literal["train", "test"] = "test"
+    images_per_class: int = Field(100, description="the first n images of each digit in the split")
+    checkpoint: Path | None = Field(None, description="a snapshot from scripts/train_mnist.py, the model's own if unset")
 
 
 class InceptionDataConfig(Section):
@@ -178,6 +189,7 @@ class RunConfig(BaseSettings):
     out_dir: Path = Path("reports")
     device: str = Field(default_factory=default_device)
     text: TextDataConfig = TextDataConfig()
+    mnist: MnistDataConfig = MnistDataConfig()
     inception: InceptionDataConfig = InceptionDataConfig()
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
@@ -199,7 +211,7 @@ class RunConfig(BaseSettings):
     @model_validator(mode="after")
     def only_the_models_data_section_is_set(self) -> "RunConfig":
         """`text.*` flags with an image model are a mistake, not something to ignore."""
-        others = {"text", "inception"} - {self.modality}
+        others = {"text", "mnist", "inception"} - {self.modality}
         if wrong := others & self.model_fields_set:
             raise ValueError(f"{self.model.value} reads {self.modality} data, but the {sorted(wrong)[0]} section was set")
         return self
