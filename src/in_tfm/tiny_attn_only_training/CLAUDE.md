@@ -6,14 +6,14 @@
   - On TinyStories alone, a 2-layer attn-only model never formed induction heads in 500M tokens.
   - Names are what repeats in TinyStories, and a single head that attends to earlier names can already copy them.
   - So the corpus never pays for the two-layer induction circuit.
-- The code that made induction heads form lives on branch `feat/induction-heads`, off `feat/tiny-attn-only`.
+- This branch, `feat/induction-heads`, holds the code that made induction heads form. It is off `feat/tiny-attn-only`.
   - It mixes in training windows that repeat a span, either of story text or of random tokens.
     - The second copy of a span is predictable only by induction.
   - It adds an induction check at each eval.
     - It compares the loss on the first and second copy of a repeated random sequence.
     - It also logs the best previous-token attention in layer 0 and the best induction attention in layer 1.
   - The `tiny_attn_only_2l_v4` checkpoint was trained with that branch.
-- It is kept out of the main code on purpose. Look there first if induction heads are needed again.
+- It is kept out of the main code on purpose, and is not meant to merge.
 
 ## The init is part of the same story
 

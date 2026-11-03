@@ -37,6 +37,10 @@ class TinyAttnOnlyTrainConfig(BaseSettings):
     eval_batches: int = 20
     snapshot_tokens: list[int] = [1_000_000, 5_000_000, 20_000_000, 50_000_000, 100_000_000, 200_000_000]
     """Extra checkpoints along the way, to look at the model mid-training."""
+    repeat_share: float = 0.0
+    """The share of training windows that repeat a span of story text, see `induction.repeated_span_windows`."""
+    random_repeat_share: float = 0.0
+    """The share that repeat a span of random tokens instead, see `induction.random_span`."""
     seed: int = 0
     device: str = default_device()
     out_dir: Path = Path("checkpoints/tiny_attn_only_2l")

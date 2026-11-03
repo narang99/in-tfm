@@ -15,7 +15,7 @@ from .corpus import prepare_tokens, story_starts
 from .evaluation import evaluate
 from .loss import next_token_loss
 from .model_setup import build_model
-from .windows import sample_windows
+from .induction import training_windows
 
 
 def train(config: TinyAttnOnlyTrainConfig) -> Path:
@@ -42,7 +42,7 @@ def train(config: TinyAttnOnlyTrainConfig) -> Path:
 
     for step in range(total_steps):
         set_lr(optimizer, lr_at(step, total_steps, config))
-        windows = sample_windows(arrays["train"], starts["train"], config.batch_size, seq_len, rng).to(config.device)
+        windows = training_windows(arrays["train"], starts["train"], config, rng).to(config.device)
         with torch.autocast("cuda", dtype=torch.float16, enabled=use_fp16):
             loss = next_token_loss(model, windows)
         optimizer_step(model, optimizer, scaler, loss)
@@ -50,7 +50,7 @@ def train(config: TinyAttnOnlyTrainConfig) -> Path:
         seen = (step + 1) * tokens_per_step
         save_due_snapshots(model, pending_snapshots, seen, config.out_dir)
         if (step + 1) % config.eval_every == 0 or step + 1 == total_steps:
-            point = evaluate(model, loss.item(), step + 1, seen, arrays["val"], starts["val"], config, rng,
+            point = evaluate(model, loss.item(), step + 1, seen, bos, arrays["val"], starts["val"], config, rng,
                              time.time() - began)
             log.write(point.model_dump_json() + "\n")
             log.flush()
