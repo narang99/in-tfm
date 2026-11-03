@@ -17,7 +17,7 @@
 - Pick the hits, the positions to cluster.
   - `elbow`: everything above the elbow of the sorted activations.
   - `bucketed`: equal-width activation buckets, with an equal share of hits from each.
-  - `polarity` picks the positive tail, the negative tail, both apart, or both together (`signed`).
+  - `polarity` picks the positive tail, the negative tail, or both together (`signed`).
 - For each hit, take the layer's *input* and multiply it element-wise by the neuron's weight row.
   - This is an exact decomposition of the activation: `sum(input * weight[neuron])`.
   - Clustering then groups hits by *which input dimensions drove the activation*.
