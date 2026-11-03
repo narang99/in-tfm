@@ -77,3 +77,6 @@ invalid-mutable-override = "ignore"
 
 [tool.ruff.lint]
 extend-select = ["I"]
+# F821 reads jaxtyping shape strings such as "batch seq" as undefined names.
+# ty's unresolved-reference still catches real ones.
+ignore = ["F821"]
