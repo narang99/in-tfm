@@ -19,11 +19,17 @@ def geodesic_probabilities(
     forest: DensityPeakForest, trees: ForestTrees, peak_share: float
 ) -> Float[np.ndarray, "n_distinct n_trees"]:
     """A point that reaches no peak along the graph falls back to its own tree, all its probability there."""
-    distances = geodesic_distances(knn_graph(forest), peak_cores(forest, trees, peak_share))
+    distances = distances_to_peaks(forest, trees, peak_share)
     probabilities = softmax_over_trees(distances, step_length(forest))
     unreachable = ~np.isfinite(distances).any(axis=1)
     probabilities[unreachable] = np.eye(len(trees.roots))[trees.tree[unreachable]]
     return probabilities
+
+
+def distances_to_peaks(
+    forest: DensityPeakForest, trees: ForestTrees, peak_share: float
+) -> Float[np.ndarray, "n_distinct n_trees"]:
+    return geodesic_distances(knn_graph(forest), peak_cores(forest, trees, peak_share))
 
 
 def peak_cores(forest: DensityPeakForest, trees: ForestTrees, peak_share: float) -> list[Int[np.ndarray, "n_peak"]]:
