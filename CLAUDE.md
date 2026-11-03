@@ -68,3 +68,9 @@ Measured on a T4, 2026-09-20. Details and timings in `COLAB_PLAN.md`.
 - Swapping a backend for speed changes results, not just runtime - cuml and CPU hdbscan agree on
   tight clusters and disagree on diffuse ones. Verify rather than assuming a drop-in is
   semantically free.
+
+# Parked work
+
+- Persisting a neuron's density-peak forest was prototyped and parked, unreviewed.
+  - It lives on branch `feat/cluster-fit`, draft PR #137.
+  - If we ever want to persist the forest, look at that PR first.
