@@ -8,6 +8,7 @@ from in_tfm.layers import submodule_getter
 from in_tfm.models.mnist_cnn import MnistCnn
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
 from in_tfm.run_config import ModelName, load_run_config
+from in_tfm.token_layout import ConvLayout, SingleTokenLayout
 
 
 def fake_rows(n: int) -> list[dict]:
@@ -116,6 +117,14 @@ def test_the_linear_head_has_one_position_per_image():
         MnistCnn(MnistCnnAdapter.channels), "head.1", fake_rows(2), "test"
     )
     assert batch_for(adapter, [0, 1]).valid_mask.shape == (2, 1)
+
+
+@pytest.mark.parametrize(
+    ("layer_name", "layout"), [("conv2", ConvLayout), ("head.1", SingleTokenLayout)]
+)
+def test_the_adapter_picks_each_layers_layout(adapter, layer_name, layout):
+    layer = submodule_getter(layer_name)(adapter.get_model())
+    assert isinstance(adapter.layout_for(layer), layout)
 
 
 def test_deeplift_on_a_logit_sums_to_its_change_from_a_blank_image():

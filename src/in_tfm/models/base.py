@@ -13,6 +13,7 @@ import torch
 from ..neuron_report import AttrFn
 from ..presenters import ClusterPresenter
 from ..sources import SampleSource
+from ..token_layout import TokenLayout
 
 
 def reject_nnsight_wrapped(module: torch.nn.Module) -> None:
@@ -53,6 +54,10 @@ class ModelAdapter[SamplesT, SourceT: SampleSource](Protocol):
         - The patches are class-level, so they are process-wide.
         - Calling it twice is a no-op.
         """
+        ...
+
+    def layout_for(self, layer: torch.nn.Module) -> TokenLayout:
+        """How `layer`'s tensors map onto `(batch, seq, hidden)`, which only the model knows."""
         ...
 
     def make_source(self, samples: SamplesT) -> SourceT: ...

@@ -15,6 +15,7 @@ from ...attribution import compute_deeplift_relevance
 from ...layers import submodule_getter
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
+from ...token_layout import TokenLayout, image_layer_layout
 from ..base import reject_nnsight_wrapped
 from .model import IMAGE_SIZE, MnistCnn, MnistCnnChannels
 from .source import MnistSource, Unnormalized
@@ -76,6 +77,9 @@ class MnistAdapter:
     def patch_for_attn_lrp(self) -> None:
         """Nothing to patch: there is no attention, and DeepLift hooks the modules itself."""
         reject_nnsight_wrapped(self.model)
+
+    def layout_for(self, layer: torch.nn.Module) -> TokenLayout:
+        return image_layer_layout(layer)
 
     def make_source(self, samples: list[int]) -> MnistSource:
         n_tokens = positions_in_layer(
