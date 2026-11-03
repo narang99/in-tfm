@@ -4,7 +4,7 @@ import torch
 from PIL import Image
 
 from in_tfm.attribution import compute_deeplift_relevance
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.inception_v1.adapter import InceptionV1Adapter
 from in_tfm.models.inception_v1.model import IMAGE_SIZE, AttributableInceptionV1
 from in_tfm.models.inception_v1.source import image_paths
@@ -48,12 +48,12 @@ def test_deeplift_attributions_sum_to_the_activation_change_from_the_baseline(mo
     batch = source.to_model_batch(list(source.sample_ids()))
     token = 100
     seen: list[torch.Tensor] = []
-    handle = conv_getter(LAYER)(model).register_forward_hook(lambda m, i, o: seen.append(o[:, NEURON].flatten(1)[:, token]))
+    handle = submodule_getter(LAYER)(model).register_forward_hook(lambda m, i, o: seen.append(o[:, NEURON].flatten(1)[:, token]))
     with torch.no_grad():
         model(batch.kwargs["x"])
         model(torch.zeros_like(batch.kwargs["x"]))
     handle.remove()
-    relevance = compute_deeplift_relevance(model, batch, conv_getter(LAYER), NEURON, token)
+    relevance = compute_deeplift_relevance(model, batch, submodule_getter(LAYER), NEURON, token)
     assert relevance.sum() == pytest.approx((seen[0] - seen[1]).item(), rel=1e-3, abs=1e-3)
 
 

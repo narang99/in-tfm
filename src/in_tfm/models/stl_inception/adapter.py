@@ -5,7 +5,7 @@ import torch
 from datasets import load_dataset
 
 from ...attribution import compute_deeplift_relevance, compute_integrated_gradients_relevance
-from ...layers import conv_getter
+from ...layers import submodule_getter
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
 from ..base import reject_nnsight_wrapped
@@ -87,7 +87,7 @@ class StlInceptionAdapter:
         reject_nnsight_wrapped(self.model)
 
     def make_source(self, samples: list[int]) -> StlSource:
-        n_tokens = tokens_in_layer(self.model, conv_getter(self.layer_name)(self.model))
+        n_tokens = tokens_in_layer(self.model, submodule_getter(self.layer_name)(self.model))
         return StlSource(self.dataset, samples, self.split, n_tokens)
 
     def make_presenter(self, source: StlSource, clustered_label: str) -> ImagePresenter:

@@ -70,8 +70,8 @@ def k_proj_getter(layer_idx: int) -> LayerGetter:
     return getter
 
 
-def conv_getter(layer_name: str) -> LayerGetter:
-    """A conv picked by its dotted path, for example `block_b.branch_3x3.1.0`.
+def submodule_getter(layer_name: str) -> LayerGetter:
+    """Any layer picked by its dotted path, for example `block_b.branch_3x3.1.0` or `layers.0.self_attn.o_proj`.
 
     - The paths are submodule names, which `named_modules()` lists.
     - Indexing works on both the raw model and its NNsight envoy, like the other getters.

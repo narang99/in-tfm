@@ -8,10 +8,10 @@
 """
 
 from .vectorized import (
-    calculate_probs, geodesic_distances, geodesic_probabilities, knn_graph, peak_cores, softmax_over_trees, step_length,
+    calculate_probs, distances_to_peaks, geodesic_distances, geodesic_probabilities, knn_graph, peak_cores, softmax_over_trees, step_length,
 )
 
 __all__ = [
-    "calculate_probs", "geodesic_distances", "geodesic_probabilities", "knn_graph", "peak_cores", "softmax_over_trees",
+    "calculate_probs", "distances_to_peaks", "geodesic_distances", "geodesic_probabilities", "knn_graph", "peak_cores", "softmax_over_trees",
     "step_length",
 ]

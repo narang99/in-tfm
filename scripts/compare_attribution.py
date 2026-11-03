@@ -10,7 +10,7 @@ import torch
 from datasets import load_dataset
 
 from in_tfm.attribution.comparison import ComparisonConfig, StepResult, measure_batch, merge
-from in_tfm.layers import conv_getter
+from in_tfm.layers import submodule_getter
 from in_tfm.models.stl_inception.adapter import load_model
 from in_tfm.models.stl_inception.source import HubImages, eval_transform
 
@@ -37,7 +37,7 @@ def main() -> None:
     config = ComparisonConfig(_cli_parse_args=True)
     print(config)
     model = load_model(str(config.checkpoint) if config.checkpoint else None).to(config.device)
-    layer = conv_getter(config.layer_name)(model)
+    layer = submodule_getter(config.layer_name)(model)
     chunks = batches(load_images(config), config.batch_size, config.device)
     measure_batch(model, layer, chunks[0][:2], config.model_copy(update={"ig_steps": [2]}))
     per_batch = [measure_batch(model, layer, chunk, config) for chunk in chunks]
