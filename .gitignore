@@ -9,8 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# datasets
-/dicoms
 # generated outputs - every report lives under reports/, as per-run artifacts, never source
 /reports
 

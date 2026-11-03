@@ -2,130 +2,110 @@
 
 ## What this is
 
-- A library for studying individual neurons in a neural network
-  - originally built for a vision encoder (RadDino / DINOv2 on chest X-rays)
-  - now retargeted at decoder language models (`google/gemma-3-270m`)
-- For one neuron, it answers: what kind of input makes this neuron fire, and does that
-  generalise across many examples
-  - not just "what activates it once" - it clusters many high-activation hits, so a
-    finding is a claim about a group of inputs, not a single anecdote
+- A library for studying individual neurons in a neural network.
+  - Language models: `google/gemma-3-270m`, and a 2-layer attention-only model.
+  - Vision: InceptionV1 (lucent's port of the lucid model).
+- For one neuron, it answers what kind of input makes the neuron fire, and whether that generalises.
+  - It clusters many high-activation hits, so a finding is a claim about a group of inputs.
+  - It is not a single anecdote of "what activates it once".
 
 ## The pipeline
 
-- Stream a corpus through the model, capturing one layer
-  - vision: an MLP down-projection (`fc2` / `down_proj`)
-  - language: `q_proj`, `k_proj`, or `down_proj`
-- Pick a per-neuron activation threshold automatically, by elbow detection
-  - replaces a hand-picked constant threshold
-- Filter to positions above the threshold - the "hits"
-- For each hit, take the layer's *input* and Hadamard-multiply it by the neuron's own weight
-  row, then L2-normalise
-  - this is an exact decomposition of the activation: `sum(input * weight[neuron])`
-  - clustering groups hits by *which input dimensions drove the activation*, not by how
-    strongly the neuron fired
-- Cluster those vectors, with the strategy picked by `clustering.strategy.method`
-  - `hdbscan`, the default: dense regions split by sparse gaps, the rest is noise
-  - `density_peaks`: each hit links to its nearest denser hit, and every hit lands in a root's tree
-- Track every vector back to its sample and position
-  - this is what makes a human-readable report possible: firing tokens, attribution shading,
-    per-cluster hit counts
+- Stream a corpus through the model, capturing one layer.
+  - The layer is a dotted submodule path, for example `layers.11.mlp.down_proj`.
+- Pick the hits, the positions to cluster.
+  - `elbow`: everything above the elbow of the sorted activations.
+  - `bucketed`: equal-width activation buckets, with an equal share of hits from each.
+  - `polarity` picks the positive tail, the negative tail, both apart, or both together (`signed`).
+- For each hit, take the layer's *input* and multiply it element-wise by the neuron's weight row.
+  - This is an exact decomposition of the activation: `sum(input * weight[neuron])`.
+  - Clustering then groups hits by *which input dimensions drove the activation*.
+  - It does not group them by how strongly the neuron fired.
+- Cluster those vectors, with the strategy picked by `clustering.strategy.method`.
+  - `hdbscan`, the default: dense regions split by sparse gaps, the rest is noise.
+  - `density_peaks`: each hit links to its nearest denser hit, and every hit lands in a root's tree.
+    - Each hit gets a probability per tree, so hits split between trees are shown apart.
+- Track every vector back to its sample and position.
+  - This is what makes a readable report possible.
 
 ## Two-pass capture
 
-- A whole corpus's activations don't fit in memory for a real model
-- So capture runs in two passes (`in_tfm.neuron_capture`)
-  - **scan**: stream the whole corpus, keep only the studied neurons' output columns -
-    enough to compute the threshold exactly
-  - **gather**: re-run only the samples that had hits, keep the layer *input* at just those
-    positions
-- A consistency check re-derives each hit's activation in the gather pass and compares it
-  against the scan, so a bug in the position bookkeeping surfaces immediately
+- A whole corpus's activations don't fit in memory for a real model.
+- So capture runs in two passes, in `in_tfm.neuron_capture`.
+  - **scan**: stream the whole corpus, keeping only the studied neurons' output columns.
+    - That is enough to pick the hits exactly.
+  - **gather**: re-run only the samples that had hits, keeping the layer *input* at just those positions.
+- A consistency check re-derives each hit's activation in the gather pass and compares it with the scan.
+  - So a bug in the position bookkeeping surfaces immediately.
 
 ## Reports
 
-- One HTML report per neuron, showing its largest clusters
-  - the firing tokens (language) or image crops (vision) for sampled hits per cluster
-  - AttnLRP relevance shading, showing which part of the input the model itself weighted
-  - each cluster's mean Hadamard vector (`mean.pt`), for comparing clusters across runs
+- One HTML report per neuron, `<out_dir>/neuron_<idx>/index.html`.
+  - Plotly sections: the activation curve, each cluster's activation range, and for density peaks the forest.
+  - Per cluster: the firing tokens (language) or image crops (vision) of a few sampled hits.
+  - Attribution shading: AttnLRP for language models, DeepLift for InceptionV1.
+  - Each cluster's mean Hadamard vector, `mean.pt`, for comparing clusters across runs.
+- Density peaks adds two more pages.
+  - `mixed_hits.html`: hits whose probability is split between clusters.
+  - `borders/`: one page per border between clusters, with a few of its hits.
 
-## Experiments
+## Running it
 
-Ablations that test one component of the pipeline against an alternative, on layer 11 (a
-full-attention layer) of `google/gemma-3-270m`'s `q_proj` / `k_proj`, unless noted. Each has
-its own README under `experiments/<name>/` with the exact setup, numbers and caveats.
+- `scripts/run_neuron_report.py` writes neuron reports for any onboarded model.
+  - Settings live in `src/in_tfm/run_config.py`.
+  - `--config configs/<file>.yaml` sets defaults, and flags override them.
+  - Nested sections take dotted flags, e.g. `--clustering.strategy.min-cluster-size 20`.
+  - Repeat a list flag per value, e.g. `--neurons 5 --neurons 7`.
+- InceptionV1 needs the `inception` extra and an image pool.
+  - `uv run --extra inception python scripts/prepare_inception_images.py --out data/inception_pool`
+- Larger runs go on a Colab GPU. See the `colab-experiments` skill.
 
-- **`ablate-hadamard-vs-input`**: does the Hadamard weighting change what clusters, or does
-  the raw input alone already group hits the same way?
-  - layer 0: barely - clusters are near-identical, because the residual there is essentially
-    the token embedding
-  - layer 11: differs more, but clusters are still mostly single-token
-- **`ablate-select-on-q-norm`**: `q_proj`'s raw output is hooked before Gemma's per-head
-  `q_norm` and rope, so a large value can partly just mean a large head norm - does picking
-  hits by the *post-norm* activation instead change which hits get selected, and does that
-  fix the neurons whose raw-selected clusters look degenerate?
-  - one neuron (300) went from one 4,313-hit blob to 28 well-formed clusters
-  - another (90) lost its cleanest cluster (`of`/`in` after a place noun) once selection
-    moved to the norm
-  - inconclusive on its own: no ground truth for "the right hits" from cluster inspection
-    alone
-- **`occlusion-test`**: a functional test to settle the above - zero the neuron's coordinate
-  (at the `q_norm` output, the value attention actually reads) at each selection's hits, and
-  measure the resulting change in next-token loss
-  - both selections' top hits matter about equally
-  - the hits *raw* selection finds that *norm* selection misses matter more than the reverse
-  - net finding: raw `q_proj` selection is at least as good functionally, and it stays the
-    more principled choice for the Hadamard decomposition
-- **`hdbscan-leaf`**: HDBSCAN's default cluster-picking rule (`eom`, excess of mass) can
-  merge distinct sub-clusters into one large parent - does `cluster_selection_method=leaf`
-  fix the degenerate neuron from the selection ablation, without needing to change hit
-  selection?
-  - yes: the same 4,313-hit blob splits into 23 clusters under `leaf`, and matching them
-    against the norm-selection clusters (linear sum assignment on cosine similarity between
-    `mean.pt` vectors) shows 12 of the top 20 pairs agree almost exactly
-  - conclusion: `leaf` is now the library's default `cluster_selection_method`, and hit
-    selection stays on raw `q_proj`
+## Choosing a layer
+
+- `layer_name` is a path into the adapter's `get_model()`. `named_modules()` lists them.
+- `q_proj` and `k_proj` are hooked *raw*, before `q_norm` / `k_norm` and rope.
+  - The raw output is linear in its input, so `input * weight[neuron]` is an exact decomposition.
+  - Rope has not mixed in the position yet, so the coordinate is position-free.
+  - A flat neuron index is `head * head_dim + dim`, or `kv_head * head_dim + dim` for `k_proj`.
+  - Gemma 3 uses grouped-query attention, so one key neuron is shared by several query heads.
+- The attn-only model's `o_proj` is one `Linear` per head, see `PerHeadOutput`.
+  - Its `.weight` is still the fused one, so `layers.0.self_attn.o_proj` works like any other layer.
 
 ## Onboarding a model
 
-- A model joins the pipeline as an adapter in `src/in_tfm/models/`, satisfying `ModelAdapter`
-  - `get_model()` returns the raw module the layer getters index into, for example `hf_model.model`
-  - `patch_for_attn_lrp()` patches the model for AttnLRP, and is called once, before NNsight wraps the model
-    - NNsight stores each module's `forward` when it wraps, so a model wrapped first silently skips the patches
-    - the adapters raise if the order is wrong
-  - `make_source(samples)` and `make_presenter(source, clustered_label)` pick the modality
-- Layer getters are not part of the adapter
-  - they live in `layers.py`, and the script picks one per experiment
-  - the Hadamard weight is `layer_getter(model).weight`, so there is no accessor for it
-- The adapters so far
-  - `gemma3.py`, and `rad_dino.py`
-  - `attn_only_2l/`, a directory since it carries its own model code in `model.py`
-- A decoder language model only needs `DecoderTextAdapter` and a patch
-  - see `gemma3.py`
-- `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads
-  - add the new adapter to its fixture
+- A model joins the pipeline as an adapter in `src/in_tfm/models/`, satisfying `ModelAdapter`.
+  - `get_model()` returns the raw module the layer paths index into, for example `hf_model.model`.
+  - `patch_for_attn_lrp()` patches the model for AttnLRP, and is called once, before NNsight wraps the model.
+    - NNsight stores each module's `forward` when it wraps, so a model wrapped first silently skips the patches.
+    - The adapters raise if the order is wrong.
+  - `make_source(samples)` and `make_presenter(source, clustered_label)` pick the modality.
+- The Hadamard weight is the layer's own `.weight`, so there is no accessor for it.
+- The adapters so far:
+  - `gemma3.py`.
+  - `attn_only_2l/`, a directory since it carries its own model code in `model.py`.
+  - `inception_v1/`.
+- A decoder language model only needs `DecoderTextAdapter` and a patch. See `gemma3.py`.
+- `tests/test_model_adapters.py` runs the contract on tiny random models, with no downloads.
+  - Add the new adapter to its fixture.
 
 ## Repo layout
 
-- `src/in_tfm/`: the library
-  - `models/`: one adapter per model, see "Onboarding a model"
-  - `neuron_run.py`: the scan, select, gather, cluster and report sequence every script runs
-  - `hit_selection/`: the choice of the positions to cluster
-    - `strategies/elbow.py` and `strategies/bucketed.py` hold one strategy each
-  - `attribution/`: one file per attribution method, AttnLRP, DeepLift and Integrated Gradients
-    - `comparison.py` measures DeepLift against Integrated Gradients
-  - `activation_ranges/`: each cluster's activations against the neuron's noise
-    - `ranges.py` collects them, `figure.py` and `plot.py` draw them
-  - `sources/`: where samples come from, one file per source
-    - `base.py` holds `ModelBatch` and the `SampleSource` protocol
-    - `dicom.py` and `text.py` are the two sources, `wikitext.py` loads the text corpus
-- `scripts/run_neuron_report.py`: neuron reports for any onboarded model
-  - `--model` decides the modality, language model over wikitext or rad-dino over DICOMs
-  - settings live in `src/in_tfm/run_config.py`
-  - `--config configs/<file>.yaml` sets defaults, and flags override them
-  - nested sections take dotted flags, e.g. `--clustering.strategy.min-cluster-size 20`
-  - repeat a list flag per value, e.g. `--neurons 5 --neurons 7`
-  - rad-dino needs its file, `--config configs/rad_dino_fc2.yaml`, since the defaults are Gemma's
-- `scripts/ablate_hit_selection.py`: elbow against bucketed hit selection, for language models
-- `experiments/`: ablation results (git-ignored - see each README for how to regenerate)
-- `PLAN.md`, `COLAB_PLAN.md`: the vision-to-language port plan and the Colab setup notes
-- `TODO.md`: open questions and known rough edges
+- `src/in_tfm/`: the library.
+  - `models/`: one adapter per model, see "Onboarding a model".
+  - `neuron_run.py`: the scan, select, gather, cluster and report sequence.
+  - `hit_selection/`: the choice of the positions to cluster.
+  - `density_peaks/`, `weighted_jaccard/`: each has a README on its naive and vectorized mirrors.
+  - `attribution/`: AttnLRP and DeepLift, one file each.
+  - `report_page/`, `report_templates/`: the report's Plotly sections and its jinja templates.
+  - `sources/`: where text samples come from. InceptionV1's source lives with its adapter.
+  - `tiny_attn_only_training/`: trains our own 2-layer attn-only model on TinyStories.
+- `scripts/`:
+  - `run_neuron_report.py`: the reports.
+  - `prepare_inception_images.py`: the InceptionV1 image pool.
+  - `train_tiny_attn_only.py`: trains the tiny attn-only model.
+  - `bench_forest.py`: times the torch forest against a saved one, the regression check for the GPU path.
+  - `fake_text_report.py`: renders a text report from fake data, to iterate on the html with no model.
+- `configs/`: one YAML per experiment.
+- `experiments/`: one markdown log per experiment, with the branch, files and commands to reproduce it.
+  - Experiment outputs sit beside the logs, and are git-ignored.
+- `TODO.md`: open questions and known rough edges.

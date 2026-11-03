@@ -27,7 +27,7 @@ def patch_eager_attention(module: types.ModuleType) -> bool:
     attn_implementation="eager" is forced by the caller.
 
     Works for any modeling module exposing eager_attention_forward, which is the shared
-    interface Dinov2, Llama, Qwen and Gemma all use.
+    interface Llama, Qwen and Gemma all use.
     """
     new_forward = wrap_attention_forward(module.eager_attention_forward)
     if check_already_patched(module.eager_attention_forward, new_forward):

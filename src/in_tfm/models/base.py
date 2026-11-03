@@ -24,7 +24,7 @@ def reject_nnsight_wrapped(module: torch.nn.Module) -> None:
 
 
 class ModelAdapter[SamplesT](Protocol):
-    """`SamplesT` is what `make_source` consumes: a list of texts, a directory of DICOMs."""
+    """`SamplesT` is what `make_source` consumes: a list of texts, or image paths."""
 
     attr_fn: AttrFn
     """Explains one neuron at one position in pixel or embedding space, see `attribution`."""
