@@ -1,0 +1,28 @@
+flowchart TD
+    T["token ids<br/>[seq]"] --> E["embed_tokens W_E<br/>4096 x 256"]
+    E --> X0["x0: residual stream<br/>[seq, 256]"]
+
+    P["pos_embed W_pos[:seq]<br/>256 x 256"] --> ADD(("+"))
+    X0 --> ADD
+    ADD --> QK["qk_input = x0 + pos<br/>[seq, 256]"]
+
+    QK --> Q["q_proj, no bias<br/>256 to 8 heads x 32"]
+    QK --> K["k_proj, no bias<br/>256 to 8 heads x 32"]
+    X0 --> V["v_proj, no bias<br/>256 to 8 heads x 32<br/>no position here"]
+
+    subgraph HEAD["for each head h of 8"]
+        Q --> S["scores = q_h k_h^T / sqrt 32<br/>[seq, seq]"]
+        K --> S
+        S --> M["+ causal mask"]
+        M --> SM["softmax over source positions<br/>pattern A_h [seq, seq]"]
+        SM --> Z["z_h = A_h v_h<br/>[seq, 32]"]
+        V --> Z
+        Z --> O["o_proj.heads.h W_O^h<br/>32 to 256"]
+    end
+
+    O --> SUM(("sum over heads<br/>no o_proj bias"))
+    SUM --> X1(("+"))
+    X0 -->|"residual skip"| X1
+    X1 --> R["x1 = x0 + attn_out<br/>[seq, 256]"]
+    R --> U["lm_head W_U + b_U<br/>256 to 4096<br/>untied from W_E"]
+    U --> L["logits<br/>[seq, 4096]"]
