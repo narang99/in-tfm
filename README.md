@@ -58,7 +58,7 @@
   - Nested sections take dotted flags, e.g. `--clustering.strategy.min-cluster-size 20`.
   - Repeat a list flag per value, e.g. `--neurons 5 --neurons 7`.
 - InceptionV1 needs the `inception` extra and an image pool.
-  - `uv run --extra inception python scripts/prepare_inception_images.py --out data/inception_pool`
+  - `uv run --extra inception python -m in_tfm.models.inception_v1.prepare_images --out data/inception_pool`
 - Larger runs go on a Colab GPU. See the `colab-experiments` skill.
 
 ## Choosing a layer
@@ -85,7 +85,7 @@
   - `gemma3.py`.
   - `attn_only_2l/`, a directory since it carries its own model code in `model.py`.
     - `train/` trains our own 2-layer attn-only model on TinyStories.
-  - `inception_v1/`.
+  - `inception_v1/`, with its image pool built by `prepare_images.py`.
   - `mnist_cnn/`, with its training in `train.py`.
 - A model we train ourselves is a directory, and its training sits beside it in `train.py` or `train/`.
   - Run it as a module, e.g. `uv run python -m in_tfm.models.attn_only_2l.train`.
@@ -105,7 +105,6 @@
   - `sources/`: where text samples come from. InceptionV1's source lives with its adapter.
 - `scripts/`:
   - `run_neuron_report.py`: the reports.
-  - `prepare_inception_images.py`: the InceptionV1 image pool.
   - `bench_forest.py`: times the torch forest against a saved one, the regression check for the GPU path.
   - `fake_text_report.py`: renders a text report from fake data, to iterate on the html with no model.
 - `configs/`: one YAML per experiment.

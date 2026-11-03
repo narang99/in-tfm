@@ -92,7 +92,7 @@ class MnistDataConfig(Section):
 class InceptionDataConfig(Section):
     image_dir: Path = Field(
         Path("data/inception_pool"),
-        description="one folder per class holding jpgs, see scripts/prepare_inception_images.py",
+        description="one folder per class holding jpgs, see in_tfm.models.inception_v1.prepare_images",
     )
     n_images: int | None = Field(
         None,

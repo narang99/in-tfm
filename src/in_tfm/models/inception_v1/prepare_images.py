@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Builds the image pool the InceptionV1 reports run on: `<out>/<wnid>/<n>.jpg`, a few images per class.
 
 - Cats and cars come from a private S3 bucket of ImageNet train images, filtered to those classes.
@@ -7,7 +6,7 @@
   - It supplies the dogs, which the bucket has almost none of.
 - A class in both is taken from the bucket only, so its count stays at `--per-class`.
 
-    uv run python scripts/prepare_inception_images.py --out data/inception_pool
+    uv run --extra inception python -m in_tfm.models.inception_v1.prepare_images --out data/inception_pool
 
 Needs the `aws` CLI logged in with read access to the bucket.
 """
@@ -22,7 +21,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 from PIL import Image
 
-from in_tfm.models.inception_v1.source import spread_indices
+from .source import spread_indices
 
 BUCKET_NAME = "narang99-private"
 BUCKET_PREFIX = f"s3://{BUCKET_NAME}/imagenet"
