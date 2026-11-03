@@ -31,7 +31,7 @@ from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources.wikitext import load_texts
 
 
-def load_adapter(config: RunConfig) -> ModelAdapter[Any]:
+def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
     match config.model:
         case ModelName.GEMMA3_270M:
             return Gemma3Adapter.from_pretrained(

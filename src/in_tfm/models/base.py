@@ -23,11 +23,16 @@ def reject_nnsight_wrapped(module: torch.nn.Module) -> None:
         )
 
 
-class ModelAdapter[SamplesT](Protocol):
-    """`SamplesT` is what `make_source` consumes: a list of texts, or image paths."""
+class ModelAdapter[SamplesT, SourceT: SampleSource](Protocol):
+    """`SamplesT` is what `make_source` consumes: a list of texts, or image paths.
 
-    attr_fn: AttrFn
-    """Explains one neuron at one position in pixel or embedding space, see `attribution`."""
+    - `SourceT` ties `make_presenter` to the source this adapter made.
+    """
+
+    @property
+    def attr_fn(self) -> AttrFn:
+        """Explains one neuron at one position in pixel or embedding space, see `attribution`."""
+        ...
 
     def get_model(self) -> torch.nn.Module:
         """The raw module the layer getters index into, for example `hf_model.model`.
@@ -50,8 +55,8 @@ class ModelAdapter[SamplesT](Protocol):
         """
         ...
 
-    def make_source(self, samples: SamplesT) -> SampleSource: ...
+    def make_source(self, samples: SamplesT) -> SourceT: ...
 
     def make_presenter(
-        self, source: SampleSource, clustered_label: str
+        self, source: SourceT, clustered_label: str
     ) -> ClusterPresenter: ...

@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -62,7 +63,7 @@ def selection_curve(selection: HitSelection) -> SelectionCurve:
 
 
 def save_selection_curve(report_dir: Path, curve: SelectionCurve) -> None:
-    optional = {}
+    optional: dict[str, Any] = {}
     if curve.elbow_idx is not None:
         optional["elbow_idx"] = curve.elbow_idx
     if curve.bucket_edges is not None:
@@ -181,7 +182,7 @@ def forest_data(
     rho = log_density(forest.kth_distance)
     parent_in_tree = forest.parent.copy()
     parent_in_tree[trees.roots] = -1
-    up_close = {}
+    up_close: dict[str, Any] = {}
     if hit_rows is not None:
         _, first_hit = np.unique(forest.distinct_of_hit, return_index=True)
         layout = up_close_layout(

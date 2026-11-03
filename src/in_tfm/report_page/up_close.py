@@ -87,9 +87,9 @@ def spring_positions(
     graph = nx.Graph()
     graph.add_nodes_from(range(len(distances)))
     masked = distances + np.diag(np.full(len(distances), np.inf))
-    for i, nearest in enumerate(np.argsort(masked, axis=1)[:, :NEIGHBOURS]):
+    for i, nearest in enumerate(np.argsort(masked, axis=1)[:, :NEIGHBOURS].tolist()):
         for j in nearest:
-            graph.add_edge(i, int(j), weight=float(max(1.0 - distances[i, j], 1e-3)))
+            graph.add_edge(i, j, weight=float(max(1.0 - distances[i, j], 1e-3)))
     for i, parent in enumerate(parents):
         if parent >= 0:
             graph.add_edge(i, int(parent), weight=PARENT_WEIGHT)

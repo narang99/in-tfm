@@ -69,6 +69,16 @@ def attributable_layers(lucent_model: nn.Module) -> list[tuple[str, nn.Module]]:
 class AttributableInceptionV1(nn.Module):
     """Holds lucent's layers under lucent's names, so `mixed4e_1x1_pre_relu_conv` is an attribute."""
 
+    # Added with `add_module`, declared so the stem's calls type as module calls.
+    conv2d0_pre_relu_conv: nn.Module
+    conv2d0: nn.Module
+    conv2d1_pre_relu_conv: nn.Module
+    conv2d1: nn.Module
+    conv2d2_pre_relu_conv: nn.Module
+    conv2d2: nn.Module
+    softmax2_pre_activation_matmul: nn.Module
+    softmax2: nn.Module
+
     def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         for name, layer in attributable_layers(load_lucent_model(pretrained)):

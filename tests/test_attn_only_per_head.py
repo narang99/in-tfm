@@ -5,14 +5,18 @@
 """
 
 import copy
+from typing import cast
 
 import pytest
 import torch
 from torch import nn
 
 from in_tfm.models.attn_only_2l.model import (
+    AttnOnlyAttention,
     AttnOnlyConfig,
+    AttnOnlyDecoderLayer,
     AttnOnlyForCausalLM,
+    PerHeadOutput,
     split_fused_o_proj,
 )
 
@@ -36,10 +40,18 @@ def per_head_model(bias: bool, seed: int = 0) -> AttnOnlyForCausalLM:
     return model
 
 
+def attentions(model: AttnOnlyForCausalLM) -> list[AttnOnlyAttention]:
+    return [cast(AttnOnlyDecoderLayer, layer).self_attn for layer in model.model.layers]
+
+
+def first_o_proj(model: AttnOnlyForCausalLM) -> PerHeadOutput:
+    return attentions(model)[0].o_proj
+
+
 def with_fused_o_proj(model: AttnOnlyForCausalLM) -> AttnOnlyForCausalLM:
     fused_model = copy.deepcopy(model)
-    for layer in fused_model.model.layers:
-        per_head = layer.self_attn.o_proj
+    for attention in attentions(fused_model):
+        per_head = attention.o_proj
         fused = nn.Linear(
             per_head.weight.shape[1],
             per_head.weight.shape[0],
@@ -50,7 +62,8 @@ def with_fused_o_proj(model: AttnOnlyForCausalLM) -> AttnOnlyForCausalLM:
             fused.weight.copy_(per_head.weight)
             if per_head.bias is not None:
                 fused.bias.copy_(per_head.bias)
-        layer.self_attn.o_proj = fused
+        # setattr, since the attribute is typed as the per-head module this swaps out
+        setattr(attention, "o_proj", fused)
     return fused_model
 
 
@@ -89,20 +102,23 @@ def test_a_fused_checkpoint_loads_into_the_per_head_model():
 
 
 def test_the_heads_sum_to_the_summed_neuron():
-    o_proj = per_head_model(bias=True).model.layers[0].self_attn.o_proj
+    o_proj = first_o_proj(per_head_model(bias=True))
     z = torch.randn(2, 5, len(o_proj.heads) * o_proj.head_dim)
     per_head = [
         head(z_h) for head, z_h in zip(o_proj.heads, z.split(o_proj.head_dim, dim=-1))
     ]
+    assert o_proj.bias is not None
     with torch.no_grad():
         assert torch.allclose(
-            sum(per_head) + o_proj.bias, o_proj(z), atol=FLOAT32_TOLERANCE
+            torch.stack(per_head).sum(dim=0) + o_proj.bias,
+            o_proj(z),
+            atol=FLOAT32_TOLERANCE,
         )
 
 
 def test_the_fused_weight_view_is_head_major():
-    o_proj = per_head_model(bias=False).model.layers[0].self_attn.o_proj
+    o_proj = first_o_proj(per_head_model(bias=False))
     head_dim = o_proj.head_dim
     assert torch.equal(
-        o_proj.weight[:, 2 * head_dim : 3 * head_dim], o_proj.heads[2].weight
+        o_proj.weight[:, 2 * head_dim : 3 * head_dim], o_proj.head_weight(2)
     )

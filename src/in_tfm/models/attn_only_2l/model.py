@@ -21,13 +21,20 @@ Two things differ from a stock HF decoder, both read off the checkpoint:
 """
 
 from pathlib import Path
+from typing import cast
 
 import torch
 from huggingface_hub import hf_hub_download
 from jaxtyping import Bool, Float, Int
 from torch import nn
-from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerFast
+from transformers import (
+    PretrainedConfig,
+    PreTrainedTokenizerBase,
+    PreTrainedTokenizerFast,
+)
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutput
+
+from ..text import load_tokenizer
 
 ATTN_ONLY_2L_REPO = "callummcdougall/attn_only_2L_half"
 ATTN_ONLY_2L_WEIGHTS = "attn_only_2L_half.pth"
@@ -139,10 +146,13 @@ class PerHeadOutput(nn.Module):
         ).sum(dim=0)
         return summed if self.bias is None else summed + self.bias
 
+    def head_weight(self, head: int) -> Float[torch.Tensor, "hidden head_dim"]:
+        return cast(nn.Linear, self.heads[head]).weight
+
     @property
     def weight(self) -> Float[torch.Tensor, "hidden inner"]:
         """The fused weight, for code that reads `o_proj` as one `Linear`."""
-        return torch.cat([head.weight for head in self.heads], dim=1)
+        return torch.cat([self.head_weight(h) for h in range(len(self.heads))], dim=1)
 
 
 def split_fused_o_proj(
@@ -245,7 +255,8 @@ class AttnOnlyModel(nn.Module):
         hidden = inputs_embeds
         for layer in self.layers:
             hidden = layer(hidden, position_embeds, mask)
-        return BaseModelOutput(last_hidden_state=hidden)
+        # HF annotates this as the legacy `FloatTensor`, which no torch op returns
+        return BaseModelOutput(last_hidden_state=hidden)  # ty: ignore[invalid-argument-type]
 
 
 class AttnOnlyForCausalLM(nn.Module):
@@ -302,7 +313,7 @@ def _converted_state_dict(
 
 def load_attn_only_2l(
     dtype: torch.dtype = torch.float32,
-) -> tuple[AttnOnlyForCausalLM, AutoTokenizer]:
+) -> tuple[AttnOnlyForCausalLM, PreTrainedTokenizerBase]:
     """The checkpoint is fp16 and is upcast by default, since clustering and relevance downstream
     are not worth doing in half precision.
 
@@ -318,7 +329,7 @@ def load_attn_only_2l(
     model.load_state_dict(
         split_fused_o_proj(_converted_state_dict(tl_state, config), config.head_dim)
     )
-    tokenizer = AutoTokenizer.from_pretrained(ATTN_ONLY_2L_TOKENIZER)
+    tokenizer = load_tokenizer(ATTN_ONLY_2L_TOKENIZER)
     return model.to(dtype).eval(), tokenizer
 
 

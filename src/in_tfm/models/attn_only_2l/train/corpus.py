@@ -27,10 +27,17 @@ def train_bpe(stories: list[str], vocab_size: int) -> Tokenizer:
     return tokenizer
 
 
+def bos_id(tokenizer: Tokenizer) -> int:
+    bos = tokenizer.token_to_id(BOS_TOKEN)
+    if bos is None:
+        raise ValueError(f"the tokenizer has no {BOS_TOKEN} token")
+    return bos
+
+
 def encode_stories(
     tokenizer: Tokenizer, stories: list[str], chunk: int = 20_000
 ) -> Int[np.ndarray, "n_tokens"]:
-    bos = tokenizer.token_to_id(BOS_TOKEN)
+    bos = bos_id(tokenizer)
     pieces = []
     for start in range(0, len(stories), chunk):
         for encoding in tokenizer.encode_batch(stories[start : start + chunk]):

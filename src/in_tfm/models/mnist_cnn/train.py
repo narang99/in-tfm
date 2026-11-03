@@ -31,10 +31,11 @@ from .model import MnistCnn, MnistCnnChannels
 @torch.no_grad()
 def accuracy(model: nn.Module, loader: DataLoader, device: str) -> float:
     model.eval()
-    correct = 0
+    correct, total = 0, 0
     for images, labels in loader:
         correct += (model(images.to(device)).argmax(1).cpu() == labels).sum().item()
-    return correct / len(loader.dataset)
+        total += len(labels)
+    return correct / total
 
 
 def train_one_epoch(

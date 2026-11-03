@@ -63,3 +63,14 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 torch-lucent = { git = "https://github.com/greentfrapp/lucent", rev = "dev" }
+
+[tool.ty.environment]
+python = ".venv"
+
+[tool.ty.analysis]
+# Optional deps: triton and cuml only exist on a CUDA box, lucent only with the `inception` extra.
+allowed-unresolved-imports = ["triton", "triton.**", "cuml", "cuml.**", "lucent", "lucent.**"]
+
+[tool.ty.rules]
+# torch declares `forward` as a callable attribute, so every `def forward` override is flagged.
+invalid-mutable-override = "ignore"

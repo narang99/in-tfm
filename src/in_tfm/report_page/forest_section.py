@@ -104,7 +104,7 @@ def decision_figure(data: ForestData) -> go.Figure:
             hovertemplate="%{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
         )
     )
-    trees = np.arange(data.n_trees)
+    trees = range(data.n_trees)
     fig.add_trace(
         go.Scatter(
             x=data.rho[data.roots],

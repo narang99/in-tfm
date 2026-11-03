@@ -10,6 +10,7 @@ def test_patches_times_weight_reproduce_the_conv_output(kernel_size, stride):
     conv = torch.nn.Conv2d(4, 6, kernel_size, stride=stride, padding=kernel_size // 2)
     x = torch.randn(2, 4, 9, 9)
     layout = ConvLayout(conv)
+    assert conv.bias is not None
     by_patches = layout.inputs(x) @ layout.weight(conv.weight).T + conv.bias
     assert torch.allclose(by_patches, layout.outputs(conv(x)), atol=1e-5)
 

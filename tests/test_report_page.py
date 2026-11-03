@@ -62,6 +62,7 @@ def a_meta() -> ReportMeta:
 def test_a_long_curve_is_thinned_but_keeps_its_tail(tmp_path):
     save_selection_curve(tmp_path, selection_curve(a_selection()))
     curve = load_selection_curve(tmp_path)
+    assert curve is not None
     assert len(curve.index) < 10_000
     assert curve.index[-1] == 9_999 and curve.index[-4000] == 6_000
     assert (
@@ -76,6 +77,7 @@ def test_a_signed_curve_round_trips_and_cuts_both_tails(tmp_path):
     selection = a_selection().model_copy(update={"polarity": "signed"})
     save_selection_curve(tmp_path, selection_curve(selection))
     curve = load_selection_curve(tmp_path)
+    assert curve is not None
     assert curve.signed and not curve.negative
 
 
@@ -83,6 +85,7 @@ def test_forest_data_round_trips_and_cuts_root_links(tmp_path):
     data = a_forest()
     save_forest_data(tmp_path, data)
     loaded = load_forest_data(tmp_path)
+    assert loaded is not None
     assert loaded.n_trees == data.n_trees == 2
     assert (loaded.parent_in_tree[loaded.roots] == -1).all()
     assert np.array_equal(loaded.tree, data.tree) and loaded.cut_rho == data.cut_rho

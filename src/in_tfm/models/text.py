@@ -4,12 +4,26 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 import torch
-from transformers import PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 
 from ..attribution import compute_attnlrp_relevance
 from ..presenters import TextPresenter
 from ..sources import TextSource
 from .base import reject_nnsight_wrapped
+
+
+def load_tokenizer(name: str) -> PreTrainedTokenizerBase:
+    tokenizer = AutoTokenizer.from_pretrained(name)
+    if tokenizer is None:
+        raise ValueError(f"no tokenizer found for {name}")
+    return tokenizer
+
+
+def force_eager_attention(model: torch.nn.Module) -> None:
+    """The AttnLRP patches replace the eager kernel, so the model must not pick sdpa or flash."""
+    config = model.config
+    assert isinstance(config, PretrainedConfig)
+    config._attn_implementation = "eager"
 
 
 class DecoderTextAdapter(ABC):
@@ -30,7 +44,7 @@ class DecoderTextAdapter(ABC):
         self._patched = False
 
     def get_model(self) -> torch.nn.Module:
-        return self.hf_model.model
+        return self.hf_model.get_submodule("model")
 
     def patch_for_attn_lrp(self) -> None:
         if self._patched:
@@ -46,7 +60,7 @@ class DecoderTextAdapter(ABC):
         return TextSource(
             samples,
             self.tokenizer,
-            self.get_model().embed_tokens,
+            self.get_model().get_submodule("embed_tokens"),
             self.max_length,
             self.prepend_bos,
         )

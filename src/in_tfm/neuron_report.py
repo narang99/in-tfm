@@ -188,7 +188,7 @@ def cluster_counts(labels: Int[np.ndarray, "n_hits"]) -> dict[int, int]:
 
 def clusters_by_frequency(labels: Int[np.ndarray, "n_hits"]) -> list[int]:
     counts = cluster_counts(labels)
-    return sorted(counts, key=counts.get, reverse=True)
+    return sorted(counts, key=lambda cid: counts[cid], reverse=True)
 
 
 def cluster_unique_image_counts(

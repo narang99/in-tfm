@@ -69,6 +69,7 @@ def test_signed_selection_takes_both_tails_beyond_the_magnitude_floor(scan):
     values = values_at(scan, selection)
     assert (values > 0).any() and (values < 0).any()
     assert (np.abs(values) > selection.threshold).all()
+    assert isinstance(selection.pick, BucketedPick)
     assert selection.pick.bucket_edges[0] < 0 < selection.pick.bucket_edges[-1]
     assert selection.token_idx.max() < 40
 

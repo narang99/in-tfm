@@ -5,13 +5,36 @@ A getter works on either the raw model or its NNsight-wrapped tracer - plain att
 access forwards identically through both - so the same getter serves capture and attribution.
 """
 
-from collections.abc import Callable
+from typing import Any, Protocol, overload, runtime_checkable
 
 import torch
 from nnsight.intervention.envoy import Envoy
 from nnsight.modeling.base import NNsight
 
-LayerGetter = Callable[[NNsight | torch.nn.Module], Envoy | torch.nn.Module]
+
+@runtime_checkable
+class LayerGetter(Protocol):
+    """Overloaded, so a raw model gives back a module and a wrapped model gives back an `Envoy`."""
+
+    @overload
+    def __call__(self, model: NNsight) -> Envoy: ...
+    @overload
+    def __call__(self, model: torch.nn.Module) -> torch.nn.Module: ...
+
+
+class SubmoduleGetter:
+    def __init__(self, layer_name: str) -> None:
+        self.layer_name = layer_name
+
+    @overload
+    def __call__(self, model: NNsight) -> Envoy: ...
+    @overload
+    def __call__(self, model: torch.nn.Module) -> torch.nn.Module: ...
+    def __call__(self, model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
+        layer: Any = model
+        for part in self.layer_name.split("."):
+            layer = layer[int(part)] if part.isdigit() else getattr(layer, part)
+        return layer
 
 
 def submodule_getter(layer_name: str) -> LayerGetter:
@@ -19,11 +42,4 @@ def submodule_getter(layer_name: str) -> LayerGetter:
 
     - The paths are submodule names of the adapter's `get_model()`, which `named_modules()` lists.
     """
-
-    def getter(model: NNsight | torch.nn.Module) -> Envoy | torch.nn.Module:
-        layer = model
-        for part in layer_name.split("."):
-            layer = layer[int(part)] if part.isdigit() else getattr(layer, part)
-        return layer
-
-    return getter
+    return SubmoduleGetter(layer_name)

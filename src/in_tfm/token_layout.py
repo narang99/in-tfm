@@ -54,6 +54,10 @@ class ConvLayout:
             raise ValueError(
                 "grouped convs have no single patch to take a Hadamard product against"
             )
+        if isinstance(conv.padding, str):
+            raise ValueError(
+                "padding given as a string has no fixed patch grid to unfold"
+            )
         self.kernel_size = conv.kernel_size
         self.dilation = conv.dilation
         self.padding = conv.padding

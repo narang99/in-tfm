@@ -9,9 +9,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..model import BOS_TOKEN, TRAINED_CONFIG, TRAINED_WEIGHTS, AttnOnlyForCausalLM
+from ..model import TRAINED_CONFIG, TRAINED_WEIGHTS, AttnOnlyForCausalLM
 from .config import LOG_FILE, TinyAttnOnlyTrainConfig
-from .corpus import prepare_tokens, story_starts
+from .corpus import bos_id, prepare_tokens, story_starts
 from .evaluation import evaluate
 from .loss import next_token_loss
 from .model_setup import build_model
@@ -22,7 +22,7 @@ def train(config: TinyAttnOnlyTrainConfig) -> Path:
     torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
     tokenizer, arrays = prepare_tokens(config)
-    bos = tokenizer.token_to_id(BOS_TOKEN)
+    bos = bos_id(tokenizer)
     seq_len = config.shape.seq_len
     starts = {name: story_starts(array, bos, seq_len) for name, array in arrays.items()}
     print(

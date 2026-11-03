@@ -29,6 +29,7 @@ def test_one_hot_round_trips_through_the_most_probable_label():
     labels = np.array([2, NOISE_LABEL, 0, 1, 2])
     memberships = one_hot_memberships(labels)
     assert isinstance(memberships[1], Noise)
+    assert isinstance(memberships[0], ClusterProbabilities)
     assert memberships[0].probabilities.tolist() == [0, 0, 1]
     assert np.array_equal(most_probable_labels(memberships), labels)
 
