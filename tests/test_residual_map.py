@@ -25,7 +25,7 @@ def test_each_writer_gives_its_own_value_on_the_dim():
     captures = {EMBED: torch.tensor([[1.0, 2.0]]), HEAD: torch.tensor([[3.0, -5.0]])}
     dependency = stream_map.dependency(1, 0, captures)
     assert [t.writer for t in dependency.terms] == [
-        FixedWriter(name="embedding", dim=1, token=0),
+        FixedWriter(name="embedding", tap=EMBED, dim=1, token=0),
         NeuronWriter(layer="head0", neuron=1, token=0),
     ]
     assert [t.term for t in dependency.terms] == [2.0, -5.0]
