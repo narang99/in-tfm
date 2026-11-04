@@ -3,6 +3,7 @@
 - `MnistCnnAdapter` is the 8/16 channel network, the smallest one above 98% accuracy.
 - `MnistCnnSmallAdapter` is the 2/4 channel network, the smallest one, at about 94% accuracy.
 - Hits are explained with DeepLift against a blank image, see `MnistCnn`.
+- Dependency reports work for the linear head only, see `dependency_map_for`.
 """
 
 from pathlib import Path
@@ -12,6 +13,7 @@ import torch
 from datasets import load_dataset
 
 from ...attribution import compute_deeplift_relevance
+from ...dependencies import FlattenMap
 from ...layers import submodule_getter
 from ...neuron_report import AttrFn
 from ...presenters import ImagePresenter
@@ -20,6 +22,8 @@ from ..base import reject_nnsight_wrapped
 from .model import IMAGE_SIZE, MnistCnn, MnistCnnChannels
 from .source import MnistSource, Unnormalized
 from .train import load_checkpoint
+
+HEAD_LAYER = "head.1"
 
 
 def positions_in_output(output: torch.Tensor) -> int:
@@ -80,6 +84,23 @@ class MnistAdapter:
 
     def layout_for(self, layer: torch.nn.Module) -> TokenLayout:
         return image_layer_layout(layer)
+
+    def dependency_map_for(self, target_layer: str) -> FlattenMap:
+        """The head reads `relu2(conv2)` flattened. Each conv reads k x k cells of every
+        channel, so a conv's input dim is not one upstream neuron and has no map."""
+        if target_layer != HEAD_LAYER:
+            raise ValueError(
+                f"only {HEAD_LAYER} has a dependency map, {target_layer} reads conv patches"
+            )
+        head = self.model.head[1]
+        assert isinstance(head, torch.nn.Linear)
+        return FlattenMap(
+            upstream_layer="conv2",
+            n_channels=self.model.conv2.out_channels,
+            n_cells=positions_in_layer(self.model, self.model.conv2),
+            target_in_features=head.in_features,
+            elementwise=self.model.relu2,
+        )
 
     def make_source(self, samples: list[int]) -> MnistSource:
         n_tokens = positions_in_layer(
