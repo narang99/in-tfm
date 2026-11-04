@@ -18,3 +18,5 @@ hits:
 clustering:
   strategy:
     min_cluster_size: 5
+dependencies:
+  writer_configs: [configs/mnist_cnn_small_conv2_writers.yaml]
