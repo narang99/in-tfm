@@ -8,7 +8,7 @@
 """
 
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 import torch
@@ -48,6 +48,7 @@ class WriterReportRef(BaseModel):
     """How to draw its Hadamard row: `(channels, k, k)` for a conv, `(dim,)` otherwise."""
 
 
+@runtime_checkable
 class Matcher(Protocol):
     """Matches firings of one writer neuron to its own clusters, see `matching.WriterMatcher`."""
 

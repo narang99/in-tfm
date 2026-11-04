@@ -1,0 +1,26 @@
+<h1>Dependency graph</h1>
+<p class="meta">Every origin cluster of this run, and the writer clusters its dependency firings matched.</p>
+
+<section class="page-section" id="graph">
+<h2><span class="step">1</span>Origin clusters to writer clusters</h2>
+<p class="lede">An edge's width is its share of the origin cluster's matched |contribution|, so each origin cluster's edges sum to 1. Green edges add to the origin neuron overall, red ones inhibit it. Writers without a report of their own are left out.</p>
+<p class="view-note">Per origin cluster: {{ description }}.</p>
+{{ sankey_html|safe }}
+</section>
+
+<section class="page-section" id="origins">
+<h2><span class="step">2</span>Per origin cluster</h2>
+<table class="borders">
+<thead><tr><th>origin cluster</th><th>examples</th><th>writer clusters shown</th><th>hidden</th></tr></thead>
+<tbody>
+{% for node in nodes %}
+<tr>
+<td><a href="{{ node.href }}">{{ node.label }}</a></td>
+<td>{{ node.n_examples }}</td>
+<td>{% for row in node.edges.shown %}{% set e = row.members[0] %}<a class="cl-chip small" style="{{ e.style }}" href="{{ e.href }}" title="{{ e.n_firings }} firings">{{ e.target.label }} {{ "{:.0%}".format(e.share) }}</a> {% endfor %}</td>
+<td class="muted">{% if node.edges.rest %}{{ node.edges.rest|length }} ({{ "{:.0%}".format(node.edges.rest_share) }}){% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
