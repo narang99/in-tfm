@@ -1,0 +1,23 @@
+# Every logit of the 2/4 MNIST net, and its dependencies on conv2, matched to conv2's own clusters.
+# Every positive logit is a hit: bucketed, floor 0, over the first 100 test images of each digit.
+# Run with:
+#   uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_conv2_writers.yaml
+#   uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_logits.yaml
+#   uv run python scripts/run_dependency_report.py --config configs/mnist_cnn_small_logits.yaml
+model: self/mnist-cnn-small
+layer_name: head.1
+neuron_start: 0
+neuron_end: 9
+batch_size: 64
+out_dir: reports/mnist_cnn_small_logits
+mnist:
+  images_per_class: 100
+hits:
+  method: bucketed
+  bucket_floor_fraction: 0.0
+# About 200 hits per logit are too few for HDBSCAN's default of 10, see mnist_cnn_small_logit9.yaml.
+clustering:
+  strategy:
+    min_cluster_size: 5
+dependencies:
+  writer_configs: [configs/mnist_cnn_small_conv2_writers.yaml]
