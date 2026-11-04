@@ -1,6 +1,6 @@
 <section class="cluster" id="cluster-{{ cluster_id }}" style="{{ style }}">
 <header class="cluster-head"><span class="cluster-badge">Cluster {{ cluster_id }}</span><span class="cluster-stats">n={{ n_hits }} &middot; {{ n_unique_images }} unique samples</span></header>
-<div class="cluster-body">
+<div class="cluster-body pending"><template class="lazy-body">
 {{ body|safe }}
-</div>
+</template></div>
 </section>
