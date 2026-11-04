@@ -32,6 +32,8 @@ class DecoderTextAdapter(ABC):
 
     attr_fn = staticmethod(compute_attnlrp_relevance)
     prepend_bos = False
+    embed_path = "embed_tokens"
+    """Where `get_model()` keeps the embedding table."""
 
     def __init__(
         self,
@@ -64,7 +66,7 @@ class DecoderTextAdapter(ABC):
         return TextSource(
             samples,
             self.tokenizer,
-            self.get_model().get_submodule("embed_tokens"),
+            self.get_model().get_submodule(self.embed_path),
             self.max_length,
             self.prepend_bos,
         )

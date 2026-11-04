@@ -15,12 +15,13 @@ the hit count.
 
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from datasets import load_dataset
 
 from in_tfm.models import ModelAdapter
-from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
+from in_tfm.models.attn_only_2l import AttnOnly2LAdapter, TinyAttnOnlyAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.inception_v1.adapter import InceptionV1Adapter
 from in_tfm.models.inception_v1.source import image_paths, spread_indices
@@ -29,6 +30,8 @@ from in_tfm.models.mnist_cnn.source import first_per_class
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources.wikitext import load_texts
+
+TINY_ATTN_ONLY_1L_CHECKPOINT = Path("checkpoints/tiny_attn_only_1l")
 
 
 def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
@@ -39,6 +42,10 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
             )
         case ModelName.ATTN_ONLY_2L:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
+        case ModelName.TINY_ATTN_ONLY_1L:
+            return TinyAttnOnlyAdapter.from_checkpoint(
+                TINY_ATTN_ONLY_1L_CHECKPOINT, config.text.max_length
+            )
         case ModelName.MNIST_CNN:
             return MnistCnnAdapter.from_pretrained(
                 config.layer_name,

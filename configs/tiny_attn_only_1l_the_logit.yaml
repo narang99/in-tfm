@@ -1,0 +1,27 @@
+# The " the" logit (token 263) of our 1-layer attn-only model, both tails, about 4M positions.
+# A hit's clustered row is x1 ⊙ W_U[the], since lm_head's input is the final residual.
+# Needs the checkpoint at checkpoints/tiny_attn_only_1l. HDBSCAN on 1M hits wants a GPU (cuml).
+#   python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_the_logit.yaml
+model: self/tiny-attn-only-1l
+layer_name: lm_head
+neurons: [263]
+polarity: signed
+batch_size: 64
+out_dir: reports/tiny_attn_only_1l_the_logit
+text:
+  dataset: roneneldan/TinyStories
+  dataset_config: null
+  split: train
+  unit: document
+  n_samples: 19600
+  max_length: 256
+hits:
+  method: bucketed
+  max_hits: 1000000
+clustering:
+  distance: euclidean
+  normalise: false
+  strategy:
+    method: hdbscan
+    min_cluster_size: 50
+    selection_method: leaf
