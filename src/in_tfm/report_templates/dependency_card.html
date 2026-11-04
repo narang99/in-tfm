@@ -1,0 +1,20 @@
+{% from "dependency_tables.html" import signed, writer_table %}
+{% set s = card.summary %}
+<section class="dep-card" id="{{ card.anchor }}">
+<div class="dep-head">
+<h3>{{ card.title }}</h3>
+<span class="dep-fired"><b>{{ "{:.0%}".format(s.fired_ratio) }}</b> fired ({{ s.n_fired }})</span>
+<span>median contribution {{ signed(s.median_contribution) }}</span>
+<span class="muted">share {{ "{:.3g}".format(s.share) }}</span>
+<span class="spark" title="cumulative |median contribution|, positive left, negative right">
+<svg width="{{ card.sparkline.width }}" height="{{ card.sparkline.height }}" viewBox="0 0 {{ card.sparkline.width }} {{ card.sparkline.height }}">
+<polyline points="{{ card.sparkline.positive_points }}" class="spark-pos"/>
+<polyline points="{{ card.sparkline.negative_points }}" class="spark-neg"/>
+{% if card.sparkline.marker_x is not none %}<line x1="{{ card.sparkline.marker_x }}" x2="{{ card.sparkline.marker_x }}" y1="0" y2="{{ card.sparkline.height }}" class="spark-mark"/>{% endif %}
+</svg>
+<span class="muted">{{ card.sparkline.label }}</span>
+</span>
+</div>
+{{ card.strip_html|safe }}
+{{ writer_table(card.writers, card.median_units) }}
+</section>

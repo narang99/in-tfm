@@ -1,0 +1,46 @@
+{% from "dependency_tables.html" import dependency_rows %}
+<h1>{{ origin.layer }}:{{ origin.neuron }}, cluster {{ origin.cluster_id }}: what it depends on</h1>
+<p class="meta"><a href="../../index.html#cluster-{{ origin.cluster_id }}">&larr; the cluster in its neuron report</a></p>
+<div class="stats">{% for tile in tiles %}<div class="stat"><b>{{ tile.value }}</b><span>{{ tile.name }}</span></div>{% endfor %}</div>
+
+<details class="guide">
+<summary>How to read this page</summary>
+<dl>
+<dt>Example</dt><dd>One hit of the cluster, a sample and the token the neuron fired at.</dd>
+<dt>Dependency</dt><dd>One input dim of {{ origin.layer }}. Per example, the dims kept are the fewest, largest first, whose input × weight reach {{ "{:.0%}".format(selection.dim_mass) }} of the total |input × weight|.</dd>
+<dt>Writer</dt><dd>What a dim is made of. A dim fed through a ReLU has one writer, a residual stream dim one per layer writing to it. Per firing, the writers kept are the ones reaching {{ "{:.0%}".format(selection.writer_mass) }} of the dim's |value|.</dd>
+<dt>Noise units</dt><dd>(value − noise median) / (top of the noise's 90% shorth − median), against the writer's own noise at random positions. Past {{ settings.threshold }} is clearly above noise.</dd>
+<dt>Contribution</dt><dd>A writer's part of the neuron's activation. Positive adds to it, negative inhibits it.</dd>
+<dt>Share</dt><dd>Fired ratio × |median contribution|. Tables are ranked and cut by it, as each table's note says.</dd>
+</dl>
+</details>
+
+<section class="page-section" id="noise">
+<h2><span class="step">1</span>How far above noise the writers fire</h2>
+<p class="lede">Every writer firing of a frequent dependency, in its own noise units. The right column is, per example, the fraction of its writer firings past {{ settings.threshold }}. Adding and inhibiting are split by each writer's own contribution sign.</p>
+{{ histograms_html|safe }}
+</section>
+
+<section class="page-section" id="frequent">
+<h2><span class="step">2</span>Frequent dependencies</h2>
+<p class="lede">Dependencies firing in at least the frequent threshold of examples, one card each. The strip shows each writer's firings in noise units, over its 90% noise band.</p>
+<p class="view-note">{{ cards.rest.description }}.{% if cards.rest.rest %} {{ cards.rest.rest|length }} more frequent dependencies hold {{ "{:.3g}".format(cards.rest.rest_share) }} of the share.{% endif %}</p>
+{% for card in cards.cards %}
+{% include "dependency_card.html" %}
+{% endfor %}
+{% if cards.rest.rest %}
+<details><summary>the other {{ cards.rest.rest|length }} frequent dependencies</summary>
+{{ dependency_rows(cards.rest.rest|map(attribute="members")|map("first")|list, cards.titles) }}
+</details>
+{% endif %}
+</section>
+
+<section class="page-section" id="one-off">
+<h2><span class="step">3</span>One-off dependencies</h2>
+<p class="lede">{{ cards.one_offs|length }} dependencies fired in fewer examples than the frequent threshold.</p>
+{% if cards.one_offs %}
+<details><summary>list them</summary>
+{{ dependency_rows(cards.one_offs, cards.titles) }}
+</details>
+{% endif %}
+</section>
