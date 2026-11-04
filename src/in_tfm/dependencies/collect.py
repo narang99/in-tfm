@@ -16,12 +16,19 @@ from pydantic import BaseModel
 from tqdm import tqdm
 
 from ..clustered_hits import load_clustered_hits
-from ..sources import SampleId, SampleSource
-from .capture import LayoutFor, capture_taps, sample_captures
+from ..sources import SampleId
+from .capture import CaptureSetup, capture_taps, sample_captures
 from .dependency_map import DependencyMap
-from .firings import DependencyFiring, Example, FiringSelection, example_firings
+from .firings import (
+    DependencyFiring,
+    Example,
+    FiringSelection,
+    Matcher,
+    WriterReportRef,
+    example_firings,
+)
 from .noise import NoiseSample, NoiseSampler
-from .refs import Tap, TapColumn
+from .refs import NeuronWriter, Tap, TapColumn
 
 DEPENDENCIES_DIR = "dependencies"
 FIRINGS_NAME = "firings.json"
@@ -41,14 +48,18 @@ class ClusterDependencies(BaseModel):
     firings: list[DependencyFiring]
     noise: list[NoiseSample]
     """One per column that fired: each writer's own column, and each fired dim of the target input."""
+    writer_reports: list[WriterReportRef] = []
+    """The writers whose firings were matched to their own clusters."""
 
 
-class CaptureSetup(BaseModel, arbitrary_types_allowed=True):
-    model: torch.nn.Module
-    source: SampleSource
-    layout_for: LayoutFor
-    batch_size: int
-    device: str
+Matchers = dict[tuple[str, int], Matcher]
+"""By writer layer and neuron."""
+
+
+class PendingMatch(BaseModel, arbitrary_types_allowed=True):
+    firing: int
+    writer: int
+    input: Float[torch.Tensor, "hidden"]
 
 
 def cluster_examples(origin: OriginCluster) -> list[Example]:
@@ -66,6 +77,45 @@ def examples_by_sample(examples: list[Example]) -> dict[SampleId, list[int]]:
     return grouped
 
 
+def matcher_of(writer: object, matchers: Matchers) -> Matcher | None:
+    if isinstance(writer, NeuronWriter):
+        return matchers.get((writer.layer, writer.neuron))
+    return None
+
+
+def pending_matches(
+    firings: list[DependencyFiring],
+    first: int,
+    sample: dict[Tap, torch.Tensor],
+    matchers: Matchers,
+) -> dict[tuple[str, int], list[PendingMatch]]:
+    """The inputs of every matchable writer in `firings[first:]`, read from this sample's captures."""
+    pending: dict[tuple[str, int], list[PendingMatch]] = {}
+    for index in range(first, len(firings)):
+        for slot, writer in enumerate(firings[index].writers):
+            matcher = matcher_of(writer.writer, matchers)
+            if matcher is None:
+                continue
+            key = (matcher.report.layer, matcher.report.neuron)
+            row = sample[matcher.tap][writer.writer.token]
+            pending.setdefault(key, []).append(
+                PendingMatch(firing=index, writer=slot, input=row)
+            )
+    return pending
+
+
+def attach_matches(
+    firings: list[DependencyFiring],
+    pending: dict[tuple[str, int], list[PendingMatch]],
+    matchers: Matchers,
+) -> None:
+    """One matcher call per writer neuron, over all its firings at once."""
+    for key, rows in pending.items():
+        matches = matchers[key].match(torch.stack([row.input for row in rows]))
+        for row, match in zip(rows, matches):
+            firings[row.firing].writers[row.writer].match = match
+
+
 def collect_firings(
     setup: CaptureSetup,
     examples: list[Example],
@@ -73,10 +123,13 @@ def collect_firings(
     weight_row: Float[torch.Tensor, "hidden"],
     dependency_map: DependencyMap,
     selection: FiringSelection,
+    matchers: Matchers,
 ) -> list[DependencyFiring]:
     grouped = examples_by_sample(examples)
-    taps = [target, *dependency_map.taps]
+    matcher_taps = {m.tap for m in matchers.values()} - set(dependency_map.taps)
+    taps = [target, *dependency_map.taps, *matcher_taps]
     firings: list[DependencyFiring] = []
+    pending: dict[tuple[str, int], list[PendingMatch]] = {}
     for chunk in tqdm(list(batched(grouped, setup.batch_size)), desc="firings"):
         batch = setup.source.to_model_batch(list(chunk))
         captures = capture_taps(
@@ -84,6 +137,7 @@ def collect_firings(
         )
         for row, sample_id in enumerate(chunk):
             sample = sample_captures(captures, row)
+            first = len(firings)
             for index in grouped[sample_id]:
                 token = examples[index].token
                 firings += example_firings(
@@ -95,6 +149,9 @@ def collect_firings(
                     dependency_map,
                     selection,
                 )
+            for key, rows in pending_matches(firings, first, sample, matchers).items():
+                pending.setdefault(key, []).extend(rows)
+    attach_matches(firings, pending, matchers)
     return firings
 
 
@@ -125,11 +182,14 @@ def collect_cluster_dependencies(
     dependency_map: DependencyMap,
     selection: FiringSelection,
     seed: int,
+    matchers: Matchers | None = None,
 ) -> ClusterDependencies:
+    """Without `matchers`, no firing is matched to its writer's clusters."""
+    matchers = matchers or {}
     target = Tap(layer=origin.layer, port="input")
     examples = cluster_examples(origin)
     firings = collect_firings(
-        setup, examples, target, weight_row, dependency_map, selection
+        setup, examples, target, weight_row, dependency_map, selection, matchers
     )
     noise = sample_noise(setup, fired_columns(firings, target), seed)
     return ClusterDependencies(
@@ -138,6 +198,7 @@ def collect_cluster_dependencies(
         examples=examples,
         firings=firings,
         noise=noise,
+        writer_reports=[m.report for m in matchers.values()],
     )
 
 
