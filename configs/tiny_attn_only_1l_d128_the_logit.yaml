@@ -1,0 +1,26 @@
+# Run with: uv run python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_d128_the_logit.yaml
+# The " the" logit (token 263) of the 1L d128 attn-only model, over TinyStories validation stories.
+# Small enough for a laptop: 400 stories of up to 128 tokens.
+model: self/tiny-attn-only-1l-d128
+layer_name: lm_head
+neurons: [263]
+polarity: signed
+batch_size: 16
+out_dir: reports/tiny_attn_only_1l_d128_the_logit
+text:
+  dataset: roneneldan/TinyStories
+  dataset_config: null
+  split: validation
+  unit: document
+  n_samples: 400
+  max_length: 128
+hits:
+  method: bucketed
+  max_hits: 2000
+# Raw euclidean HDBSCAN, as in experiments/the-logit-clusters-1l.md, with min_cluster_size scaled to 2000 hits.
+clustering:
+  distance: euclidean
+  normalise: false
+  strategy:
+    method: hdbscan
+    min_cluster_size: 20

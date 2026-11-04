@@ -33,6 +33,7 @@ class ModelName(StrEnum):
     GEMMA3_270M = "google/gemma-3-270m"
     MARIN_32B = "marin-community/marin-32b-base"
     ATTN_ONLY_2L = "self/attn-only-2l"
+    TINY_ATTN_ONLY_1L_D128 = "self/tiny-attn-only-1l-d128"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
     INCEPTION_V1 = "lucent/inception-v1"
@@ -44,6 +45,7 @@ MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.MARIN_32B: "text",
     ModelName.ATTN_ONLY_2L: "text",
+    ModelName.TINY_ATTN_ONLY_1L_D128: "text",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
     ModelName.INCEPTION_V1: "inception",
