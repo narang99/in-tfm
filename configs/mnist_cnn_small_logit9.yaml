@@ -1,0 +1,20 @@
+# Logit 9 of the 2/4 MNIST net, and its dependencies on conv2.
+# Every positive logit is a hit: bucketed, floor 0, over the first 100 test images of each digit.
+# Run with:
+#   uv run python scripts/run_neuron_report.py --config configs/mnist_cnn_small_logit9.yaml
+#   uv run python scripts/run_dependency_report.py --config configs/mnist_cnn_small_logit9.yaml
+model: self/mnist-cnn-small
+layer_name: head.1
+neurons: [9]
+batch_size: 64
+out_dir: reports/mnist_cnn_small_logit9
+mnist:
+  images_per_class: 100
+hits:
+  method: bucketed
+  bucket_floor_fraction: 0.0
+# 221 hits are too few for HDBSCAN's default of 10, which finds no clusters. 5 finds 2.
+# Weighted Jaccard, raw, finds none at 5.
+clustering:
+  strategy:
+    min_cluster_size: 5

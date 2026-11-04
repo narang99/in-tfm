@@ -1,4 +1,5 @@
 # Run with: uv run python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_d128_the_logit.yaml
+# Then its dependencies with: uv run python scripts/run_dependency_report.py --config configs/tiny_attn_only_1l_d128_the_logit.yaml
 # The " the" logit (token 263) of the 1L d128 attn-only model, over TinyStories validation stories.
 # Small enough for a laptop: 400 stories of up to 128 tokens.
 model: self/tiny-attn-only-1l-d128
