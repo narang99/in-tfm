@@ -31,6 +31,7 @@ from .activation_ranges import (
     write_activation_ranges,
 )
 from .attribution import compute_attnlrp_relevance
+from .clustered_hits import ClusteredHits, clustered_hits, write_clustered_hits
 from .device import default_device, empty_cache
 from .hit_selection import BucketedPick, ElbowPick, HitSelection, TailSelection
 from .html_report import (
@@ -352,6 +353,15 @@ class NeuronClusterHits(BaseModel):
         )
         write_activation_ranges(report_dir, ranges)
 
+    def _clustered_hits(self) -> ClusteredHits:
+        return clustered_hits(
+            self.sample_ids,
+            self.selection.batch_idx,
+            self.selection.token_idx,
+            self.labels,
+            self.selection.activations,
+        )
+
     def write_report(
         self,
         out_dir: str | Path,
@@ -384,6 +394,7 @@ class NeuronClusterHits(BaseModel):
         write_report_meta(report_dir, meta)
 
         self._write_activation_ranges(report_dir, cluster_ids)
+        write_clustered_hits(report_dir, self._clustered_hits())
         for cid in cluster_ids:
             self._cache_cluster(cid, report_dir, attr_fn, max_n)
         return render_report(report_dir, self.presenter)
