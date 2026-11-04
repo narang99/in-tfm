@@ -34,6 +34,4 @@ def find_pruneable_heads_and_indices(
     return to_prune, index
 
 
-setattr(
-    pytorch_utils, "find_pruneable_heads_and_indices", find_pruneable_heads_and_indices
-)
+pytorch_utils.find_pruneable_heads_and_indices = find_pruneable_heads_and_indices

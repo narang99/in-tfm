@@ -35,7 +35,7 @@ def patch_eager_attention(module: types.ModuleType) -> bool:
     new_forward = wrap_attention_forward(module.eager_attention_forward)
     if check_already_patched(module.eager_attention_forward, new_forward):
         return False
-    setattr(module, "eager_attention_forward", new_forward)
+    module.eager_attention_forward = new_forward
     return True
 
 

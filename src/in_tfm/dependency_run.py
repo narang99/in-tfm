@@ -8,10 +8,12 @@
 from pathlib import Path
 
 import torch
+from pydantic import BaseModel
 
 from .dependencies import DependencyMap, SupportsDependencies
 from .dependencies.collect import (
     CaptureSetup,
+    ClusterDependencies,
     Matchers,
     OriginCluster,
     collect_cluster_dependencies,
@@ -19,8 +21,11 @@ from .dependencies.collect import (
 )
 from .dependencies.matching import WriterReport, build_matcher
 from .dependency_page import write_dependency_page
+from .dependency_page.graph import write_graph_page
 from .models import ModelAdapter
+from .neuron_report import render_report
 from .neuron_run import clustered_label, layer_getter_for, report_name, timed
+from .presenters import ClusterPresenter
 from .report_meta import ReportMeta, load_report_meta
 from .run_config import RunConfig, load_run_config
 from .sources import SampleSource
@@ -90,13 +95,63 @@ def cluster_ids_to_report(config: RunConfig, meta: ReportMeta) -> list[int]:
     return config.dependencies.cluster_ids or list(meta.clusters)
 
 
+class DependencyRun(BaseModel, arbitrary_types_allowed=True):
+    config: RunConfig
+    setup: CaptureSetup
+    dependency_map: DependencyMap
+    weight: torch.Tensor
+    matchers: Matchers
+    presenter: ClusterPresenter
+
+
+def report_cluster(run: DependencyRun, origin: OriginCluster) -> ClusterDependencies:
+    tag = f"neuron {origin.neuron} cluster {origin.cluster_id}"
+    with timed(f"{tag}: collect"):
+        collected = collect_cluster_dependencies(
+            run.setup,
+            origin,
+            run.weight[origin.neuron],
+            run.dependency_map,
+            run.config.dependencies.selection,
+            run.matchers,
+        )
+    write_cluster_dependencies(collected)
+    with timed(f"{tag}: page"):
+        page = write_dependency_page(
+            origin.report_dir,
+            origin.cluster_id,
+            run.config.dependencies.stats,
+            run.config.dependencies.view,
+            run.presenter,
+        )
+    print(f"[{tag}] {len(collected.examples)} examples -> {page}")
+    return collected
+
+
+def report_neuron(run: DependencyRun, neuron: int) -> list[ClusterDependencies]:
+    report_dir = Path(run.config.out_dir) / report_name(neuron, run.config.polarity)
+    meta = load_report_meta(report_dir)
+    check_same_samples(meta, run.setup.source, report_dir)
+    return [
+        report_cluster(
+            run,
+            OriginCluster(
+                report_dir=report_dir,
+                layer=run.config.layer_name,
+                neuron=neuron,
+                cluster_id=cluster_id,
+            ),
+        )
+        for cluster_id in cluster_ids_to_report(run.config, meta)
+    ]
+
+
 def run_dependency_reports[SamplesT, SourceT: SampleSource](
     config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
-) -> list[Path]:
-    dependency_map = dependency_map_of(adapter, config.layer_name)
+) -> Path:
+    """Returns the run's graph page. Each origin report is re-rendered, so its clusters link to their pages."""
     module = adapter.get_model().eval()
     source = adapter.make_source(samples)
-    weight = layer_weight(layer_getter_for(config)(module), adapter)
     setup = CaptureSetup(
         model=module,
         source=source,
@@ -104,40 +159,23 @@ def run_dependency_reports[SamplesT, SourceT: SampleSource](
         batch_size=config.batch_size,
         device=config.device,
     )
-    matchers = writer_matchers(config, adapter, module, setup)
     presenter = adapter.make_presenter(source, clustered_label(config.clustering))
-    pages = []
+    run = DependencyRun(
+        config=config,
+        setup=setup,
+        dependency_map=dependency_map_of(adapter, config.layer_name),
+        weight=layer_weight(layer_getter_for(config)(module), adapter),
+        matchers=writer_matchers(config, adapter, module, setup),
+        presenter=presenter,
+    )
+    collections: list[ClusterDependencies] = []
     for neuron in config.neuron_idxs:
-        report_dir = Path(config.out_dir) / report_name(neuron, config.polarity)
-        meta = load_report_meta(report_dir)
-        check_same_samples(meta, source, report_dir)
-        for cluster_id in cluster_ids_to_report(config, meta):
-            origin = OriginCluster(
-                report_dir=report_dir,
-                layer=config.layer_name,
-                neuron=neuron,
-                cluster_id=cluster_id,
-            )
-            with timed(f"neuron {neuron} cluster {cluster_id}: collect"):
-                collected = collect_cluster_dependencies(
-                    setup,
-                    origin,
-                    weight[neuron],
-                    dependency_map,
-                    config.dependencies.selection,
-                    matchers,
-                )
-            write_cluster_dependencies(collected)
-            with timed(f"neuron {neuron} cluster {cluster_id}: page"):
-                page = write_dependency_page(
-                    report_dir,
-                    cluster_id,
-                    config.dependencies.stats,
-                    config.dependencies.view,
-                    presenter,
-                )
-            print(
-                f"[neuron {neuron} cluster {cluster_id}] {len(collected.examples)} examples -> {page}"
-            )
-            pages.append(page)
-    return pages
+        collections += report_neuron(run, neuron)
+        render_report(
+            Path(config.out_dir) / report_name(neuron, config.polarity), presenter
+        )
+    graph = write_graph_page(
+        collections, Path(config.out_dir), config.dependencies.view
+    )
+    print(f"[graph] {graph}")
+    return graph

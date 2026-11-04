@@ -14,8 +14,8 @@
 """
 
 import torch
-import torch.nn as nn
 from pydantic import BaseModel
+from torch import nn
 
 NUM_CLASSES = 10
 IMAGE_SIZE = 28

@@ -90,7 +90,7 @@ def _token_colors(value: float, vmax: float) -> TokenColors:
 def _hex(cmap: Colormap, value: float, vmax: float) -> str:
     normed = 0.5 if vmax <= 0 else float(np.clip((value + vmax) / (2 * vmax), 0.0, 1.0))
     r, g, b, _ = cmap(normed)
-    return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
 
 def _readable_fg(bg_hex: str) -> str:

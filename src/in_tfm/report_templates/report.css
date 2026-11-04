@@ -124,3 +124,4 @@ table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
 .fire-label { font-size:0.8rem; color:var(--muted); white-space:nowrap; min-width:18em; }
 .fire-body { border-left:4px solid var(--accent); padding:6px 12px; margin:6px 0 10px; }
 .fire-outliers > summary { font-size:0.75rem; cursor:pointer; margin:2px 0 4px; }
+.dep-link { margin:0 0 8px; font-size:0.85rem; }
