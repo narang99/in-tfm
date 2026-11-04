@@ -15,6 +15,27 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class Tap(BaseModel):
+    """A layer's input or output, saved in the same forward pass as the target.
+
+    - An input tap is for values no module outputs, like the embeddings a text source passes in.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    layer: str
+    port: Literal["input", "output"] = "output"
+
+
+class TapColumn(BaseModel):
+    """One neuron or dim of a tap at any token, the unit a noise sample is drawn for."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tap: Tap
+    column: int
+
+
 class NeuronWriter(BaseModel):
     """A neuron with its own report, so a firing of it can be matched to its clusters."""
 
@@ -25,6 +46,10 @@ class NeuronWriter(BaseModel):
     neuron: int
     token: int
 
+    @property
+    def column(self) -> TapColumn:
+        return TapColumn(tap=Tap(layer=self.layer), column=self.neuron)
+
 
 class FixedWriter(BaseModel):
     """A term with no clusters, like a token embedding or a bias."""
@@ -33,8 +58,13 @@ class FixedWriter(BaseModel):
 
     kind: Literal["fixed"] = "fixed"
     name: str
+    tap: Tap
     dim: int
     token: int
+
+    @property
+    def column(self) -> TapColumn:
+        return TapColumn(tap=self.tap, column=self.dim)
 
 
 Writer = Annotated[NeuronWriter | FixedWriter, Field(discriminator="kind")]

@@ -10,8 +10,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .dependency_map import Captures, Tap
-from .refs import Dependency, FixedWriter, NeuronWriter, Writer, WriterTerm
+from .dependency_map import Captures
+from .refs import Dependency, FixedWriter, NeuronWriter, Tap, Writer, WriterTerm
 
 
 class ReportedSource(BaseModel):
@@ -36,7 +36,7 @@ class FixedSource(BaseModel):
     tap: Tap
 
     def writer(self, dim: int, token: int) -> Writer:
-        return FixedWriter(name=self.name, dim=dim, token=token)
+        return FixedWriter(name=self.name, tap=self.tap, dim=dim, token=token)
 
 
 StreamSource = Annotated[ReportedSource | FixedSource, Field(discriminator="kind")]
