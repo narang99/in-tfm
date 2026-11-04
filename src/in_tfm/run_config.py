@@ -230,6 +230,14 @@ class DependencyConfig(Section):
     threshold: float = Field(
         0.8, description="noise units past which a writer firing counts as above noise"
     )
+    outlier_ratio: float = Field(
+        0.1,
+        description="a writer's cluster holding fewer of its matched firings than this is folded as an outlier",
+    )
+    writer_configs: list[Path] = Field(
+        [],
+        description="run configs of the writer layers' own neuron reports. Their firings are matched to those reports' clusters",
+    )
     view: ViewPolicy = ViewPolicy()
 
     @property
@@ -242,6 +250,7 @@ class DependencyConfig(Section):
             min_fired_ratio=self.min_fired_ratio,
             min_fired_count=self.min_fired_count,
             threshold=self.threshold,
+            outlier_ratio=self.outlier_ratio,
         )
 
 

@@ -12,15 +12,17 @@ import torch
 from .dependencies import DependencyMap, SupportsDependencies
 from .dependencies.collect import (
     CaptureSetup,
+    Matchers,
     OriginCluster,
     collect_cluster_dependencies,
     write_cluster_dependencies,
 )
+from .dependencies.matching import WriterReport, build_matcher
 from .dependency_page import write_dependency_page
 from .models import ModelAdapter
 from .neuron_run import layer_getter_for, report_name, timed
 from .report_meta import ReportMeta, load_report_meta
-from .run_config import RunConfig
+from .run_config import RunConfig, load_run_config
 from .sources import SampleSource
 
 
@@ -32,13 +34,59 @@ def dependency_map_of(adapter: object, target_layer: str) -> DependencyMap:
     return adapter.dependency_map_for(target_layer)
 
 
-def target_weight(
-    config: RunConfig, adapter: ModelAdapter, module: torch.nn.Module
-) -> torch.Tensor:
-    layer = layer_getter_for(config)(module)
+def layer_weight(layer: torch.nn.Module, adapter: ModelAdapter) -> torch.Tensor:
     weight = layer.weight
     assert isinstance(weight, torch.Tensor)
     return adapter.layout_for(layer).weight(weight).detach().cpu()
+
+
+def tile_shape_of(layer: torch.nn.Module) -> tuple[int, ...]:
+    """How a Hadamard row on this layer is drawn, one tile per input channel for a conv."""
+    if isinstance(layer, torch.nn.Conv2d):
+        return (layer.in_channels, *layer.kernel_size)
+    weight = layer.weight
+    assert isinstance(weight, torch.Tensor)
+    return (weight.shape[1],)
+
+
+def writer_reports(
+    writer_config: RunConfig, module: torch.nn.Module
+) -> list[WriterReport]:
+    """Every neuron of the writer config that has a report on disk."""
+    layer = layer_getter_for(writer_config)(module)
+    reports = [
+        WriterReport(
+            layer=writer_config.layer_name,
+            neuron=neuron,
+            report_dir=Path(writer_config.out_dir)
+            / report_name(neuron, writer_config.polarity),
+            clustering=writer_config.clustering,
+            tile_shape=tile_shape_of(layer),
+        )
+        for neuron in writer_config.neuron_idxs
+    ]
+    return [r for r in reports if (r.report_dir / "meta.json").exists()]
+
+
+def writer_matchers(
+    config: RunConfig,
+    adapter: ModelAdapter,
+    module: torch.nn.Module,
+    setup: CaptureSetup,
+) -> Matchers:
+    matchers: Matchers = {}
+    for path in config.dependencies.writer_configs:
+        writer_config = load_run_config(["--config", str(path)])
+        weight = layer_weight(layer_getter_for(writer_config)(module), adapter)
+        for report in writer_reports(writer_config, module):
+            check_same_samples(
+                load_report_meta(report.report_dir), setup.source, report.report_dir
+            )
+            with timed(f"matcher {report.layer}:{report.neuron}"):
+                matchers[(report.layer, report.neuron)] = build_matcher(
+                    setup, report, weight
+                )
+    return matchers
 
 
 def check_same_samples(
@@ -61,7 +109,7 @@ def run_dependency_reports[SamplesT, SourceT: SampleSource](
     dependency_map = dependency_map_of(adapter, config.layer_name)
     module = adapter.get_model().eval()
     source = adapter.make_source(samples)
-    weight = target_weight(config, adapter, module)
+    weight = layer_weight(layer_getter_for(config)(module), adapter)
     setup = CaptureSetup(
         model=module,
         source=source,
@@ -69,6 +117,7 @@ def run_dependency_reports[SamplesT, SourceT: SampleSource](
         batch_size=config.batch_size,
         device=config.device,
     )
+    matchers = writer_matchers(config, adapter, module, setup)
     pages = []
     for neuron in config.neuron_idxs:
         report_dir = Path(config.out_dir) / report_name(neuron, config.polarity)
@@ -89,6 +138,7 @@ def run_dependency_reports[SamplesT, SourceT: SampleSource](
                     dependency_map,
                     config.dependencies.selection,
                     config.seed,
+                    matchers,
                 )
             write_cluster_dependencies(collected)
             with timed(f"neuron {neuron} cluster {cluster_id}: page"):
