@@ -1,4 +1,4 @@
-from .adapter import AttnOnly2LAdapter
+from .adapter import AttnOnly2LAdapter, TinyAttnOnlyAdapter
 from .model import (
     AttnOnlyConfig,
     AttnOnlyForCausalLM,
@@ -8,6 +8,7 @@ from .model import (
 
 __all__ = [
     "AttnOnly2LAdapter",
+    "TinyAttnOnlyAdapter",
     "AttnOnlyConfig",
     "AttnOnlyForCausalLM",
     "AttnOnlyModel",
