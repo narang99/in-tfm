@@ -1,7 +1,15 @@
 from .consistency import check_terms_rebuild_input
-from .dependency_map import Captures, DependencyMap, SupportsDependencies, Tap
+from .dependency_map import Captures, DependencyMap, SupportsDependencies
 from .flatten import FlattenMap
-from .refs import Dependency, FixedWriter, NeuronWriter, Writer, WriterTerm
+from .refs import (
+    Dependency,
+    FixedWriter,
+    NeuronWriter,
+    Tap,
+    TapColumn,
+    Writer,
+    WriterTerm,
+)
 from .residual import FixedSource, ReportedSource, ResidualStreamMap, StreamSource
 
 __all__ = [
@@ -17,6 +25,7 @@ __all__ = [
     "StreamSource",
     "SupportsDependencies",
     "Tap",
+    "TapColumn",
     "Writer",
     "WriterTerm",
     "check_terms_rebuild_input",
