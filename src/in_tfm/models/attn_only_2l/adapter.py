@@ -4,9 +4,16 @@ from typing import ClassVar
 import torch
 
 from ...attribution import patch_eager_attention
+from ...dependencies import (
+    FixedSource,
+    ReportedSource,
+    ResidualStreamMap,
+    StreamSource,
+    Tap,
+)
 from .. import text
 from . import model as attn_only_model
-from .model import load_attn_only_2l, load_trained_attn_only
+from .model import AttnOnlyConfig, load_attn_only_2l, load_trained_attn_only
 
 
 def patch_attn_only_for_attn_lrp(model: torch.nn.Module) -> None:
@@ -34,6 +41,23 @@ class AttnOnly2LAdapter(text.DecoderTextAdapter):
         patch_attn_only_for_attn_lrp(self.get_model())
 
 
+def stream_sources(n_layers: int, n_heads: int) -> list[StreamSource]:
+    """The final residual stream: the embeddings plus every head of every layer.
+
+    - The text source passes the embeddings in as `inputs_embeds`, so `embed_tokens` never runs.
+      - They are read as the first layer's input instead.
+    """
+    embedding = FixedSource(
+        name="embedding", tap=Tap(layer="model.layers.0", port="input")
+    )
+    heads = [
+        ReportedSource(layer=f"model.layers.{layer}.self_attn.o_proj.heads.{head}")
+        for layer in range(n_layers)
+        for head in range(n_heads)
+    ]
+    return [embedding, *heads]
+
+
 class TrainedAttnOnlyAdapter(AttnOnly2LAdapter):
     """Our own TinyStories models, see `attn_only_2l.train`. Subclasses name a checkpoint.
 
@@ -58,6 +82,21 @@ class TrainedAttnOnlyAdapter(AttnOnly2LAdapter):
 
     def embedding(self) -> torch.nn.Module:
         return self.hf_model.get_submodule("model.embed_tokens")
+
+    def dependency_map_for(self, target_layer: str) -> ResidualStreamMap:
+        """Only the unembed for now. `q_proj` and `k_proj` also read the positional embedding,
+        which is added inside attention and is no module's output."""
+        if target_layer != "lm_head":
+            raise ValueError(f"only lm_head has a dependency map, not {target_layer}")
+        config = self.hf_model.config
+        assert isinstance(config, AttnOnlyConfig)
+        if config.attention_bias:
+            raise ValueError(
+                "an o_proj bias would be a stream writer the map leaves out"
+            )
+        return ResidualStreamMap(
+            stream_sources(config.num_hidden_layers, config.num_attention_heads)
+        )
 
 
 class TinyAttnOnly1LD128Adapter(TrainedAttnOnlyAdapter):
