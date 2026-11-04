@@ -111,3 +111,11 @@ table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
 .spark-pos { stroke:#00A550; }
 .spark-neg { stroke:#d33; }
 .spark-mark { stroke:var(--fg); stroke-width:1; }
+.dep-clusters { margin:10px 0 4px; }
+.dep-clusters h4 { font-size:0.85rem; margin:8px 0 4px; }
+.cl-chip { display:inline-block; padding:0 8px; border-radius:10px; font-size:0.75rem; text-decoration:none;
+  background:var(--accent); color:var(--accent-ink); }
+.cl-chip.small { font-size:0.65rem; padding:0 6px; }
+.pairs { display:flex; flex-wrap:wrap; gap:12px; margin:6px 0; }
+.pair { margin:0; font-size:0.7rem; color:var(--muted); }
+.pair img { display:block; image-rendering:pixelated; border-radius:2px; }
