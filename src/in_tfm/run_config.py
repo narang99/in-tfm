@@ -24,6 +24,9 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from .dependencies.firings import FiringSelection
+from .dependencies.stats import StatsSettings
+from .dependencies.view import ViewPolicy
 from .device import default_device
 
 
@@ -199,6 +202,49 @@ class ReportConfig(Section):
     min_uniq_samples_per_cluster: int = 2
 
 
+class DependencyConfig(Section):
+    """What a dependency report of the neuron report above reads, and how it cuts it. Defaults are raw."""
+
+    cluster_ids: list[int] | None = Field(
+        None, description="origin clusters to report on, every shown cluster if unset"
+    )
+    dim_mass: float = Field(
+        0.9,
+        gt=0,
+        le=1,
+        description="per example, keep the input dims covering this share of |input * weight|",
+    )
+    writer_mass: float = Field(
+        0.9,
+        gt=0,
+        le=1,
+        description="per fired dim, keep the writers covering this share of its |terms|",
+    )
+    min_fired_ratio: float = Field(
+        0.1,
+        description="a dependency is frequent when it fires in this share of examples",
+    )
+    min_fired_count: int = Field(
+        2, description="and in at least this many, however few the examples"
+    )
+    threshold: float = Field(
+        0.8, description="noise units past which a writer firing counts as above noise"
+    )
+    view: ViewPolicy = ViewPolicy()
+
+    @property
+    def selection(self) -> FiringSelection:
+        return FiringSelection(dim_mass=self.dim_mass, writer_mass=self.writer_mass)
+
+    @property
+    def stats(self) -> StatsSettings:
+        return StatsSettings(
+            min_fired_ratio=self.min_fired_ratio,
+            min_fired_count=self.min_fired_count,
+            threshold=self.threshold,
+        )
+
+
 class RunConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True)
 
@@ -234,6 +280,7 @@ class RunConfig(BaseSettings):
     hits: HitSelectionConfig = HitSelectionConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: ReportConfig = ReportConfig()
+    dependencies: DependencyConfig = DependencyConfig()
 
     @classmethod
     def settings_customise_sources(
