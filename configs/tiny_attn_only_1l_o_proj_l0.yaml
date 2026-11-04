@@ -1,0 +1,27 @@
+# o_proj neurons of our 1-layer attn-only model, both tails, about 4M positions, 250k hits each.
+# A neuron is a residual dim, written by every head's o_proj block. Pick neurons with --neurons '[6, 8]'.
+# min_cluster_size is 12 since 250k hits with 50 drops most of the diffuse clusters a 1M run finds.
+#   python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_o_proj_l0.yaml --neurons '[6, 8]'
+model: self/tiny-attn-only-1l
+layer_name: model.layers.0.self_attn.o_proj
+neurons: [6]
+polarity: signed
+batch_size: 64
+out_dir: reports/tiny_attn_only_1l_o_proj_l0
+text:
+  dataset: roneneldan/TinyStories
+  dataset_config: null
+  split: train
+  unit: document
+  n_samples: 19600
+  max_length: 256
+hits:
+  method: bucketed
+  max_hits: 250000
+clustering:
+  distance: euclidean
+  normalise: false
+  strategy:
+    method: hdbscan
+    min_cluster_size: 12
+    selection_method: leaf
