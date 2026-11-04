@@ -60,11 +60,14 @@ class DecoderTextAdapter(ABC):
     def layout_for(self, layer: torch.nn.Module) -> TokenLayout:
         return SequenceLayout()
 
+    def embedding(self) -> torch.nn.Module:
+        return self.get_model().get_submodule("embed_tokens")
+
     def make_source(self, samples: Sequence[str]) -> TextSource:
         return TextSource(
             samples,
             self.tokenizer,
-            self.get_model().get_submodule("embed_tokens"),
+            self.embedding(),
             self.max_length,
             self.prepend_bos,
         )
