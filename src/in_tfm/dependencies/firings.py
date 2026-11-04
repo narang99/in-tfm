@@ -32,14 +32,21 @@ class WriterFiring(BaseModel):
     """The part of the dim's input value this writer accounts for."""
 
 
+def writer_contribution(firing: "DependencyFiring", writer: WriterFiring) -> float:
+    """This writer's share of the target's activation. Its sign says whether the writer adds or inhibits."""
+    return writer.term * firing.weight
+
+
 class DependencyFiring(BaseModel):
     example: int
     """Index into the run's examples."""
     dim: int
     input_value: float
     """The target's input on this dim."""
+    weight: float
+    """The target neuron's weight on this dim."""
     contribution: float
-    """`input_value * weight[dim]`. Its sign says whether it adds to the target or inhibits it."""
+    """`input_value * weight`. Its sign says whether it adds to the target or inhibits it."""
     writers: list[WriterFiring]
     """The writers covering `writer_mass` of the dim, largest |term| first."""
     n_writers: int
@@ -84,6 +91,7 @@ def example_firings(
             example=example,
             dim=int(dim),
             input_value=float(target_input[dim]),
+            weight=float(weight_row[dim]),
             contribution=float(hadamard[dim]),
             writers=kept_writers(dependencies[dim], selection.writer_mass),
             n_writers=len(dependencies[dim].terms),
