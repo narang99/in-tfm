@@ -2,9 +2,10 @@
 
 import numpy as np
 import plotly.graph_objects as go
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from plotly.subplots import make_subplots
 
+from ..cluster_colors import cluster_color
 from ..dependencies.stats import SignSplit
 from ..report_page.figures import GRID, MARK, MUTED, embed
 
@@ -24,12 +25,15 @@ def jitter(n: int) -> Float[np.ndarray, "n"]:
     return np.random.default_rng(0).uniform(-JITTER, JITTER, n).astype(np.float32)
 
 
-def strip_points(units: list[float]) -> Float[np.ndarray, "k"]:
-    values = np.asarray(units, dtype=np.float32)
-    if len(values) <= MAX_STRIP_POINTS:
-        return values
-    keep = np.random.default_rng(0).choice(len(values), MAX_STRIP_POINTS, replace=False)
-    return values[keep]
+def strip_keep(n: int) -> Int[np.ndarray, "k"]:
+    if n <= MAX_STRIP_POINTS:
+        return np.arange(n)
+    return np.random.default_rng(0).choice(n, MAX_STRIP_POINTS, replace=False)
+
+
+def point_color(cluster_id: int | None) -> str:
+    """Unmatched firings, and writers with no report, stay grey."""
+    return MUTED if cluster_id is None else cluster_color(cluster_id)
 
 
 def histogram_rows(distances: SignSplit, fractions: SignSplit, threshold: float) -> str:
@@ -68,22 +72,30 @@ def histogram_rows(distances: SignSplit, fractions: SignSplit, threshold: float)
 
 
 class WriterStrip:
-    """One row per shown writer: the observed values as points, the noise shorth as a band."""
+    """One row per shown writer: the observed values as points, coloured by matched cluster, over the noise shorth as a band."""
 
     def __init__(self) -> None:
         self.labels: list[str] = []
         self.values: list[list[float]] = []
+        self.clusters: list[list[int | None]] = []
         self.bands: list[tuple[float, float]] = []
 
-    def add(self, label: str, units: list[float], band: tuple[float, float]) -> None:
+    def add(
+        self,
+        label: str,
+        units: list[float],
+        clusters: list[int | None],
+        band: tuple[float, float],
+    ) -> None:
         self.labels.append(label)
         self.values.append(units)
+        self.clusters.append(clusters)
         self.bands.append(band)
 
     def html(self) -> str:
         fig = go.Figure()
-        for row, (label, units, (low, high)) in enumerate(
-            zip(self.labels, self.values, self.bands)
+        for row, (label, units, clusters, (low, high)) in enumerate(
+            zip(self.labels, self.values, self.clusters, self.bands)
         ):
             fig.add_shape(
                 type="rect",
@@ -95,14 +107,24 @@ class WriterStrip:
                 line_width=0,
                 layer="below",
             )
-            points = strip_points(units)
+            keep = strip_keep(len(units))
             fig.add_trace(
                 go.Scatter(
-                    x=points,
-                    y=row + jitter(len(points)),
+                    x=np.asarray(units, dtype=np.float32)[keep],
+                    y=row + jitter(len(keep)),
                     mode="markers",
-                    marker=dict(color=MUTED, size=4, opacity=0.6),
-                    hovertemplate="%{x:.2f} noise units<extra>" + label + "</extra>",
+                    marker=dict(
+                        color=[point_color(clusters[i]) for i in keep],
+                        size=4,
+                        opacity=0.7,
+                    ),
+                    text=[
+                        "" if clusters[i] is None else f"cluster {clusters[i]}"
+                        for i in keep
+                    ],
+                    hovertemplate="%{x:.2f} noise units %{text}<extra>"
+                    + label
+                    + "</extra>",
                     showlegend=False,
                 )
             )

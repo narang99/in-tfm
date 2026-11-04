@@ -1,0 +1,23 @@
+<div class="dep-clusters">
+<h4>{{ matched.label }}: firing by its own cluster</h4>
+<table class="borders">
+<thead><tr><th>cluster</th><th>firings</th><th>of matched</th><th>median distance</th></tr></thead>
+<tbody>
+{% for row in matched.rows %}
+<tr><td><a class="cl-chip" style="{{ row.style }}" href="{{ row.href }}">c{{ row.share.cluster_id }}</a></td><td>{{ row.share.count }}</td><td>{{ "{:.0%}".format(row.share.ratio) }}</td><td>{{ "{:.3g}".format(row.share.median_distance) }}</td></tr>
+{% endfor %}
+{% if matched.outliers %}
+<tr class="muted"><td>outliers: {% for row in matched.outliers %}<a class="cl-chip small" style="{{ row.style }}" href="{{ row.href }}">c{{ row.share.cluster_id }}</a> {% endfor %}</td><td>{{ matched.outlier_count }}</td><td>{{ "{:.0%}".format(matched.outlier_count / matched.n_matched) }}</td><td></td></tr>
+{% endif %}
+</tbody>
+</table>
+<p class="view-note">Each firing is matched to its nearest clustered hit of the writer's own report, with that report's distance, and no cutoff. Clusters under {{ "{:.0%}".format(settings.outlier_ratio) }} of the matches are folded as outliers.</p>
+{% if matched.pairs %}
+<div class="pairs">
+{% for pair in matched.pairs %}
+<figure class="pair"><img src="{{ pair.image_uri }}" alt="firing and its nearest clustered hit"><figcaption><span class="cl-chip small" style="{{ pair.style }}">c{{ pair.cluster_id }}</span> distance {{ "{:.3g}".format(pair.distance) }}</figcaption></figure>
+{% endfor %}
+</div>
+<p class="view-note">Each pair is the firing's Hadamard row on the writer, left, and its nearest clustered hit's, right, one tile per input channel, on one colour scale.</p>
+{% endif %}
+</div>

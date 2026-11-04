@@ -1,4 +1,5 @@
 from in_tfm.dependencies.collect import write_cluster_dependencies
+from in_tfm.dependencies.firings import ClusterMatch, WriterReportRef
 from in_tfm.dependencies.stats import StatsSettings, dependency_stats
 from in_tfm.dependencies.view import CumulativeShareTrim, NoTrim, ViewPolicy
 from in_tfm.dependency_page import render_dependency_page, write_dependency_page
@@ -43,3 +44,35 @@ def test_the_page_is_written_next_to_the_firings(collected, tmp_path):
     path = write_dependency_page(tmp_path, collected.origin.cluster_id)
     assert path == tmp_path / "dependencies" / "cluster_0" / "index.html"
     assert "head:0, cluster 0" in path.read_text()
+
+
+def test_matched_writers_get_a_cluster_panel_linking_to_their_own_report(
+    collected, tmp_path
+):
+    collected.origin.report_dir = tmp_path / "head" / "neuron_0"
+    collected.writer_reports = [
+        WriterReportRef(
+            layer="up",
+            neuron=0,
+            report_dir=tmp_path / "up" / "neuron_0",
+            tile_shape=(2, 1, 1),
+        )
+    ]
+    for firing in collected.firings:
+        for writer in firing.writers:
+            if writer.writer.neuron == 0:
+                writer.match = ClusterMatch(
+                    cluster_id=5,
+                    distance=0.25,
+                    hadamard=[1.0, -1.0],
+                    closest_hadamard=[0.5, 0.0],
+                )
+    stats = dependency_stats(collected)
+    (card,) = dependency_cards(collected, stats, ViewPolicy(trim=NoTrim())).cards
+    (panel,) = card.clusters
+    assert panel.label == "up:0"
+    assert [row.share.cluster_id for row in panel.rows] == [5]
+    assert panel.rows[0].href == "../../../../up/neuron_0/index.html#cluster-5"
+    assert len(panel.pairs) == 2
+    assert panel.pairs[0].image_uri.startswith("data:image/png;base64,")
+    assert "firing by its own cluster" in render_dependency_page(collected)
