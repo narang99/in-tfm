@@ -30,6 +30,8 @@ class StatsSettings(BaseModel):
     threshold: float = 0.8
     """Noise units. A writer firing beyond it counts as clearly above its noise."""
     noise_window: float = 0.9
+    outlier_ratio: float = 0.1
+    """A writer's cluster holding fewer of its matched firings than this is flagged an outlier."""
 
 
 class NoiseStats(BaseModel):
@@ -67,6 +69,16 @@ def writer_label(writer: Writer) -> str:
             return f"{name}:{dim}"
 
 
+class ClusterShare(BaseModel):
+    """How many of a writer's matched firings landed in one of its own clusters."""
+
+    cluster_id: int
+    count: int
+    ratio: float
+    median_distance: float
+    is_outlier: bool
+
+
 class WriterSummary(BaseModel):
     column: TapColumn
     label: str
@@ -77,6 +89,8 @@ class WriterSummary(BaseModel):
     median_value: float
     median_contribution: float
     noise: NoiseStats
+    clusters: list[ClusterShare] = []
+    """Most firings first. Empty for a writer that was not matched."""
 
     @property
     def share(self) -> float:
@@ -156,8 +170,30 @@ def frequent_threshold(n_examples: int, settings: StatsSettings) -> int:
 ColumnNoise = dict[TapColumn, NoiseStats]
 
 
+def cluster_shares(
+    writers: list[WriterFiring], outlier_ratio: float
+) -> list[ClusterShare]:
+    """Ties on count go to the closer cluster, as in hp-do."""
+    by_cluster: dict[int, list[float]] = defaultdict(list)
+    for writer in writers:
+        if writer.match is not None:
+            by_cluster[writer.match.cluster_id].append(writer.match.distance)
+    n_matched = sum(len(d) for d in by_cluster.values())
+    shares = [
+        ClusterShare(
+            cluster_id=cluster_id,
+            count=len(found),
+            ratio=len(found) / n_matched,
+            median_distance=float(np.median(found)),
+            is_outlier=len(found) / n_matched < outlier_ratio,
+        )
+        for cluster_id, found in by_cluster.items()
+    ]
+    return sorted(shares, key=lambda c: (-c.count, c.median_distance))
+
+
 def writer_summaries(
-    firings: list[DependencyFiring], noise: ColumnNoise
+    firings: list[DependencyFiring], noise: ColumnNoise, outlier_ratio: float
 ) -> list[WriterSummary]:
     kept: dict[TapColumn, list[tuple[DependencyFiring, WriterFiring]]] = defaultdict(
         list
@@ -177,6 +213,7 @@ def writer_summaries(
                 np.median([writer_contribution(f, w) for f, w in pairs])
             ),
             noise=noise[column],
+            clusters=cluster_shares([w for _, w in pairs], outlier_ratio),
         )
         for column, pairs in kept.items()
     ]
@@ -188,6 +225,7 @@ def dependency_summaries(
     threshold: int,
     noise: ColumnNoise,
     target: Tap,
+    outlier_ratio: float,
 ) -> list[DependencySummary]:
     by_dim: dict[int, list[DependencyFiring]] = defaultdict(list)
     for firing in firings:
@@ -200,7 +238,7 @@ def dependency_summaries(
             median_contribution=float(np.median([f.contribution for f in dim_firings])),
             frequent=len(dim_firings) >= threshold,
             noise=noise[TapColumn(tap=target, column=dim)],
-            writers=writer_summaries(dim_firings, noise),
+            writers=writer_summaries(dim_firings, noise, outlier_ratio),
         )
         for dim, dim_firings in sorted(by_dim.items())
     ]
@@ -293,7 +331,9 @@ def dependency_stats(
     threshold = frequent_threshold(n_examples, settings)
     noise = column_noise(collected, settings.noise_window)
     target = Tap(layer=collected.origin.layer, port="input")
-    dependencies = dependency_summaries(firings, n_examples, threshold, noise, target)
+    dependencies = dependency_summaries(
+        firings, n_examples, threshold, noise, target, settings.outlier_ratio
+    )
     distances = frequent_writer_distances(
         firings, {d.dim for d in dependencies if d.frequent}, noise
     )

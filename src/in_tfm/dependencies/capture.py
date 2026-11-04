@@ -10,13 +10,22 @@ from contextlib import contextmanager
 
 import torch
 from jaxtyping import Float
+from pydantic import BaseModel
 
-from ..sources import ModelBatch
+from ..sources import ModelBatch, SampleSource
 from ..token_layout import TokenLayout
 from .refs import Tap
 
 LayoutFor = Callable[[torch.nn.Module], TokenLayout]
 BatchCaptures = dict[Tap, Float[torch.Tensor, "batch seq hidden"]]
+
+
+class CaptureSetup(BaseModel, arbitrary_types_allowed=True):
+    model: torch.nn.Module
+    source: SampleSource
+    layout_for: LayoutFor
+    batch_size: int
+    device: str
 
 
 def first_input(args: tuple) -> torch.Tensor:
