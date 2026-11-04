@@ -1,21 +1,12 @@
 import numpy as np
-import pytest
-import torch
-from PIL import Image
 
-from in_tfm.clustered_hits import clustered_hits, write_clustered_hits
 from in_tfm.dependencies.collect import (
-    CaptureSetup,
-    OriginCluster,
     collect_cluster_dependencies,
     load_cluster_dependencies,
     write_cluster_dependencies,
 )
 from in_tfm.dependencies.firings import FiringSelection
 from in_tfm.dependencies.selection import covering_indices
-from in_tfm.models.mnist_cnn.adapter import MnistCnnSmallAdapter
-from in_tfm.models.mnist_cnn.model import IMAGE_SIZE, MnistCnn, MnistCnnChannels
-from in_tfm.models.mnist_cnn.source import MnistSource
 
 
 def test_both_signs_are_ranked_together_until_the_mass_is_covered():
@@ -27,45 +18,6 @@ def test_both_signs_are_ranked_together_until_the_mass_is_covered():
 
 def test_an_all_zero_row_covers_nothing():
     assert len(covering_indices(np.zeros(3), 0.9)) == 0
-
-
-def fake_mnist_rows(n: int) -> list[dict]:
-    rng = np.random.default_rng(0)
-    return [
-        {
-            "image": Image.fromarray(
-                rng.integers(0, 255, (IMAGE_SIZE, IMAGE_SIZE), dtype=np.uint8)
-            )
-        }
-        for _ in range(n)
-    ]
-
-
-@pytest.fixture
-def mnist_origin(tmp_path) -> tuple[CaptureSetup, OriginCluster, MnistCnnSmallAdapter]:
-    torch.manual_seed(0)
-    model = MnistCnn(MnistCnnChannels(conv1=2, conv2=4)).eval()
-    adapter = MnistCnnSmallAdapter(model, "head.1", fake_mnist_rows(6), "test")
-    source = MnistSource(adapter.split_rows, range(6), "test", n_tokens=1)
-    write_clustered_hits(
-        tmp_path,
-        clustered_hits(
-            list(source.sample_ids()),
-            batch_idx=np.array([0, 1, 2, 3, 4, 5]),
-            token_idx=np.zeros(6, dtype=int),
-            labels=np.array([0, 0, -1, 0, 1, 1]),
-            activations=np.ones(6),
-        ),
-    )
-    setup = CaptureSetup(
-        model=model,
-        source=source,
-        layout_for=adapter.layout_for,
-        batch_size=2,
-        device="cpu",
-    )
-    origin = OriginCluster(report_dir=tmp_path, layer="head.1", neuron=3, cluster_id=0)
-    return setup, origin, adapter
 
 
 def test_an_mnist_cluster_collects_each_examples_covering_dims(mnist_origin):

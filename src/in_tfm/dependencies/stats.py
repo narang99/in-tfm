@@ -18,6 +18,8 @@ from .refs import FixedWriter, NeuronWriter, TapColumn, Writer
 class StatsSettings(BaseModel):
     min_fired_ratio: float = 0.1
     min_fired_count: int = 2
+    outlier_ratio: float = 0.1
+    """A writer's cluster holding fewer of its matched firings than this is flagged an outlier."""
 
 
 def writer_label(writer: Writer) -> str:
@@ -26,6 +28,16 @@ def writer_label(writer: Writer) -> str:
             return f"{layer}:{neuron}"
         case FixedWriter(name=name, dim=dim):
             return f"{name}:{dim}"
+
+
+class ClusterShare(BaseModel):
+    """How many of a writer's matched firings landed in one of its own clusters."""
+
+    cluster_id: int
+    count: int
+    ratio: float
+    median_distance: float
+    is_outlier: bool
 
 
 class WriterSummary(BaseModel):
@@ -37,6 +49,8 @@ class WriterSummary(BaseModel):
     """Of the dependency's own firings, how many kept this writer."""
     median_value: float
     median_contribution: float
+    clusters: list[ClusterShare] = []
+    """Most firings first. Empty for a writer that was not matched."""
 
     @property
     def share(self) -> float:
@@ -101,7 +115,31 @@ def frequent_threshold(n_examples: int, settings: StatsSettings) -> int:
     )
 
 
-def writer_summaries(firings: list[DependencyFiring]) -> list[WriterSummary]:
+def cluster_shares(
+    writers: list[WriterFiring], outlier_ratio: float
+) -> list[ClusterShare]:
+    """Ties on count go to the closer cluster, as in hp-do."""
+    by_cluster: dict[int, list[float]] = defaultdict(list)
+    for writer in writers:
+        if writer.match is not None:
+            by_cluster[writer.match.cluster_id].append(writer.match.distance)
+    n_matched = sum(len(d) for d in by_cluster.values())
+    shares = [
+        ClusterShare(
+            cluster_id=cluster_id,
+            count=len(found),
+            ratio=len(found) / n_matched,
+            median_distance=float(np.median(found)),
+            is_outlier=len(found) / n_matched < outlier_ratio,
+        )
+        for cluster_id, found in by_cluster.items()
+    ]
+    return sorted(shares, key=lambda c: (-c.count, c.median_distance))
+
+
+def writer_summaries(
+    firings: list[DependencyFiring], outlier_ratio: float
+) -> list[WriterSummary]:
     kept: dict[TapColumn, list[tuple[DependencyFiring, WriterFiring]]] = defaultdict(
         list
     )
@@ -119,6 +157,7 @@ def writer_summaries(firings: list[DependencyFiring]) -> list[WriterSummary]:
             median_contribution=float(
                 np.median([writer_contribution(f, w) for f, w in pairs])
             ),
+            clusters=cluster_shares([w for _, w in pairs], outlier_ratio),
         )
         for column, pairs in kept.items()
     ]
@@ -128,6 +167,7 @@ def dependency_summaries(
     firings: list[DependencyFiring],
     n_examples: int,
     threshold: int,
+    outlier_ratio: float,
 ) -> list[DependencySummary]:
     by_dim: dict[int, list[DependencyFiring]] = defaultdict(list)
     for firing in firings:
@@ -139,7 +179,7 @@ def dependency_summaries(
             fired_ratio=len(dim_firings) / n_examples,
             median_contribution=float(np.median([f.contribution for f in dim_firings])),
             frequent=len(dim_firings) >= threshold,
-            writers=writer_summaries(dim_firings),
+            writers=writer_summaries(dim_firings, outlier_ratio),
         )
         for dim, dim_firings in sorted(by_dim.items())
     ]
@@ -175,7 +215,9 @@ def dependency_stats(
     check_one_firing_per_dim(firings)
     n_examples = len(collected.examples)
     threshold = frequent_threshold(n_examples, settings)
-    dependencies = dependency_summaries(firings, n_examples, threshold)
+    dependencies = dependency_summaries(
+        firings, n_examples, threshold, settings.outlier_ratio
+    )
     return DependencyStats(
         n_examples=n_examples,
         frequent_threshold=threshold,
