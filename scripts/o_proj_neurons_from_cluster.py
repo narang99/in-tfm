@@ -7,6 +7,8 @@
   - Terms are signed by the row's sum, so a negative-logit cluster keeps its negative terms.
 - The final list is the union over examples, with how many examples used each dim.
 
+- Examples are spread through the hits near the mean, one per distinct context.
+
 Needs `hits_cache/` from `the_logit_cluster_summary.py`.
 
     python scripts/o_proj_neurons_from_cluster.py --report-dir reports/tiny_attn_only_1l_the_logit --cluster 12
@@ -32,7 +34,9 @@ class Args(BaseSettings):
     cluster: int
     report_name: str = "neuron_263_signed"
     tokenizer: Path = Path("checkpoints/tiny_attn_only_1l/tokenizer.json")
-    n_examples: int = 10
+    n_examples: int = 12
+    band: float = 0.9
+    """Examples are drawn from the hits at least this close to the mean."""
     share: float = 0.9
     context: int = 12
 
@@ -67,6 +71,30 @@ def context_text(
     return f"{text(before)}[[{text(ids[token_idx : token_idx + 1])}]] -> {text(following)!r}"
 
 
+def spread_examples(
+    ranked: Int[np.ndarray, "n"],
+    cosine: Float[np.ndarray, "n"],
+    hits,
+    ids: Int[np.ndarray, "n_texts max_length"],
+    args: "Args",
+) -> Int[np.ndarray, "k"]:
+    """Evenly spaced through the hits at or above `band`, one per distinct context.
+
+    - TinyStories repeats whole stories, so the top hits by cosine are often one text many times.
+    """
+    seen: set[bytes] = set()
+    distinct = []
+    for i in ranked[cosine[ranked] >= args.band].tolist():
+        b, t = int(hits["batch_idx"][i]), int(hits["token_idx"][i])
+        key = ids[b, max(0, t - args.context) : t + 1].tobytes()
+        if key not in seen:
+            seen.add(key)
+            distinct.append(i)
+    picks = np.linspace(0, len(distinct) - 1, min(args.n_examples, len(distinct)))
+    print(f"  {len(distinct)} distinct contexts at cos >= {args.band}")
+    return np.array(distinct)[np.unique(picks.round().astype(int))]
+
+
 def main() -> None:
     args = Args()  # ty: ignore[missing-argument]
     cache = args.report_dir / "hits_cache"
@@ -96,7 +124,7 @@ def main() -> None:
 
     counts: Counter[int] = Counter()
     examples = []
-    for i in ranked[: args.n_examples].tolist():
+    for i in spread_examples(ranked, cosine, hits, ids, args).tolist():
         used = dims_of_use(np.asarray(rows[i]), args.share)
         counts.update(used.tolist())
         b, t = int(hits["batch_idx"][i]), int(hits["token_idx"][i])
