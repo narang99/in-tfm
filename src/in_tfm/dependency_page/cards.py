@@ -1,10 +1,11 @@
 """One card per frequent dependency, built from the stats through the view policy."""
 
 from collections import defaultdict
+from pathlib import Path
 
 from pydantic import BaseModel
 
-from ..dependencies.collect import ClusterDependencies
+from ..dependencies.collect import ClusterDependencies, dependencies_dir
 from ..dependencies.firings import DependencyFiring
 from ..dependencies.stats import (
     DependencyStats,
@@ -13,6 +14,13 @@ from ..dependencies.stats import (
     writer_label,
 )
 from ..dependencies.view import TrimmedView, ViewPolicy, view
+from ..presenters import ClusterPresenter
+from .clusters import (
+    ReportsByWriter,
+    WriterClusters,
+    reports_by_writer,
+    writer_clusters,
+)
 from .sparkline import Sparkline, sparkline
 
 
@@ -22,6 +30,8 @@ class DependencyCard(BaseModel):
     summary: DependencySummary
     sparkline: Sparkline
     writers: TrimmedView[WriterSummary]
+    clusters: list[WriterClusters] = []
+    """Phase B, for each shown writer matched to its own clusters."""
 
     @property
     def anchor(self) -> str:
@@ -50,13 +60,20 @@ def dependency_card(
     firings: list[DependencyFiring],
     stats: DependencyStats,
     policy: ViewPolicy,
+    reports: ReportsByWriter,
+    page_dir: Path,
+    presenter: ClusterPresenter | None,
 ) -> DependencyCard:
+    writers = view(summary.writers, policy, lambda w: w.share, lambda w: w.label)
+    shown = [row.members[0] for row in writers.shown]
+    matched = [writer_clusters(w, reports, page_dir, presenter) for w in shown]
     return DependencyCard(
         dim=summary.dim,
         title=dependency_title(summary.dim, firings),
         summary=summary,
         sparkline=sparkline(stats.concentration, summary.dim),
-        writers=view(summary.writers, policy, lambda w: w.share, lambda w: w.label),
+        writers=writers,
+        clusters=[m for m in matched if m is not None],
     )
 
 
@@ -74,14 +91,30 @@ def one_offs(dependencies: list[DependencySummary]) -> list[DependencySummary]:
 
 
 def dependency_cards(
-    collected: ClusterDependencies, stats: DependencyStats, policy: ViewPolicy
+    collected: ClusterDependencies,
+    stats: DependencyStats,
+    policy: ViewPolicy,
+    presenter: ClusterPresenter | None = None,
 ) -> DependencyCards:
+    """Without a presenter, the cluster bars do not open to their hits."""
     by_dim = firings_by_dim(collected.firings)
     frequent = [d for d in stats.dependencies if d.frequent]
     shown = view(frequent, policy, lambda d: d.share, lambda d: f"dim {d.dim}")
+    reports = reports_by_writer(collected.writer_reports)
+    page_dir = dependencies_dir(
+        collected.origin.report_dir, collected.origin.cluster_id
+    )
     return DependencyCards(
         cards=[
-            dependency_card(row.members[0], by_dim[row.members[0].dim], stats, policy)
+            dependency_card(
+                row.members[0],
+                by_dim[row.members[0].dim],
+                stats,
+                policy,
+                reports,
+                page_dir,
+                presenter,
+            )
             for row in shown.shown
         ],
         rest=TrimmedView(shown=[], rest=shown.rest, description=shown.description),

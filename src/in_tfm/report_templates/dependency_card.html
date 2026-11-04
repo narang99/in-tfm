@@ -16,4 +16,7 @@
 </span>
 </div>
 {{ writer_table(card.writers) }}
+{% for matched in card.clusters %}
+{% include "dependency_clusters.html" %}
+{% endfor %}
 </section>

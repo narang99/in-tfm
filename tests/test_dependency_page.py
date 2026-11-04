@@ -1,9 +1,18 @@
+from pathlib import Path
+
+import numpy as np
+import torch
+
 from in_tfm.dependencies.collect import write_cluster_dependencies
+from in_tfm.dependencies.firings import ClusterMatch, WriterReportRef
 from in_tfm.dependencies.stats import StatsSettings, dependency_stats
 from in_tfm.dependencies.view import CumulativeShareTrim, NoTrim, ViewPolicy
 from in_tfm.dependency_page import render_dependency_page, write_dependency_page
 from in_tfm.dependency_page.cards import dependency_cards, dependency_title
 from in_tfm.dependency_page.sparkline import sparkline
+from in_tfm.neuron_report import save_hits
+from in_tfm.presenters import ClusterHit
+from in_tfm.report_meta import ClusterMeta, ReportMeta, write_report_meta
 
 
 def test_only_frequent_dependencies_get_cards_and_the_rest_are_one_offs(collected):
@@ -43,3 +52,83 @@ def test_the_page_is_written_next_to_the_firings(collected, tmp_path):
     path = write_dependency_page(tmp_path, collected.origin.cluster_id)
     assert path == tmp_path / "dependencies" / "cluster_0" / "index.html"
     assert "head:0, cluster 0" in path.read_text()
+
+
+class RecordingPresenter:
+    """Draws a hit count, and writes a file the way a real presenter does."""
+
+    def render(self, hits, artifacts, hadamard_shape) -> str:
+        artifacts.path("hits.html").write_text("drawn")
+        return f"<p>{len(hits)} hits of shape {hadamard_shape}</p>"
+
+    def page_controls(self) -> str:
+        return '<div id="controls"></div>'
+
+
+def fake_writer_report(report_dir: Path, cluster_id: int) -> None:
+    report_dir.mkdir(parents=True)
+    write_report_meta(
+        report_dir,
+        ReportMeta(
+            neuron_idx=0,
+            picks=[],
+            n_hits=2,
+            min_uniq_images_per_cluster=1,
+            hadamard_shape=(2, 1),
+            clusters={cluster_id: ClusterMeta(n_hits=2, n_unique_images=2)},
+            sample_ids=["0", "1"],
+        ),
+    )
+    hit = ClusterHit(
+        sample_id="0",
+        token_idx=0,
+        relevance=np.zeros(2),
+        model_input=torch.zeros(2),
+        hadamard=np.ones(2),
+    )
+    cluster_dir = report_dir / f"cluster_{cluster_id}"
+    cluster_dir.mkdir()
+    save_hits([hit, hit], cluster_dir)
+
+
+def test_a_matched_writer_gets_one_bar_per_cluster_opening_to_its_own_hits(
+    collected, tmp_path
+):
+    collected.origin.report_dir = tmp_path / "head" / "neuron_0"
+    writer_dir = tmp_path / "up" / "neuron_0"
+    fake_writer_report(writer_dir, cluster_id=5)
+    collected.writer_reports = [
+        WriterReportRef(layer="up", neuron=0, report_dir=writer_dir)
+    ]
+    for firing in collected.firings:
+        for writer in firing.writers:
+            if writer.writer.neuron == 0:
+                writer.match = ClusterMatch(cluster_id=5, distance=0.25)
+    stats = dependency_stats(collected)
+    policy = ViewPolicy(trim=NoTrim())
+    presenter = RecordingPresenter()
+    (card,) = dependency_cards(collected, stats, policy, presenter).cards
+    (panel,) = card.clusters
+    assert panel.label == "up:0"
+    (bar,) = panel.bars
+    assert (bar.share.cluster_id, bar.percent) == (5, 100.0)
+    assert bar.body == "<p>2 hits of shape (2, 1)</p>"
+    page_dir = tmp_path / "head" / "neuron_0" / "dependencies" / "cluster_0"
+    assert (page_dir / "up_0_cluster_5" / "hits.html").read_text() == "drawn"
+    html = render_dependency_page(collected, policy=policy, presenter=presenter)
+    assert '<template class="lazy-body"><p>2 hits' in html
+    assert '<div id="controls"></div>' in html
+
+
+def test_without_a_presenter_the_bars_do_not_open(collected, tmp_path):
+    collected.origin.report_dir = tmp_path / "head" / "neuron_0"
+    collected.writer_reports = [
+        WriterReportRef(layer="up", neuron=0, report_dir=tmp_path / "up")
+    ]
+    for firing in collected.firings:
+        for writer in firing.writers:
+            if writer.writer.neuron == 0:
+                writer.match = ClusterMatch(cluster_id=5, distance=0.25)
+    stats = dependency_stats(collected)
+    (card,) = dependency_cards(collected, stats, ViewPolicy(trim=NoTrim())).cards
+    assert card.clusters[0].bars[0].body is None
