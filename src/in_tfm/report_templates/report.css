@@ -100,3 +100,15 @@ table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
 .border-bar { display:grid; grid-template-columns:48px 1fr 44px; align-items:center; gap:8px; font-size:0.75rem; color:var(--muted); }
 .border-bar i { display:block; height:8px; border-radius:4px; min-width:2px; }
 .border-bar b { color:var(--fg); font-weight:600; text-align:right; }
+.dep-card { border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin:14px 0; }
+.dep-head { display:flex; flex-wrap:wrap; align-items:center; gap:14px; font-size:0.85rem; }
+.dep-head h3 { font-size:1rem; margin:0; }
+.muted { color:var(--muted); }
+.pos { color:#00A550; }
+.neg { color:#d33; }
+.view-note { color:var(--muted); font-size:0.8rem; margin:4px 0; }
+.spark { display:inline-flex; align-items:center; gap:6px; }
+.spark polyline { fill:none; stroke-width:1.5; }
+.spark-pos { stroke:#00A550; }
+.spark-neg { stroke:#d33; }
+.spark-mark { stroke:var(--fg); stroke-width:1; }
