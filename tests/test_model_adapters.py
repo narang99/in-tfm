@@ -205,3 +205,23 @@ def test_qwen3_never_counts_bos_as_a_hit():
     }
     mask = source._hit_mask(encoded["input_ids"], encoded["attention_mask"])
     assert mask.tolist() == [[False, True, False]]
+
+
+def test_checkpointed_relevance_matches_the_plain_one():
+    from in_tfm.attribution import compute_attnlrp_relevance
+    from in_tfm.models.qwen3 import checkpointed_attnlrp_relevance
+
+    torch.manual_seed(0)
+    adapter = tiny_qwen3_adapter()
+    adapter.get_model().requires_grad_(False)
+    adapter.patch_for_attn_lrp()
+    getter = submodule_getter("layers.1.mlp.gate_proj")
+    torch.manual_seed(1)  # the fake tokenizer draws random ids on every call
+    batch = adapter.make_source(["a"]).to_model_batch(["0"])
+    plain = compute_attnlrp_relevance(adapter.get_model(), batch, getter, 3, 4)
+    torch.manual_seed(1)
+    batch = adapter.make_source(["a"]).to_model_batch(["0"])
+    checkpointed = checkpointed_attnlrp_relevance(
+        adapter.get_model(), batch, getter, 3, 4
+    )
+    assert torch.allclose(torch.from_numpy(plain), torch.from_numpy(checkpointed))
