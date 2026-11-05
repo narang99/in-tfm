@@ -1,12 +1,12 @@
 # As configs/marin_l16_19311.yaml, on the Marin atlas's own fineweb-1m documents instead of pile-10k.
 # The 489 documents are their FineWeb sample (seed 20261024), each one 2,048-token window with BOS, 1,001,472 tokens.
-# Batches are small, since eager attention over 2,048 tokens is 4x the memory of 512 per row.
+# One window per batch: eager attention scores over 2,048 tokens in float32 are 0.67 GB per window, and 2 ran out of memory on the L4.
 #   python scripts/marin_sweep_report.py --config configs/marin_l16_19311_fineweb1m.yaml
 model: marin-community/marin-32b-base
 layer_name: layers.16.mlp.gate_proj
 neurons: [19311]
 polarity: signed
-batch_size: 2
+batch_size: 1
 out_dir: reports/marin-32b-fineweb-1m/layers.16.mlp.gate_proj
 text:
   dataset: Station-house/marin-32b-neuron-atlas
