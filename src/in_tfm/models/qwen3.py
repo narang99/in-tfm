@@ -9,10 +9,13 @@
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 
 import torch
+from torch.utils.checkpoint import checkpoint
 
 # isort: split
 from .. import compat  # noqa: F401  (must precede any lxt import, see compat.py)
@@ -26,7 +29,7 @@ from lxt.efficient.patches import (
     patch_method,
     rms_norm_forward,
 )
-from transformers import AutoConfig
+from transformers import AutoConfig, PretrainedConfig
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3.modeling_qwen3 import (
     Qwen3MLP,
@@ -34,7 +37,9 @@ from transformers.models.qwen3.modeling_qwen3 import (
     Qwen3RMSNorm,
 )
 
-from ..attribution import patch_eager_attention
+from ..attribution import compute_attnlrp_relevance, patch_eager_attention
+from ..layers import LayerGetter
+from ..sources import ModelBatch
 from . import text
 
 LAYER_OF_NAME = re.compile(r"(?:^|\.)layers\.(\d+)\.")
@@ -105,6 +110,44 @@ def patch_qwen3_for_attn_lrp(model: torch.nn.Module) -> None:
     monkey_patch(model, patch_map=patch_map, verbose=True)
 
 
+@contextmanager
+def checkpointed_layers(model: torch.nn.Module) -> Iterator[None]:
+    """Each decoder layer recomputes its activations in the backward pass, instead of keeping them.
+
+    - AttnLRP over 2,048 tokens and 17 Marin layers would keep about 20 GB of activations, and an L4 has about 4 GB spare.
+    - The forward of each layer is wrapped as it is, so whatever replaced it (the lxt patches, NNsight) still runs.
+    - HF's own `gradient_checkpointing_enable` only acts in training mode, and AttnLRP runs in eval mode.
+    - The KV cache is off, since a recomputed layer would append its keys to the cache a second time.
+    """
+    layers = list(model.get_submodule("layers"))
+    originals = [layer.forward for layer in layers]
+    config = model.config
+    assert isinstance(config, PretrainedConfig)
+    use_cache = config.use_cache
+    config.use_cache = False
+    for layer, forward in zip(layers, originals):
+        layer.forward = partial(checkpoint, forward, use_reentrant=False)
+    try:
+        yield
+    finally:
+        config.use_cache = use_cache
+        for layer, forward in zip(layers, originals):
+            layer.forward = forward
+
+
+def checkpointed_attnlrp_relevance(
+    model: torch.nn.Module,
+    batch: ModelBatch,
+    layer_getter: LayerGetter,
+    neuron_idx: int,
+    token_idx: int | None,
+):
+    with checkpointed_layers(model):
+        return compute_attnlrp_relevance(
+            model, batch, layer_getter, neuron_idx, token_idx
+        )
+
+
 class Qwen3Adapter(text.DecoderTextAdapter):
     """Holds the bare `Qwen3Model`, with no `lm_head`.
 
@@ -112,6 +155,7 @@ class Qwen3Adapter(text.DecoderTextAdapter):
     """
 
     bos_is_a_hit = False
+    attr_fn = staticmethod(checkpointed_attnlrp_relevance)
 
     def get_model(self) -> torch.nn.Module:
         return self.hf_model
