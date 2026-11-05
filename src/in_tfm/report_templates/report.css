@@ -120,3 +120,9 @@ table.borders td { padding:4px 14px 4px 0; border-top:1px solid var(--line); }
 .pair { margin:0; font-size:0.7rem; color:var(--muted); }
 .pair img { display:block; image-rendering:pixelated; border-radius:2px; }
 .dep-link { margin:0 0 8px; font-size:0.85rem; }
+.combo-thumb { display:block; max-width:160px; margin-top:4px; border-radius:2px; }
+.token-card { display:flex; gap:14px; align-items:flex-start; border-top:1px solid var(--line); padding:10px 0; }
+.token-card img { image-rendering:pixelated; border-radius:2px; flex:none; }
+.token-card h3 { font-size:0.95rem; margin:0 0 4px; }
+.token-example { font-family:ui-monospace,monospace; font-size:0.8rem; margin:2px 0; white-space:pre-wrap; }
+.token-example mark { background:var(--accent, #fde68a); }

@@ -16,8 +16,12 @@
 </span>
 </div>
 {{ card.strip_html|safe }}
+{% if card.combos %}
+{% include "dependency_combos.html" %}
+{% else %}
 {{ writer_table(card.writers, card.median_units) }}
 {% for matched in card.clusters %}
 {% include "dependency_clusters.html" %}
 {% endfor %}
+{% endif %}
 </section>

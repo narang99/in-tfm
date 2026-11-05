@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from pydantic import BaseModel
 
-from ..dependencies.collect import ClusterDependencies, dependencies_dir
+from ..dependencies.collect import ClusterDependencies, TokenRef, dependencies_dir
 from ..dependencies.firings import DependencyFiring
 from ..dependencies.stats import (
     DependencyStats,
@@ -22,6 +22,7 @@ from .clusters import (
     reports_by_writer,
     writer_clusters,
 )
+from .combos import ComboTable, combo_table
 from .figures import WriterStrip
 from .sparkline import Sparkline, sparkline
 
@@ -37,6 +38,8 @@ class DependencyCard(BaseModel):
     strip_html: str
     clusters: list[WriterClusters] = []
     """Phase B, for each shown writer matched to its own clusters."""
+    combos: ComboTable | None = None
+    """For a dim of many writers, its writer cluster combinations, shown instead of `writers`."""
 
     @property
     def anchor(self) -> str:
@@ -83,6 +86,15 @@ def writer_points(
     ]
 
 
+def has_token_writer(summary: DependencySummary) -> bool:
+    """A residual dim with the embedding in it, which is drawn as cluster combinations."""
+    return any(
+        p.kind == "fixed" and p.cluster_id is not None
+        for c in summary.combos
+        for p in c.parts
+    )
+
+
 def dependency_card(
     summary: DependencySummary,
     firings: list[DependencyFiring],
@@ -90,6 +102,7 @@ def dependency_card(
     policy: ViewPolicy,
     reports: ReportsByWriter,
     page_dir: Path,
+    tokens: dict[int, TokenRef],
 ) -> DependencyCard:
     writers = view(summary.writers, policy, lambda w: w.share, lambda w: w.label)
     strip = WriterStrip()
@@ -117,6 +130,9 @@ def dependency_card(
         median_units=median_units,
         strip_html=strip.html(),
         clusters=clusters,
+        combos=combo_table(summary.combos, tokens, reports, page_dir)
+        if has_token_writer(summary)
+        else None,
     )
 
 
@@ -152,6 +168,7 @@ def dependency_cards(
                 policy,
                 reports,
                 page_dir,
+                collected.tokens,
             )
             for row in shown.shown
         ],

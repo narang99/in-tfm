@@ -1,0 +1,13 @@
+<section class="page-section" id="tokens">
+<h2><span class="step">4</span>Tokens, the embedding's clusters</h2>
+<p class="lede">The cluster's examples by the token they fired at. The image is that token's embedding times the {{ origin.layer }}:{{ origin.neuron }} weight row, one cell per dim, row-major, green adding and red inhibiting.</p>
+{% for token in tokens %}
+<div class="token-card" id="{{ token.anchor }}">
+<img src="{{ token.image_uri }}" alt="embedding Hadamard of {{ token.text }}">
+<div>
+<h3><code>{{ token.text|tojson }}</code> <span class="muted">{{ token.n_examples }} examples</span></h3>
+{% for ex in token.examples %}<p class="token-example">{{ ex.before }}<mark>{{ ex.token }}</mark>{{ ex.after }}</p>{% endfor %}
+</div>
+</div>
+{% endfor %}
+</section>

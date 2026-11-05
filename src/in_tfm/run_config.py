@@ -35,6 +35,7 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     ATTN_ONLY_2L = "self/attn-only-2l"
+    TINY_ATTN_ONLY_1L = "self/tiny-attn-only-1l"
     TINY_ATTN_ONLY_1L_D128 = "self/tiny-attn-only-1l-d128"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
@@ -46,6 +47,7 @@ Modality = Literal["text", "mnist", "inception"]
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.ATTN_ONLY_2L: "text",
+    ModelName.TINY_ATTN_ONLY_1L: "text",
     ModelName.TINY_ATTN_ONLY_1L_D128: "text",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
@@ -202,6 +204,11 @@ class ReportConfig(Section):
     min_uniq_samples_per_cluster: int = 2
 
 
+class WriterMeansConfig(Section):
+    layer: str = Field(description="the writer layer, as the dependency map names it")
+    root: Path
+
+
 class DependencyConfig(Section):
     """What a dependency report of the neuron report above reads, and how it cuts it. Defaults are raw."""
 
@@ -237,6 +244,10 @@ class DependencyConfig(Section):
     writer_configs: list[Path] = Field(
         [],
         description="run configs of the writer layers' own neuron reports. Their firings are matched to those reports' clusters",
+    )
+    writer_means: list[WriterMeansConfig] = Field(
+        [],
+        description="writer reports kept only as `<root>/<neuron>/cluster_<id>/mean.pt`. A firing matches the mean nearest by cosine",
     )
     view: ViewPolicy = ViewPolicy()
 

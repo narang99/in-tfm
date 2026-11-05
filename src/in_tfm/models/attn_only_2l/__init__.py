@@ -1,5 +1,6 @@
 from .adapter import (
     AttnOnly2LAdapter,
+    TinyAttnOnly1LAdapter,
     TinyAttnOnly1LD128Adapter,
     TrainedAttnOnlyAdapter,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "AttnOnlyConfig",
     "AttnOnlyForCausalLM",
     "AttnOnlyModel",
+    "TinyAttnOnly1LAdapter",
     "TinyAttnOnly1LD128Adapter",
     "TrainedAttnOnlyAdapter",
     "load_attn_only_2l",

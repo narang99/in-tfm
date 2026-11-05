@@ -16,6 +16,7 @@ from ..html_report import page, render_template
 from ..report_page import PLOTLY_JS
 from ..report_page.sections import StatTile
 from .cards import DependencyCards, dependency_cards
+from .combos import token_sections
 from .figures import histogram_rows
 
 PAGE_NAME = "index.html"
@@ -53,6 +54,7 @@ def page_body(
             stats.distances, stats.fractions_above, stats.settings.threshold
         ),
         cards=cards,
+        tokens=token_sections(collected),
     )
 
 

@@ -61,6 +61,8 @@ class FixedWriter(BaseModel):
     tap: Tap
     dim: int
     token: int
+    by_token: bool = False
+    """A token embedding is fixed per token, so its "cluster" is the token id itself."""
 
     @property
     def column(self) -> TapColumn:

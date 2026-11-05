@@ -19,14 +19,16 @@ from .dependencies.collect import (
     collect_cluster_dependencies,
     write_cluster_dependencies,
 )
+from .dependencies.firings import WriterReportRef
 from .dependencies.matching import WriterReport, build_matcher
+from .dependencies.mean_matching import MeanMatcher
 from .dependency_page import write_dependency_page
 from .dependency_page.graph import write_graph_page
 from .models import ModelAdapter
 from .neuron_report import render_report
 from .neuron_run import clustered_label, layer_getter_for, report_name, timed
 from .report_meta import ReportMeta, load_report_meta
-from .run_config import RunConfig, load_run_config
+from .run_config import RunConfig, WriterMeansConfig, load_run_config
 from .sources import SampleSource
 
 
@@ -90,6 +92,30 @@ def writer_matchers(
                 matchers[(report.layer, report.neuron)] = build_matcher(
                     setup, report, weight
                 )
+    for means in config.dependencies.writer_means:
+        matchers |= mean_matchers(means, adapter, module)
+    return matchers
+
+
+def mean_matchers(
+    means: WriterMeansConfig, adapter: ModelAdapter, module: torch.nn.Module
+) -> Matchers:
+    layer = module.get_submodule(means.layer)
+    weight = layer_weight(layer, adapter)
+    matchers: Matchers = {}
+    for report_dir in sorted(means.root.iterdir()):
+        if not report_dir.name.isdigit():
+            continue
+        report = WriterReportRef(
+            layer=means.layer,
+            neuron=int(report_dir.name),
+            report_dir=report_dir,
+            tile_shape=tile_shape_of(layer),
+        )
+        matchers[(report.layer, report.neuron)] = MeanMatcher(
+            report, weight[report.neuron]
+        )
+    print(f"[matchers] {len(matchers)} {means.layer} neurons matched by mean")
     return matchers
 
 

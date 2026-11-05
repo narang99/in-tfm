@@ -9,12 +9,12 @@
 """
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 
 import numpy as np
 from jaxtyping import Float
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .collect import ClusterDependencies
 from .firings import DependencyFiring, WriterFiring, writer_contribution
@@ -97,6 +97,25 @@ class WriterSummary(BaseModel):
         return self.fired_ratio * abs(self.median_contribution)
 
 
+class ComboPart(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    column: TapColumn
+    label: str
+    kind: str
+    cluster_id: int | None
+    """None for a writer that was not matched. A `by_token` writer's is the token id."""
+
+
+class ComboShare(BaseModel):
+    """One combination of writer clusters a dim's firings were made of, with no magnitudes."""
+
+    parts: list[ComboPart]
+    count: int
+    ratio: float
+    """Of the dim's own firings."""
+
+
 class DependencySummary(BaseModel):
     dim: int
     n_fired: int
@@ -107,6 +126,8 @@ class DependencySummary(BaseModel):
     noise: NoiseStats
     """Of the target's input on this dim."""
     writers: list[WriterSummary]
+    combos: list[ComboShare] = []
+    """Most firings first."""
 
     @property
     def share(self) -> float:
@@ -219,6 +240,29 @@ def writer_summaries(
     ]
 
 
+def combo_part(writer: WriterFiring) -> ComboPart:
+    return ComboPart(
+        column=writer.writer.column,
+        label=writer_label(writer.writer),
+        kind=writer.writer.kind,
+        cluster_id=None if writer.match is None else writer.match.cluster_id,
+    )
+
+
+def combo_of(firing: DependencyFiring) -> tuple[ComboPart, ...]:
+    """Fixed writers first, so the embedding leads a residual dim's combination."""
+    parts = [combo_part(w) for w in firing.writers]
+    return tuple(sorted(parts, key=lambda p: (p.kind != "fixed", p.label)))
+
+
+def combo_shares(firings: list[DependencyFiring]) -> list[ComboShare]:
+    counts = Counter(combo_of(f) for f in firings)
+    return [
+        ComboShare(parts=list(parts), count=count, ratio=count / len(firings))
+        for parts, count in counts.most_common()
+    ]
+
+
 def dependency_summaries(
     firings: list[DependencyFiring],
     n_examples: int,
@@ -239,6 +283,7 @@ def dependency_summaries(
             frequent=len(dim_firings) >= threshold,
             noise=noise[TapColumn(tap=target, column=dim)],
             writers=writer_summaries(dim_firings, noise, outlier_ratio),
+            combos=combo_shares(dim_firings),
         )
         for dim, dim_firings in sorted(by_dim.items())
     ]

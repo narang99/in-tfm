@@ -41,15 +41,23 @@ class AttnOnly2LAdapter(text.DecoderTextAdapter):
         patch_attn_only_for_attn_lrp(self.get_model())
 
 
-def stream_sources(n_layers: int, n_heads: int) -> list[StreamSource]:
+def stream_sources(
+    n_layers: int, n_heads: int, head_writers: bool = True
+) -> list[StreamSource]:
     """The final residual stream: the embeddings plus every head of every layer.
 
     - The text source passes the embeddings in as `inputs_embeds`, so `embed_tokens` never runs.
       - They are read as the first layer's input instead.
     """
     embedding = FixedSource(
-        name="embedding", tap=Tap(layer="model.layers.0", port="input")
+        name="embedding", tap=Tap(layer="model.layers.0", port="input"), by_token=True
     )
+    if not head_writers:
+        layers = [
+            ReportedSource(layer=f"model.layers.{layer}.self_attn.o_proj")
+            for layer in range(n_layers)
+        ]
+        return [embedding, *layers]
     heads = [
         ReportedSource(layer=f"model.layers.{layer}.self_attn.o_proj.heads.{head}")
         for layer in range(n_layers)
@@ -67,6 +75,8 @@ class TrainedAttnOnlyAdapter(AttnOnly2LAdapter):
     """
 
     default_checkpoint: ClassVar[Path]
+    head_writers: ClassVar[bool] = True
+    """False makes each layer's whole o_proj one writer, for when its reports are of o_proj dims."""
 
     @classmethod
     def from_pretrained(
@@ -95,9 +105,20 @@ class TrainedAttnOnlyAdapter(AttnOnly2LAdapter):
                 "an o_proj bias would be a stream writer the map leaves out"
             )
         return ResidualStreamMap(
-            stream_sources(config.num_hidden_layers, config.num_attention_heads)
+            stream_sources(
+                config.num_hidden_layers,
+                config.num_attention_heads,
+                self.head_writers,
+            )
         )
 
 
 class TinyAttnOnly1LD128Adapter(TrainedAttnOnlyAdapter):
     default_checkpoint = Path("checkpoints/tiny_attn_only_1l_d128")
+
+
+class TinyAttnOnly1LAdapter(TrainedAttnOnlyAdapter):
+    """The d256 model. Its writer reports are of whole o_proj dims, so o_proj is one writer."""
+
+    default_checkpoint = Path("checkpoints/tiny_attn_only_1l")
+    head_writers = False

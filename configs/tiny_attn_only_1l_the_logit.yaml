@@ -1,0 +1,39 @@
+# The " the" logit (token 263) of our 1-layer d256 attn-only model, both tails, about 4M positions.
+# A hit's clustered row is x1 ⊙ W_U[the], since lm_head's input is the final residual.
+# Needs the checkpoint at checkpoints/tiny_attn_only_1l. HDBSCAN on 1M hits wants a GPU (cuml).
+#   python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_the_logit.yaml
+#   python scripts/run_dependency_report.py --config configs/tiny_attn_only_1l_the_logit.yaml
+# The dirs mirror s3://narang99-private/in-tfm/tiny-attn-only-1l/, so the pages' relative links hold there.
+#   The o_proj writer means come from that prefix, with only `*/mean.pt` synced.
+#   neuron_263_signed/ uploads as lm_head/263/.
+model: self/tiny-attn-only-1l
+layer_name: lm_head
+neurons: [263]
+polarity: signed
+batch_size: 64
+out_dir: reports/tiny-attn-only-1l/lm_head
+text:
+  dataset: roneneldan/TinyStories
+  dataset_config: null
+  split: train
+  unit: document
+  n_samples: 19600
+  max_length: 256
+hits:
+  method: bucketed
+  max_hits: 1000000
+clustering:
+  distance: euclidean
+  normalise: false
+  strategy:
+    method: hdbscan
+    min_cluster_size: 50
+    selection_method: leaf
+# c519 is the obvious cluster ("went for a walk in"), c647 the diffuse one, as numbered on 2026-11-04.
+# writer_mass 1 keeps both writers of every fired dim, so a dependency is the pair of their clusters.
+dependencies:
+  cluster_ids: [519, 647]
+  writer_mass: 1.0
+  writer_means:
+    - layer: model.layers.0.self_attn.o_proj
+      root: reports/tiny-attn-only-1l/model.layers.0.self_attn.o_proj

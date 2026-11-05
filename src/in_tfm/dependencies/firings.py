@@ -25,6 +25,11 @@ from .selection import covering_indices
 class Example(BaseModel):
     sample_id: SampleId
     token: int
+    token_id: int | None = None
+    """For text, the id fed at `token`."""
+    context: list[str] = []
+    """For text, the decoded tokens around `token`, with `focus` indexing it."""
+    focus: int = 0
 
 
 class ClusterMatch(BaseModel):

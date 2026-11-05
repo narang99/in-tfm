@@ -9,9 +9,10 @@
 from collections.abc import Sequence
 from itertools import batched
 from pathlib import Path
+from typing import Any
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Bool, Float, Int
 from pydantic import BaseModel
 from tqdm import tqdm
 
@@ -20,6 +21,7 @@ from ..sources import SampleId
 from .capture import CaptureSetup, capture_taps, sample_captures
 from .dependency_map import DependencyMap
 from .firings import (
+    ClusterMatch,
     DependencyFiring,
     Example,
     FiringSelection,
@@ -28,7 +30,10 @@ from .firings import (
     example_firings,
 )
 from .noise import NoiseSample, NoiseSampler
-from .refs import NeuronWriter, Tap, TapColumn
+from .refs import FixedWriter, NeuronWriter, Tap, TapColumn
+
+CONTEXT_BEFORE = 12
+CONTEXT_AFTER = 3
 
 DEPENDENCIES_DIR = "dependencies"
 FIRINGS_NAME = "firings.json"
@@ -41,6 +46,14 @@ class OriginCluster(BaseModel):
     cluster_id: int
 
 
+class TokenRef(BaseModel):
+    """A token as the cluster of a `by_token` writer, like the embedding."""
+
+    text: str
+    hadamard: list[float]
+    """The writer's whole row at this token times the target's weight row."""
+
+
 class ClusterDependencies(BaseModel):
     origin: OriginCluster
     selection: FiringSelection
@@ -50,6 +63,8 @@ class ClusterDependencies(BaseModel):
     """One per column that fired: each writer's own column, and each fired dim of the target input."""
     writer_reports: list[WriterReportRef] = []
     """The writers whose firings were matched to their own clusters."""
+    tokens: dict[int, TokenRef] = {}
+    """By token id, every token a `by_token` writer fired at."""
 
 
 Matchers = dict[tuple[str, int], Matcher]
@@ -124,7 +139,10 @@ def collect_firings(
     dependency_map: DependencyMap,
     selection: FiringSelection,
     matchers: Matchers,
+    tokens: dict[int, TokenRef],
 ) -> list[DependencyFiring]:
+    """Fills `tokens`, and each text example's token and context, as it goes."""
+    tokenizer = getattr(setup.source, "tokenizer", None)
     grouped = examples_by_sample(examples)
     matcher_taps = {m.tap for m in matchers.values()} - set(dependency_map.taps)
     taps = [target, *dependency_map.taps, *matcher_taps]
@@ -139,6 +157,13 @@ def collect_firings(
             sample = sample_captures(captures, row)
             first = len(firings)
             for index in grouped[sample_id]:
+                if tokenizer is not None and batch.display_ids is not None:
+                    describe_text_example(
+                        examples[index],
+                        batch.display_ids[row],
+                        batch.valid_mask[row],
+                        tokenizer,
+                    )
                 token = examples[index].token
                 firings += example_firings(
                     index,
@@ -149,10 +174,60 @@ def collect_firings(
                     dependency_map,
                     selection,
                 )
+            if tokenizer is not None:
+                match_by_token(
+                    firings, first, examples, sample, weight_row, tokens, tokenizer
+                )
             for key, rows in pending_matches(firings, first, sample, matchers).items():
                 pending.setdefault(key, []).extend(rows)
     attach_matches(firings, pending, matchers)
     return firings
+
+
+def describe_text_example(
+    example: Example,
+    ids: Int[torch.Tensor, "seq"],
+    valid: Bool[torch.Tensor, "seq"],
+    tokenizer: Any,
+) -> None:
+    start = max(example.token - CONTEXT_BEFORE, 0)
+    window = [
+        i
+        for i in range(start, min(example.token + CONTEXT_AFTER + 1, len(ids)))
+        if valid[i]
+    ]
+    example.token_id = int(ids[example.token])
+    example.context = [tokenizer.decode([int(ids[i])]) for i in window]
+    example.focus = window.index(example.token)
+
+
+def match_by_token(
+    firings: list[DependencyFiring],
+    first: int,
+    examples: list[Example],
+    sample: dict[Tap, torch.Tensor],
+    weight_row: Float[torch.Tensor, "hidden"],
+    tokens: dict[int, TokenRef],
+    tokenizer: Any,
+) -> None:
+    """A `by_token` writer's match is its example's token, with no distance to measure."""
+    for firing in firings[first:]:
+        token_id = examples[firing.example].token_id
+        if token_id is None:
+            continue
+        for writer in firing.writers:
+            fixed = writer.writer
+            if not (isinstance(fixed, FixedWriter) and fixed.by_token):
+                continue
+            writer.match = ClusterMatch(
+                cluster_id=token_id, distance=0.0, hadamard=[], closest_hadamard=[]
+            )
+            if token_id not in tokens:
+                row = sample[fixed.tap][fixed.token].cpu() * weight_row.cpu()
+                tokens[token_id] = TokenRef(
+                    text=tokenizer.decode([token_id]),
+                    hadamard=row.double().tolist(),
+                )
 
 
 def fired_columns(firings: list[DependencyFiring], target: Tap) -> list[TapColumn]:
@@ -188,8 +263,9 @@ def collect_cluster_dependencies(
     matchers = matchers or {}
     target = Tap(layer=origin.layer, port="input")
     examples = cluster_examples(origin)
+    tokens: dict[int, TokenRef] = {}
     firings = collect_firings(
-        setup, examples, target, weight_row, dependency_map, selection, matchers
+        setup, examples, target, weight_row, dependency_map, selection, matchers, tokens
     )
     noise = sample_noise(setup, fired_columns(firings, target), seed)
     return ClusterDependencies(
@@ -199,6 +275,7 @@ def collect_cluster_dependencies(
         firings=firings,
         noise=noise,
         writer_reports=[m.report for m in matchers.values()],
+        tokens=tokens,
     )
 
 

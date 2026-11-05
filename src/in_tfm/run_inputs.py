@@ -8,7 +8,11 @@ from typing import Any
 from datasets import load_dataset
 
 from .models import ModelAdapter
-from .models.attn_only_2l import AttnOnly2LAdapter, TinyAttnOnly1LD128Adapter
+from .models.attn_only_2l import (
+    AttnOnly2LAdapter,
+    TinyAttnOnly1LAdapter,
+    TinyAttnOnly1LD128Adapter,
+)
 from .models.gemma3 import Gemma3Adapter
 from .models.inception_v1.adapter import InceptionV1Adapter
 from .models.inception_v1.source import image_paths, spread_indices
@@ -26,6 +30,8 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
             )
         case ModelName.ATTN_ONLY_2L:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
+        case ModelName.TINY_ATTN_ONLY_1L:
+            return TinyAttnOnly1LAdapter.from_pretrained(config.text.max_length)
         case ModelName.TINY_ATTN_ONLY_1L_D128:
             return TinyAttnOnly1LD128Adapter.from_pretrained(config.text.max_length)
         case ModelName.MNIST_CNN:

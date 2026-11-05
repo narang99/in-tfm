@@ -34,9 +34,12 @@ class FixedSource(BaseModel):
     kind: Literal["fixed"] = "fixed"
     name: str
     tap: Tap
+    by_token: bool = False
 
     def writer(self, dim: int, token: int) -> Writer:
-        return FixedWriter(name=self.name, tap=self.tap, dim=dim, token=token)
+        return FixedWriter(
+            name=self.name, tap=self.tap, dim=dim, token=token, by_token=self.by_token
+        )
 
 
 StreamSource = Annotated[ReportedSource | FixedSource, Field(discriminator="kind")]

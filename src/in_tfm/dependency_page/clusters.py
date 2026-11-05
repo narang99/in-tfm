@@ -79,6 +79,7 @@ def matched_pairs(
         if w.writer.column == writer.column
         and w.match is not None
         and w.match.cluster_id == cluster_id
+        and w.match.hadamard
     ]
     rng = np.random.default_rng(cluster_id)
     picked = rng.permutation(len(matches))[:PAIRS_PER_CLUSTER]
