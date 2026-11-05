@@ -12,7 +12,7 @@ text:
   dataset: NeelNanda/pile-10k
   dataset_config: null
   unit: document
-  n_samples: 8000  # 8,000 x 512 is about 4M positions
+  n_samples: 10000  # every pile-10k document. 68% of 512 positions are real tokens, so about 3.5M positions
   max_length: 512
 hits:
   method: bucketed
