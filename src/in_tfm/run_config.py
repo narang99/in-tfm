@@ -31,6 +31,7 @@ class ModelName(StrEnum):
     """HF models keep their HF id. Models we host ourselves are named `self/...`."""
 
     GEMMA3_270M = "google/gemma-3-270m"
+    MARIN_32B = "marin-community/marin-32b-base"
     ATTN_ONLY_2L = "self/attn-only-2l"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
@@ -41,6 +42,7 @@ Modality = Literal["text", "mnist", "inception"]
 
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
+    ModelName.MARIN_32B: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
@@ -204,7 +206,8 @@ class RunConfig(BaseSettings):
         None, description="YAML file with defaults for any of the settings below"
     )
     model: ModelName = Field(
-        ModelName.GEMMA3_270M, description="google/gemma-3-270m or self/attn-only-2l"
+        ModelName.GEMMA3_270M,
+        description="an hf id such as google/gemma-3-270m, or self/attn-only-2l",
     )
     layer_name: str = Field(
         "layers.10.mlp.down_proj",

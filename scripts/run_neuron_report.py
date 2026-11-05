@@ -26,6 +26,7 @@ from in_tfm.models.inception_v1.adapter import InceptionV1Adapter
 from in_tfm.models.inception_v1.source import image_paths, spread_indices
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
 from in_tfm.models.mnist_cnn.source import first_per_class
+from in_tfm.models.qwen3 import Qwen3Adapter
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
 from in_tfm.sources.wikitext import load_texts
@@ -36,6 +37,13 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
         case ModelName.GEMMA3_270M:
             return Gemma3Adapter.from_pretrained(
                 config.model.value, config.text.max_length
+            )
+        case ModelName.MARIN_32B:
+            return Qwen3Adapter.from_pretrained(
+                config.model.value,
+                config.layer_name,
+                config.text.max_length,
+                device=config.device,
             )
         case ModelName.ATTN_ONLY_2L:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)
