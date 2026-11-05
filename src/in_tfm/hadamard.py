@@ -23,4 +23,6 @@ def raw_hadamard_from_rows(
     weight: Float[torch.Tensor, "out_hidden hidden"],
     neuron_idx: int,
 ) -> Float[np.ndarray, "n_hits hidden"]:
-    return (rows.detach().cpu() * weight[neuron_idx].detach().cpu()).clone().numpy()
+    return (
+        rows.detach().cpu().float() * weight[neuron_idx].detach().cpu().float()
+    ).numpy()

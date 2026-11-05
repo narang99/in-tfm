@@ -91,4 +91,4 @@ def compute_attnlrp_relevance(
             f"no gradient reached {batch.grad_leaf_key!r}; check that the model consumes it "
             f"(got kwargs: {sorted(batch.kwargs)})"
         )
-    return (leaf.grad * leaf).detach().cpu().numpy()
+    return (leaf.grad * leaf).detach().float().cpu().numpy()

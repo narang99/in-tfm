@@ -188,15 +188,25 @@ class NeuronCapture:
             layer = self.layer_getter(self.model)
             inputs = layer.input.save()
             outputs = layer.output.save()
+        # A bf16 model's tensors would reach numpy, which has no bf16. Everything after capture is float32.
         return (
-            self.layout.inputs(inputs.detach()),
-            self.layout.outputs(outputs.detach()),
+            self.layout.inputs(inputs.detach()).float(),
+            self.layout.outputs(outputs.detach()).float(),
             batch.valid_mask,
         )
 
     def _release(self) -> None:
         empty_cache()
         gc.collect()
+
+
+def consistency_tolerance(model: torch.nn.Module) -> float:
+    """Pass two re-runs a hit in a different batch, and a half-precision kernel may round it differently.
+
+    - Four of the model dtype's rounding steps, and never below the float32 default of 1e-3.
+    """
+    dtype = next(model.parameters()).dtype
+    return max(1e-3, 4 * torch.finfo(dtype).eps)
 
 
 def cat_captures(tensors: list[torch.Tensor]) -> torch.Tensor:
