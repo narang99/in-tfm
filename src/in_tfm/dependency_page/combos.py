@@ -26,6 +26,7 @@ from .tiles import png_data_uri
 SHOWN_COMBOS = 12
 EXAMPLES_PER_TOKEN = 3
 TOKEN_IMAGE_PX = 128
+TOKEN_CHIP_STYLE = "--accent:#444;--accent-ink:#fff"
 
 
 class ShownPart(BaseModel):
@@ -64,7 +65,9 @@ def shown_part(
     if part.kind == "fixed":
         token = tokens[part.cluster_id]
         return ShownPart(
-            text=repr(token.text), href=f"#{token_anchor(part.cluster_id)}"
+            text=repr(token.text),
+            href=f"#{token_anchor(part.cluster_id)}",
+            style=TOKEN_CHIP_STYLE,
         )
     report = reports[(part.column.tap.layer, part.column.column)]
     image = report.report_dir / f"cluster_{part.cluster_id}" / "hadamard.jpg"

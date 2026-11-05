@@ -2,7 +2,7 @@
 <div class="dep-clusters">
 <h4>What this dim was made of: {{ table.n_combos }} combinations of writer clusters</h4>
 <table class="borders combos">
-<thead><tr>{% for part in table.rows[0].parts %}<th>{{ "token" if loop.first else "cluster" }}</th>{% endfor %}<th>firings</th><th>of the dim's</th></tr></thead>
+<thead><tr>{% for part in table.rows[0].parts %}<th>{{ "embedding writer: token" if loop.first else "o_proj writer: its cluster" }}</th>{% endfor %}<th>firings</th><th>of the dim's</th></tr></thead>
 <tbody>
 {% for row in table.rows %}
 <tr>
@@ -18,5 +18,5 @@
 {% endif %}
 </tbody>
 </table>
-<p class="view-note">Each firing of this dim is one cluster per writer. The embedding's cluster is the token itself. An o_proj firing matches the cluster of its own report whose mean Hadamard row is nearest by cosine, with no cutoff. Thumbnails are that cluster's Hadamard image. No magnitudes are compared.</p>
+<p class="view-note">Each firing of this dim is one pair: the token (the embedding writer) and the o_proj cluster it matched. When a cluster fires at one token, the token column is the same in every row. The embedding's cluster is the token itself. An o_proj firing matches the cluster of its own report whose mean Hadamard row is nearest by cosine, with no cutoff. Thumbnails are that cluster's Hadamard image. No magnitudes are compared.</p>
 </div>
