@@ -20,6 +20,9 @@ from .sections import GuideEntry, PageSection, Pane
 DEFAULT_PICKS = 2
 """Trees switched on when the up-close tab opens: the pair among the largest trees that touch most."""
 UP_CLOSE_DIV = "forest-up-close"
+DECISION_POINTS = 20_000
+DECISION_EXTREMES = 2_000
+CURVE_HEAD = 5_000
 
 
 def forest_section(data: ForestData | None) -> PageSection | None:
@@ -91,15 +94,31 @@ def point_hover(data: ForestData, points: Int[np.ndarray, "n"]) -> list[str]:
     ]
 
 
+def decision_points(data: ForestData) -> Int[np.ndarray, "n_shown"]:
+    """Everything up to `DECISION_POINTS`. Past that, the far ends of both axes, which decide the roots, and an even sample.
+
+    - At 250k points, every dot with its hover text would add tens of megabytes to one page.
+    """
+    n = len(data.rho)
+    if n <= DECISION_POINTS:
+        return np.arange(n)
+    top_rho = np.argsort(-data.rho, kind="stable")[:DECISION_EXTREMES]
+    top_delta = np.argsort(-data.delta, kind="stable")[:DECISION_EXTREMES]
+    sample = np.random.default_rng(0).choice(n, DECISION_POINTS, replace=False)
+    return np.unique(np.concatenate([top_rho, top_delta, sample]))
+
+
 def decision_figure(data: ForestData) -> go.Figure:
-    points = np.arange(len(data.rho))
+    points = decision_points(data)
     fig = go.Figure(
         go.Scattergl(
-            x=data.rho,
-            y=data.delta,
+            x=data.rho[points],
+            y=data.delta[points],
             mode="markers",
             name="points",
-            marker=dict(size=4, color=[tree_color(t) for t in data.tree], opacity=0.55),
+            marker=dict(
+                size=4, color=[tree_color(t) for t in data.tree[points]], opacity=0.55
+            ),
             text=point_hover(data, points),
             hovertemplate="%{text}<br>rho %{x:.3f}, delta %{y:.3f}<extra></extra>",
         )
@@ -143,6 +162,13 @@ def delta_for_elbow(data: ForestData) -> Float[np.ndarray, "n_distinct"]:
     return delta
 
 
+def even_positions(n: int) -> Int[np.ndarray, "n_shown"]:
+    """Every position up to `CURVE_HEAD`, where the elbows sit, then an even spread, always with the last."""
+    head = np.arange(min(n, CURVE_HEAD))
+    rest = np.arange(CURVE_HEAD, n, max(1, n // CURVE_HEAD))
+    return np.unique(np.concatenate([head, rest, [n - 1]]))
+
+
 def cuts_figure(data: ForestData) -> go.Figure:
     fig = make_subplots(
         rows=1,
@@ -154,10 +180,11 @@ def cuts_figure(data: ForestData) -> go.Figure:
         [(data.rho, data.cut_rho), (delta_for_elbow(data), data.cut_delta)], start=1
     ):
         curve = np.sort(values)[::-1]
+        shown = even_positions(len(curve))
         fig.add_trace(
             go.Scattergl(
-                x=np.arange(len(curve)),
-                y=curve,
+                x=shown,
+                y=curve[shown],
                 mode="lines",
                 line=dict(color=MUTED, width=2),
                 hovertemplate="rank %{x}<br>%{y:.3f}<extra></extra>",

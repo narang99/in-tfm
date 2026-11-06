@@ -15,6 +15,7 @@ from .figures import MARK, cluster_chip, embed, tree_name
 from .sections import GuideEntry, PageSection, Pane
 
 NEAREST_SHOWN = 3
+ENTROPY_BINS = 80
 
 
 def has_threshold(data: ForestData) -> bool:
@@ -73,7 +74,16 @@ def membership_section(data: ForestData | None) -> PageSection | None:
 
 
 def entropy_figure(data: ForestData) -> go.Figure:
-    fig = go.Figure(go.Histogram(x=data.hit_entropy, nbinsx=80, marker_color="#7e57c2"))
+    """Binned here, since a plotly histogram sends every hit's value to the page."""
+    counts, edges = np.histogram(data.hit_entropy, bins=ENTROPY_BINS)
+    fig = go.Figure(
+        go.Bar(
+            x=(edges[:-1] + edges[1:]) / 2,
+            y=counts,
+            width=edges[1] - edges[0],
+            marker_color="#7e57c2",
+        )
+    )
     if has_threshold(data):
         fig.add_vline(
             x=data.max_entropy,
