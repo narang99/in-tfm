@@ -45,6 +45,21 @@ python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_o_proj_fu
 - Without those 30,834 points, about 12% of points are confident.
 - Every one of the 30,834 lies outside the largest piece.
 
+## Links between trees join sparse points
+
+- Measured over every link at k=5, labelled by forest tree. A point's density share is its density rank inside its tree, from 0 to 1.
+
+| Links | Count | Median sparser end | Both ends in the top half | Both ends in the top tenth |
+|---|---|---|---|---|
+| Within a tree | 900,025 | 0.57 | 56.4% | 7.33% |
+| Between trees, either-way | 96,374 | 0.10 | 4.1% | 0.02% |
+| Between trees, mutual | 11,877 | 0.13 | 5.3% | 0.01% |
+
+- 5.8% of points in the top tenth of their tree have a link to another tree, against 34.0% of the rest.
+- Mixed hits are rarer than links, and not sparse.
+  - 1,059 hits (0.4%) have their top two probabilities both at 0.4 or more.
+  - Their median density share is 0.47, close to the 0.50 of all points.
+
 ## Outputs
 
 - `reports/o_proj_full_scan_neuron_6/` locally, git-ignored, without the `hits.pt` files.
