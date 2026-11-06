@@ -1,7 +1,7 @@
 # As configs/marin_l16_19311.yaml, on the Marin atlas's own fineweb-1m documents instead of pile-10k.
 # The 489 documents are their FineWeb sample (seed 20261024), each one 2,048-token window with BOS, 1,001,472 tokens.
 # One window per batch: eager attention scores over 2,048 tokens in float32 are 0.67 GB per window, and 2 ran out of memory on the L4.
-#   python scripts/marin_sweep_report.py --config configs/marin_l16_19311_fineweb1m.yaml
+#   python scripts/run_neuron_report.py --config configs/marin_l16_19311_fineweb1m.yaml
 model: marin-community/marin-32b-base
 layer_name: layers.16.mlp.gate_proj
 neurons: [19311]
@@ -22,6 +22,8 @@ clustering:
   "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
   strategy:
     method: hdbscan
+    min_cluster_size: 25
+    min_samples: 8  # the pile-10k sweep chose (25, 8), see experiments/marin-l16-19311.md
     selection_method: leaf
 report:
   max_hits_per_cluster: 5
