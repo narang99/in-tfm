@@ -21,6 +21,39 @@ from .picks import Pick, PickedPositions
 from .strategies.bucketed import bucket_floor, bucketed_hits
 from .strategies.elbow import elbow_hits, elbow_pick
 
+CURVE_POINTS = 4000
+"""Points kept from the sorted curve. A text neuron's tail can have millions."""
+
+
+class ThinnedCurve(BaseModel):
+    """The tail's positive magnitudes, ascending, at some positions. Both report plots draw this curve.
+
+    - Only this outlives selection, since a full-corpus curve would hold 1.3 GB through clustering.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    index: Int[np.ndarray, "n_shown"]
+    """Position of each shown value in the full sorted curve."""
+    magnitude: Float[np.ndarray, "n_shown"]
+    n_positions: int
+
+
+def shown_positions(n: int, points: int = CURVE_POINTS) -> Int[np.ndarray, "n_shown"]:
+    """An even spread, plus every one of the last `points`, where the hits are."""
+    step = max(1, n // points)
+    return np.unique(
+        np.concatenate([np.arange(0, n, step), np.arange(max(0, n - points), n)])
+    )
+
+
+def thinned_curve(sorted_magnitudes: Float[torch.Tensor, "n_pos"]) -> ThinnedCurve:
+    magnitudes = sorted_magnitudes.numpy()
+    index = shown_positions(len(magnitudes))
+    return ThinnedCurve(
+        index=index, magnitude=magnitudes[index].copy(), n_positions=len(magnitudes)
+    )
+
 
 class TailSelection(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -29,8 +62,7 @@ class TailSelection(BaseModel):
     batch_idx: Int[np.ndarray, "n_hits"]
     token_idx: Int[np.ndarray, "n_hits"]
     n_candidates: int
-    sorted_magnitudes: Float[torch.Tensor, "n_pos"]
-    """The tail's positive magnitudes, ascending. Both report plots draw this curve."""
+    curve: ThinnedCurve
     pick: Pick
 
     @property
@@ -145,7 +177,7 @@ def select_tail(
         batch_idx=picked.batch_idx,
         token_idx=picked.token_idx,
         n_candidates=picked.n_candidates,
-        sorted_magnitudes=sorted_magnitudes,
+        curve=thinned_curve(sorted_magnitudes),
         pick=pick,
     )
 

@@ -4,6 +4,7 @@ import torch
 from in_tfm.activation_ranges import ActivationRanges, write_activation_ranges
 from in_tfm.density_peaks import calculate_probs, density_peak_forest, forest_trees
 from in_tfm.hit_selection import ElbowPick, HitSelection, TailSelection
+from in_tfm.hit_selection.selection import thinned_curve
 from in_tfm.report_meta import ClusterMeta, ElbowPickMeta, ReportMeta
 from in_tfm.report_page import (
     forest_data,
@@ -39,7 +40,7 @@ def a_tail(tail: Tail = "positive", n_positions: int = 10_000) -> TailSelection:
         batch_idx=np.zeros(3, int),
         token_idx=np.arange(3),
         n_candidates=3,
-        sorted_magnitudes=torch.linspace(0, 1, n_positions) ** 4,
+        curve=thinned_curve(torch.linspace(0, 1, n_positions) ** 4),
         pick=ElbowPick(cutoff=0.5, elbow_idx=n_positions - 1_000),
     )
 

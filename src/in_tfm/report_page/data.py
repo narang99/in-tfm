@@ -21,8 +21,6 @@ from .up_close import up_close_layout
 LEGACY_SELECTION_DATA = "selection.npz"
 """Reports before per-tail curves saved one curve here."""
 FOREST_DATA = "forest.npz"
-CURVE_POINTS = 4000
-"""Points kept from the sorted curve. A text neuron's tail can have millions."""
 TAILS: tuple[Tail, ...] = ("negative", "positive")
 
 
@@ -45,23 +43,13 @@ class SelectionCurve(BaseModel):
     bucket_edges: Float[np.ndarray, "n_edges"] | None
 
 
-def shown_positions(n: int, points: int = CURVE_POINTS) -> Int[np.ndarray, "n_shown"]:
-    """An even spread, plus every one of the last `points`, where the hits are."""
-    step = max(1, n // points)
-    return np.unique(
-        np.concatenate([np.arange(0, n, step), np.arange(max(0, n - points), n)])
-    )
-
-
 def tail_curve(tail: TailSelection) -> SelectionCurve:
-    magnitudes = tail.sorted_magnitudes.numpy()
-    index = shown_positions(len(magnitudes))
     pick = tail.pick
     return SelectionCurve(
         tail=tail.tail,
-        index=index,
-        magnitude=magnitudes[index],
-        n_positions=len(magnitudes),
+        index=tail.curve.index,
+        magnitude=tail.curve.magnitude,
+        n_positions=tail.curve.n_positions,
         threshold=pick.threshold,
         elbow_idx=pick.elbow_idx if isinstance(pick, ElbowPick) else None,
         bucket_edges=pick.bucket_edges if isinstance(pick, BucketedPick) else None,

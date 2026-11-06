@@ -5,6 +5,7 @@ patched for AttnLRP once, before NNsight wraps it, since the patch mutates proce
 and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_for_attn_lrp).
 """
 
+import resource
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -62,7 +63,7 @@ from .run_config import (
     Polarity,
     RunConfig,
 )
-from .sources import SampleSource
+from .sources import SampleId, SampleSource
 from .token_layout import TokenLayout
 
 
@@ -70,7 +71,14 @@ from .token_layout import TokenLayout
 def timed(label: str):
     start = time.perf_counter()
     yield
-    print(f"[{label}] {time.perf_counter() - start:.2f}s")
+    print(
+        f"[{label}] {time.perf_counter() - start:.2f}s, peak RSS so far {peak_rss_gb():.1f} GB"
+    )
+
+
+def peak_rss_gb() -> float:
+    """On linux `ru_maxrss` is in KB. A T4 runtime has 12 GB, and passing it kills the run with no traceback."""
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
 
 
 def layer_getter_for(config: RunConfig) -> LayerGetter:
@@ -337,7 +345,9 @@ class CollectedHits(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    scan: ScanResult
+    sample_ids: list[SampleId]
+    noise: dict[tuple[int, Polarity], Float[np.ndarray, "n"]]
+    """The scan's activations stop here, so a full-corpus scan's 1.6 GB is free for clustering."""
     selections: dict[tuple[int, Polarity], HitSelection]
     rows: dict[tuple[int, Polarity], Float[torch.Tensor, "n_hits hidden"]]
     weight: torch.Tensor
@@ -387,7 +397,10 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
     for target, selection in selections.items():
         save_gathered_hits(config.out_dir, target, selection, rows[target])
     return CollectedHits(
-        scan=scan,
+        sample_ids=scan.sample_ids,
+        noise={
+            target: sample_noise(scan, target[0], config.seed) for target in targets
+        },
         selections=selections,
         rows=rows,
         weight=run.layout.weight(layer_weight),
@@ -420,9 +433,9 @@ def report_collected(
             polarity,
             collected.selections[(neuron_idx, polarity)],
             rows,
-            collected.scan.sample_ids,
+            collected.sample_ids,
             collected.weight,
-            sample_noise(collected.scan, neuron_idx, config.seed),
+            collected.noise[(neuron_idx, polarity)],
             run,
             config,
         )

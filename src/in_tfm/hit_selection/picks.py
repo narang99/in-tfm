@@ -24,7 +24,7 @@ class ElbowPick(BaseModel):
     method: Literal["elbow"] = "elbow"
     cutoff: float
     elbow_idx: int
-    """Index into `TailSelection.sorted_magnitudes`."""
+    """Index into the tail's full sorted curve."""
 
     @property
     def threshold(self) -> float:
