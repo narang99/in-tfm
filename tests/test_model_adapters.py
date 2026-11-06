@@ -3,7 +3,13 @@ from typing import cast
 import pytest
 import torch
 from nnsight import NNsight
-from transformers import Gemma3ForCausalLM, Gemma3TextConfig, PreTrainedTokenizerBase
+from transformers import (
+    Gemma3ForCausalLM,
+    Gemma3TextConfig,
+    PreTrainedTokenizerBase,
+    Qwen3Config,
+    Qwen3Model,
+)
 
 from in_tfm.layers import submodule_getter
 from in_tfm.models.attn_only_2l import (
@@ -12,6 +18,7 @@ from in_tfm.models.attn_only_2l import (
     AttnOnlyForCausalLM,
 )
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.qwen3 import Qwen3Adapter, kept_weight, layers_needed
 from in_tfm.sources import ModelBatch
 from in_tfm.token_layout import SequenceLayout
 
@@ -22,6 +29,7 @@ class FakeTokenizer:
     pad_token = "<pad>"
     eos_token = "<eos>"
     bos_token = "<bos>"
+    bos_token_id = VOCAB - 1
 
     def __init__(self) -> None:
         self.seen: list[str] = []
@@ -67,8 +75,23 @@ def tiny_gemma3_adapter() -> Gemma3Adapter:
     )
 
 
+def tiny_qwen3_adapter() -> Qwen3Adapter:
+    config = Qwen3Config(
+        vocab_size=VOCAB,
+        hidden_size=HIDDEN,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=N_HEADS,
+        num_key_value_heads=1,
+        head_dim=HEAD_DIM,
+        max_position_embeddings=MAX_LENGTH,
+    )
+    return Qwen3Adapter(Qwen3Model(config), fake_tokenizer(), max_length=MAX_LENGTH)
+
+
 @pytest.fixture(
-    params=[tiny_attn_only_adapter, tiny_gemma3_adapter], ids=["attn_only_2l", "gemma3"]
+    params=[tiny_attn_only_adapter, tiny_gemma3_adapter, tiny_qwen3_adapter],
+    ids=["attn_only_2l", "gemma3", "qwen3"],
 )
 def adapter(request):
     return request.param()
@@ -114,6 +137,7 @@ def test_model_runs_on_the_source_batch(adapter):
     [
         (tiny_attn_only_adapter, "<bos>a"),
         (tiny_gemma3_adapter, "a"),
+        (tiny_qwen3_adapter, "a"),
     ],
 )
 def test_only_the_attn_only_model_gets_a_bos_prepended(make_adapter, expected):
@@ -143,3 +167,61 @@ def test_nnsight_stores_the_forward_it_wraps():
         assert module(torch.ones(1)).item() == 2.0
     finally:
         del Doubler.forward
+
+
+def test_a_layer_needs_every_layer_up_to_it():
+    assert layers_needed("layers.16.mlp.gate_proj") == 17
+    assert layers_needed("layers.0.self_attn.q_proj") == 1
+
+
+def test_a_truncated_checkpoint_keeps_the_embedding_and_the_early_layers():
+    kept = [
+        name
+        for name in [
+            "model.embed_tokens.weight",
+            "model.norm.weight",
+            "model.layers.16.mlp.up_proj.weight",
+            "model.layers.17.mlp.up_proj.weight",
+            "model.layers.1.self_attn.q_norm.weight",
+            "lm_head.weight",
+        ]
+        if kept_weight(name, 17)
+    ]
+    assert kept == [
+        "model.embed_tokens.weight",
+        "model.norm.weight",
+        "model.layers.16.mlp.up_proj.weight",
+        "model.layers.1.self_attn.q_norm.weight",
+    ]
+
+
+def test_qwen3_never_counts_bos_as_a_hit():
+    adapter = tiny_qwen3_adapter()
+    adapter.tokenizer.bos_token_id = 0
+    source = adapter.make_source(["a"])
+    encoded = {
+        "input_ids": torch.tensor([[0, 5, 6]]),
+        "attention_mask": torch.tensor([[1, 1, 0]]),
+    }
+    mask = source._hit_mask(encoded["input_ids"], encoded["attention_mask"])
+    assert mask.tolist() == [[False, True, False]]
+
+
+def test_checkpointed_relevance_matches_the_plain_one():
+    from in_tfm.attribution import compute_attnlrp_relevance
+    from in_tfm.models.qwen3 import checkpointed_attnlrp_relevance
+
+    torch.manual_seed(0)
+    adapter = tiny_qwen3_adapter()
+    adapter.get_model().requires_grad_(False)
+    adapter.patch_for_attn_lrp()
+    getter = submodule_getter("layers.1.mlp.gate_proj")
+    torch.manual_seed(1)  # the fake tokenizer draws random ids on every call
+    batch = adapter.make_source(["a"]).to_model_batch(["0"])
+    plain = compute_attnlrp_relevance(adapter.get_model(), batch, getter, 3, 4)
+    torch.manual_seed(1)
+    batch = adapter.make_source(["a"]).to_model_batch(["0"])
+    checkpointed = checkpointed_attnlrp_relevance(
+        adapter.get_model(), batch, getter, 3, 4
+    )
+    assert torch.allclose(torch.from_numpy(plain), torch.from_numpy(checkpointed))

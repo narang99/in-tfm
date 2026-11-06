@@ -1,0 +1,28 @@
+# Marin 32B layer 16 MLP neuron 19311, its gate_proj row. The up_proj row runs with --layer-name.
+# The atlas's top firings of its positive side are "another", "more", "further", "additional", "extra".
+# Layer 16 is the deepest that fits an L4 with room for AttnLRP: layers 0..16 are about 18 GB in bf16.
+#   python scripts/run_neuron_report.py --config configs/marin_l16_19311.yaml
+model: marin-community/marin-32b-base
+layer_name: layers.16.mlp.gate_proj
+neurons: [19311]
+polarity: signed
+batch_size: 8
+out_dir: reports/marin-32b/layers.16.mlp.gate_proj
+text:
+  dataset: NeelNanda/pile-10k
+  dataset_config: null
+  unit: document
+  n_samples: 10000  # every pile-10k document. 68% of 512 positions are real tokens, so about 3.5M positions
+  max_length: 512
+hits:
+  method: bucketed
+  max_hits: 250000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  strategy:
+    method: hdbscan
+    min_cluster_size: 25
+    min_samples: 8  # the pile-10k sweep chose (25, 8), see experiments/marin-l16-19311.md
+    selection_method: leaf
+report:
+  max_hits_per_cluster: 5

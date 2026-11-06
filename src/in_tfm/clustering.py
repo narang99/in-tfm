@@ -107,4 +107,20 @@ def cluster_labels(
         min_samples=min_samples,
     )
     clusterer.fit(points)
-    return np.asarray(clusterer.labels_)
+    labels = np.asarray(clusterer.labels_)
+    del clusterer
+    release_gpu_pool()
+    return labels
+
+
+def release_gpu_pool() -> None:
+    """cuml keeps freed blocks in CuPy's pool, which torch cannot use.
+
+    - A big model moved back to the GPU for attribution after clustering would otherwise run out of memory.
+    """
+    try:
+        import cupy
+    except ImportError:
+        return
+    cupy.get_default_memory_pool().free_all_blocks()
+    cupy.get_default_pinned_memory_pool().free_all_blocks()

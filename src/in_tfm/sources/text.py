@@ -21,9 +21,11 @@ class TextSource:
         embed: torch.nn.Module,
         max_length: int = 128,
         prepend_bos: bool = False,
+        bos_is_a_hit: bool = True,
     ) -> None:
         self.texts = list(texts)
         self.prepend_bos = prepend_bos
+        self.bos_is_a_hit = bos_is_a_hit
         self.tokenizer = tokenizer
         self.embed = embed
         self.max_length = max_length
@@ -55,9 +57,18 @@ class TextSource:
         return ModelBatch(
             kwargs={"inputs_embeds": embeds, "attention_mask": mask},
             grad_leaf_key="inputs_embeds",
-            valid_mask=mask.bool(),
+            valid_mask=self._hit_mask(encoded["input_ids"], mask),
             display_ids=encoded["input_ids"],
         )
+
+    def _hit_mask(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """Large models park huge activations on BOS, an attention sink, which would crowd out every real hit."""
+        mask = attention_mask.bool()
+        if self.bos_is_a_hit or self.tokenizer.bos_token_id is None:
+            return mask
+        return mask & (input_ids != self.tokenizer.bos_token_id)
 
     def _embed_device(self) -> torch.device:
         return next(self.embed.parameters()).device

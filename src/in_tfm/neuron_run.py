@@ -44,7 +44,12 @@ from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, submodule_getter
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
-from .neuron_capture import NeuronCapture, merge_positions
+from .neuron_capture import (
+    NeuronCapture,
+    ScanResult,
+    consistency_tolerance,
+    merge_positions,
+)
 from .neuron_report import AttrFn, NeuronClusterHits
 from .presenters import ClusterPresenter
 from .report_page import ForestData, forest_data
@@ -290,7 +295,25 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> None:
     run = prepare_run(config, adapter, samples)
+    report_collected(config, run, collect_hits(config, run))
 
+
+class CollectedHits(BaseModel):
+    """Every neuron's hits with their layer inputs, gathered once.
+
+    - Reporting can then run more than once, for example to compare clustering settings, without another forward pass.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    scan: ScanResult
+    selections: dict[tuple[int, Polarity], HitSelection]
+    rows: dict[tuple[int, Polarity], Float[torch.Tensor, "n_hits hidden"]]
+    weight: torch.Tensor
+
+
+def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
+    """Scans, selects and gathers, then moves the model off the accelerator to make room for clustering."""
     with timed("pass 1: scan"):
         scan = run.capture.scan()
     print(
@@ -300,8 +323,8 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
 
     targets = [(n, config.polarity) for n in config.neuron_idxs]
     selections = {
-        (n, polarity): select_hits(scan, n, polarity, config.hits, config.seed)
-        for (n, polarity) in targets
+        target: select_hits(scan, target[0], target[1], config.hits, config.seed)
+        for target in targets
     }
     merged = merge_positions(
         [(s.batch_idx, s.token_idx) for s in selections.values()],
@@ -309,8 +332,14 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     )
     with timed("pass 2: gather"):
         gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
+    tolerance = consistency_tolerance(run.module)
     worst = run.capture.check_consistent(
-        scan, gathered, merged.batch_idx, merged.token_idx
+        scan,
+        gathered,
+        merged.batch_idx,
+        merged.token_idx,
+        atol=tolerance,
+        rtol=tolerance,
     )
     print(
         f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
@@ -320,17 +349,29 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     empty_cache()
     layer_weight = layer_getter_for(config)(run.module).weight
     assert isinstance(layer_weight, torch.Tensor)
-    weight = run.layout.weight(layer_weight)
+    return CollectedHits(
+        scan=scan,
+        selections=selections,
+        rows={
+            target: gathered.inputs[index_map]
+            for target, index_map in zip(targets, merged.index_maps)
+        },
+        weight=run.layout.weight(layer_weight),
+    )
 
-    for (neuron_idx, polarity), index_map in zip(targets, merged.index_maps):
+
+def report_collected(
+    config: RunConfig, run: PreparedRun, collected: CollectedHits
+) -> None:
+    for (neuron_idx, polarity), rows in collected.rows.items():
         report_neuron(
             neuron_idx,
             polarity,
-            selections[(neuron_idx, polarity)],
-            gathered.inputs[index_map],
-            scan.sample_ids,
-            weight,
-            sample_noise(scan, neuron_idx, config.seed),
+            collected.selections[(neuron_idx, polarity)],
+            rows,
+            collected.scan.sample_ids,
+            collected.weight,
+            sample_noise(collected.scan, neuron_idx, config.seed),
             run,
             config,
         )

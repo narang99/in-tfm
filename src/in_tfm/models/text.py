@@ -32,6 +32,7 @@ class DecoderTextAdapter(ABC):
 
     attr_fn = staticmethod(compute_attnlrp_relevance)
     prepend_bos = False
+    bos_is_a_hit = True
 
     def __init__(
         self,
@@ -67,6 +68,7 @@ class DecoderTextAdapter(ABC):
             self.get_model().get_submodule("embed_tokens"),
             self.max_length,
             self.prepend_bos,
+            self.bos_is_a_hit,
         )
 
     def make_presenter(self, source: TextSource, clustered_label: str) -> TextPresenter:
