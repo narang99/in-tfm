@@ -42,7 +42,7 @@ from .density_peaks import (
 from .density_peaks.ivf_forest import IvfSettings, ivf_density_peak_forest
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
-from .hit_selection import HitSelection, select_hits
+from .hit_selection import BucketedPick, HitSelection, TailSelection, select_hits
 from .layers import LayerGetter, submodule_getter
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
@@ -394,13 +394,14 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
         target: gathered.inputs[index_map]
         for target, index_map in zip(targets, merged.index_maps)
     }
+    noise = {target: sample_noise(scan, target[0], config.seed) for target in targets}
     for target, selection in selections.items():
-        save_gathered_hits(config.out_dir, target, selection, rows[target])
+        save_gathered_hits(
+            config.out_dir, target, selection, rows[target], noise[target]
+        )
     return CollectedHits(
         sample_ids=scan.sample_ids,
-        noise={
-            target: sample_noise(scan, target[0], config.seed) for target in targets
-        },
+        noise=noise,
         selections=selections,
         rows=rows,
         weight=run.layout.weight(layer_weight),
@@ -412,8 +413,11 @@ def save_gathered_hits(
     target: tuple[int, Polarity],
     selection: HitSelection,
     rows: Float[torch.Tensor, "n_hits hidden"],
+    noise: Float[np.ndarray, "n"],
 ) -> None:
-    """The forward passes are the costly part, so a later crash or new clustering setting must not repeat them."""
+    """The forward passes are the costly part, so a later crash or new clustering setting must not repeat them.
+
+    - It holds everything a report takes from the scan, so a report never needs the scan again."""
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez(
         out_dir / f"{report_name(*target)}_gathered.npz",
@@ -421,7 +425,31 @@ def save_gathered_hits(
         token_idx=selection.token_idx,
         activations=selection.activations,
         rows=rows.numpy(),
+        noise=noise,
+        **{
+            name: value
+            for tail in selection.tails
+            for name, value in tail_arrays(tail).items()
+        },
     )
+
+
+def tail_arrays(tail: TailSelection) -> dict[str, np.ndarray]:
+    arrays = {
+        "batch_idx": tail.batch_idx,
+        "token_idx": tail.token_idx,
+        "n_candidates": np.array(tail.n_candidates),
+        "curve_index": tail.curve.index,
+        "curve_magnitude": tail.curve.magnitude,
+        "curve_n_positions": np.array(tail.curve.n_positions),
+        "threshold": np.array(tail.pick.threshold),
+    }
+    if isinstance(tail.pick, BucketedPick):
+        arrays |= {
+            "bucket_ids": tail.pick.bucket_ids,
+            "bucket_edges": tail.pick.bucket_edges,
+        }
+    return {f"{tail.tail}_{name}": value for name, value in arrays.items()}
 
 
 def report_collected(
