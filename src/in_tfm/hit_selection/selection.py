@@ -63,11 +63,16 @@ def positive_sorted_activations(
 ) -> Float[torch.Tensor, "n_pos"]:
     """`valid_mask` drops padding before the elbow is computed. Padding would otherwise enter
     the activation distribution the threshold is derived from, moving the cutoff for every
-    real token."""
+    real token.
+
+    - Sorts in place with numpy, since `torch.sort` also allocates int64 indices, 1.9 GB per tail on a full-corpus scan.
+    """
     values = outputs[..., neuron_idx]
-    values = values[valid_mask] if valid_mask is not None else values.flatten()
-    values = values[values > 0]
-    return torch.sort(values).values
+    has_padding = valid_mask is not None and not valid_mask.all()
+    values = values[valid_mask] if has_padding else values.flatten()
+    positive = values[values > 0].numpy()
+    positive.sort()
+    return torch.from_numpy(positive)
 
 
 def tails_of(polarity: Polarity) -> list[Tail]:
