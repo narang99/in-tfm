@@ -42,10 +42,19 @@ def sampled_with_ancestors(
     per_tree: int,
     seed: int,
 ) -> Int[np.ndarray, "n_shown"]:
+    """Largest trees first, stopping at twice `POINT_BUDGET`, since the floor of `MIN_PER_TREE` can overshoot it.
+
+    - With thousands of trees the floor alone would make a layout that takes hours, on a section that is only a view.
+    """
     rng = np.random.default_rng(seed)
     chosen: set[int] = set()
-    for t in np.unique(tree):
-        members = np.flatnonzero(tree == t)
+    members_of = np.argsort(tree, kind="stable")
+    sizes = np.bincount(tree)
+    starts = np.concatenate([[0], np.cumsum(sizes)])
+    for t in np.argsort(-sizes, kind="stable"):
+        if len(chosen) >= 2 * POINT_BUDGET:
+            break
+        members = members_of[starts[t] : starts[t + 1]]
         for start in rng.choice(members, min(per_tree, len(members)), replace=False):
             point = int(start)
             while point >= 0 and point not in chosen:

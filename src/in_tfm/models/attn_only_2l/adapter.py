@@ -1,8 +1,11 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import torch
 
 from ...attribution import patch_eager_attention
+from ...sources import TextSource
+from ...sources.token_stream import TokenStream, TokenStreamSource
 from .. import text
 from . import model as attn_only_model
 from .model import load_attn_only_2l, load_trained_attn_only
@@ -51,3 +54,14 @@ class TinyAttnOnlyAdapter(AttnOnly2LAdapter):
 
     def get_model(self) -> torch.nn.Module:
         return self.hf_model
+
+    def make_source(self, samples: Sequence[str] | TokenStream) -> TextSource:
+        if not isinstance(samples, TokenStream):
+            return super().make_source(samples)
+        return TokenStreamSource(
+            samples,
+            self.tokenizer,
+            self.get_model().get_submodule(self.embed_path),
+            self.max_length,
+            self.bos_is_a_hit,
+        )

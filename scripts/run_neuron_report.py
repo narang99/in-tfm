@@ -30,6 +30,7 @@ from in_tfm.models.mnist_cnn.source import first_per_class
 from in_tfm.models.qwen3 import Qwen3Adapter
 from in_tfm.neuron_run import run_neuron_reports, timed
 from in_tfm.run_config import ModelName, RunConfig, load_run_config
+from in_tfm.sources.token_stream import TokenStream, load_token_stream
 from in_tfm.sources.wikitext import load_texts
 
 TINY_ATTN_ONLY_1L_CHECKPOINT = Path("checkpoints/tiny_attn_only_1l")
@@ -84,7 +85,9 @@ def load_inception_samples(config: RunConfig) -> list[str]:
     ]
 
 
-def load_samples(config: RunConfig) -> list[str] | list[int]:
+def load_samples(config: RunConfig) -> list[str] | list[int] | TokenStream:
+    if config.text.token_stream is not None:
+        return load_token_stream(config.text.token_stream, config.text.n_samples)
     if config.modality == "inception":
         return load_inception_samples(config)
     if config.modality == "mnist":

@@ -38,6 +38,7 @@ from .density_peaks import (
     forest_trees,
     torch_forest,
 )
+from .density_peaks.ivf_forest import IvfSettings, ivf_density_peak_forest
 from .device import empty_cache
 from .hadamard import near_square_shape, raw_hadamard_from_rows
 from .hit_selection import HitSelection, select_hits
@@ -57,6 +58,7 @@ from .run_config import (
     ClusteringConfig,
     DensityPeaksConfig,
     HdbscanConfig,
+    IvfSearchConfig,
     Polarity,
     RunConfig,
 )
@@ -100,6 +102,33 @@ def forest_device(device: str) -> str | None:
     return device if device.startswith("cuda") else None
 
 
+def ivf_forest_on(
+    hdmd: Float[np.ndarray, "n_hits hidden"],
+    clustering: ClusteringConfig,
+    strategy: DensityPeaksConfig,
+    ivf: IvfSearchConfig,
+    device: str | None,
+) -> DensityPeakForest:
+    n_lists = max(1, round(ivf.lists_per_sqrt_hit * len(hdmd) ** 0.5))
+    forest, stats = ivf_density_peak_forest(
+        hdmd,
+        IvfSettings(
+            n_lists=n_lists,
+            n_probe=min(ivf.n_probe, n_lists),
+            peak_probe=min(ivf.peak_probe, n_lists),
+        ),
+        strategy.k,
+        clustering.distance,
+        clustering.normalise,
+        device or "cpu",
+    )
+    print(
+        f"[ivf forest] {n_lists} lists, {stats.local_peaks} local peaks, "
+        f"{stats.exhaustive} searched exhaustively, seconds {stats.seconds}"
+    )
+    return forest
+
+
 def density_peak_trees(
     hdmd: Float[np.ndarray, "n_hits hidden"],
     clustering: ClusteringConfig,
@@ -107,7 +136,9 @@ def density_peak_trees(
     device: str | None = None,
 ) -> tuple[DensityPeakForest, ForestTrees]:
     """`device` runs the forest with torch there. See `forest_device`."""
-    if device is None:
+    if strategy.ivf is not None:
+        forest = ivf_forest_on(hdmd, clustering, strategy, strategy.ivf, device)
+    elif device is None:
         forest = density_peak_forest(
             hdmd, strategy.k, clustering.distance, clustering.normalise
         )
@@ -349,14 +380,34 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
     empty_cache()
     layer_weight = layer_getter_for(config)(run.module).weight
     assert isinstance(layer_weight, torch.Tensor)
+    rows = {
+        target: gathered.inputs[index_map]
+        for target, index_map in zip(targets, merged.index_maps)
+    }
+    for target, selection in selections.items():
+        save_gathered_hits(config.out_dir, target, selection, rows[target])
     return CollectedHits(
         scan=scan,
         selections=selections,
-        rows={
-            target: gathered.inputs[index_map]
-            for target, index_map in zip(targets, merged.index_maps)
-        },
+        rows=rows,
         weight=run.layout.weight(layer_weight),
+    )
+
+
+def save_gathered_hits(
+    out_dir: Path,
+    target: tuple[int, Polarity],
+    selection: HitSelection,
+    rows: Float[torch.Tensor, "n_hits hidden"],
+) -> None:
+    """The forward passes are the costly part, so a later crash or new clustering setting must not repeat them."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        out_dir / f"{report_name(*target)}_gathered.npz",
+        batch_idx=selection.batch_idx,
+        token_idx=selection.token_idx,
+        activations=selection.activations,
+        rows=rows.numpy(),
     )
 
 

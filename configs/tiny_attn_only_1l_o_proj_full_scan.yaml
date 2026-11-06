@@ -1,0 +1,25 @@
+# One o_proj neuron of our 1-layer attn-only model, scanned over the whole training stream, 250k hits across its range.
+# The stream is every window of train_tokens.npy, so about 486M positions. A T4 has 12 GB of RAM, which is why it is
+# memory-mapped and why selection avoids per-position index arrays. 250k hits use the IVF forest.
+#   python scripts/run_neuron_report.py --config configs/tiny_attn_only_1l_o_proj_full_scan.yaml
+model: self/tiny-attn-only-1l
+layer_name: model.layers.0.self_attn.o_proj
+neurons: [6]
+polarity: signed
+batch_size: 512
+out_dir: reports/tiny_attn_only_1l_o_proj_full_scan
+text:
+  token_stream: data/tiny_attn_only/train_tokens.npy
+  n_samples: 3000000
+  max_length: 256
+hits:
+  method: bucketed
+  max_hits: 250000
+clustering:
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: density_peaks
+    ivf:
+      n_probe: 64
+      peak_probe: 64

@@ -77,6 +77,11 @@ class TextDataConfig(Section):
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
+    token_stream: Path | None = Field(
+        None,
+        description="an .npy of token ids, read as story-aligned windows of max_length, up to n_samples of them. "
+        "Replaces the dataset, and needs a model trained on those ids",
+    )
 
 
 class MnistDataConfig(Section):
@@ -137,10 +142,29 @@ class HdbscanConfig(Section):
     selection_method: Literal["eom", "leaf"] = "leaf"
 
 
+class IvfSearchConfig(Section):
+    """Approximate neighbours from an IVF index, for more hits than an all-pairs pass can take. Copies are not merged."""
+
+    lists_per_sqrt_hit: float = Field(
+        2.0, gt=0, description="the index has this times the square root of n lists"
+    )
+    n_probe: int = Field(
+        64,
+        gt=0,
+        description="lists each point searches. A diffuse head reached 98.5% recall at 64, and 92.7% at 16",
+    )
+    peak_probe: int = Field(
+        64, gt=0, description="lists searched by a point denser than all its neighbours"
+    )
+
+
 class DensityPeaksConfig(Section):
     """Each hit links to its nearest denser hit, and every hit lands in the tree of a root. See in_tfm.density_peaks."""
 
     method: Literal["density_peaks"] = "density_peaks"
+    ivf: IvfSearchConfig | None = Field(
+        None, description="none compares every pair of hits, exactly"
+    )
     k: int = Field(
         5, description="a hit's density is 1 / the distance to its kth neighbour"
     )
