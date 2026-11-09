@@ -1,0 +1,49 @@
+# -004 v3 for L16-N19311 (- side, q99), three prompts rewritten so the resume meaning comes before 'up'.
+# Generated, do not edit by hand.
+groups:
+- name: req004v3_should_fire
+  prediction: 'side -, threshold atlas-q99: should_fire'
+  items:
+  - id: fire_00
+    text: After lunch, we'll pick [[up]] where we left off.
+  - id: fire_01
+    text: Next week we will pick [[up]] with the third chapter.
+  - id: fire_02
+    text: When the meeting resumes, the committee will pick [[up]] the budget item.
+  - id: fire_03
+    text: The sequel picks [[up]] ten years later.
+  - id: fire_04
+    text: In tomorrow's meeting, we'll pick [[up]] the conversation.
+  - id: fire_05
+    text: In Act Two, the brothers pick [[up]] the thread of the story.
+  - id: fire_06
+    text: Tomorrow the class will pick [[up]] at page forty.
+  - id: fire_07
+    text: The second season picks [[up]] right after the crash.
+  - id: fire_08
+    text: In the second verse, the band picks [[up]] the melody.
+  - id: fire_09
+    text: When the talks resume on Monday, both sides will pick [[up]] the same points.
+- name: req004v3_should_not_fire
+  prediction: 'side -, threshold atlas-q99: should_not_fire'
+  items:
+  - id: notfire_00
+    text: Please pick [[up]] a handout at the door.
+  - id: notfire_01
+    text: Can you pick [[up]] some milk on the way home?
+  - id: notfire_02
+    text: I'll pick [[up]] the kids from school at four.
+  - id: notfire_03
+    text: She bent down to pick [[up]] the pen.
+  - id: notfire_04
+    text: Could you pick [[up]] my dry cleaning?
+  - id: notfire_05
+    text: The dog tried to pick [[up]] the stick.
+  - id: notfire_06
+    text: He stopped at the station to pick [[up]] his sister.
+  - id: notfire_07
+    text: Pick [[up]] a basket at the entrance.
+  - id: notfire_08
+    text: She learned to pick [[up]] heavy boxes safely.
+  - id: notfire_09
+    text: The crane can pick [[up]] ten tonnes.
