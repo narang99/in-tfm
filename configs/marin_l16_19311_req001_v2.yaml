@@ -1,0 +1,49 @@
+# Rewritten -001 for L16-N19311 (+ side, q99), local edit in marin-neuron-hunt, converted for scripts/marin_minimal_pairs.py.
+# Generated, do not edit by hand.
+groups:
+- name: req001v2_should_fire
+  prediction: 'side +, threshold atlas-q99: should_fire'
+  items:
+  - id: fire_00
+    text: We camped by the river for a few [[more]] nights before heading home.
+  - id: fire_01
+    text: The repair took a few [[extra]] hours than the shop had promised.
+  - id: fire_02
+    text: She kept the rental car for [[another]] few days to see the coast.
+  - id: fire_03
+    text: The crew worked two [[more]] shifts before the holiday.
+  - id: fire_04
+    text: The builders needed several [[more]] weeks to finish the roof.
+  - id: fire_05
+    text: We waited a couple [[more]] minutes for the bus.
+  - id: fire_06
+    text: The festival will run for many [[more]] years if the funding holds.
+  - id: fire_07
+    text: The school hired two [[additional]] teachers this year.
+  - id: fire_08
+    text: The trial needs three [[further]] months of data.
+  - id: fire_09
+    text: We set out ten [[extra]] chairs for the guests.
+- name: req001v2_should_not_fire
+  prediction: 'side +, threshold atlas-q99: should_not_fire'
+  items:
+  - id: notfire_00
+    text: The storm kept us home for even [[more]] days than last winter.
+  - id: notfire_01
+    text: I want [[more]] coffee.
+  - id: notfire_02
+    text: Compared with white rice, brown rice has [[more]] fiber.
+  - id: notfire_03
+    text: The climb only got [[more]] steep as we went higher.
+  - id: notfire_04
+    text: The rain kept us indoors for [[more]] days than we planned.
+  - id: notfire_05
+    text: She carried the boxes from one room to [[another]].
+  - id: notfire_06
+    text: We will get there one way or [[another]].
+  - id: notfire_07
+    text: The sauce was [[extra]] spicy.
+  - id: notfire_08
+    text: For [[additional]] information, call the office.
+  - id: notfire_09
+    text: The station is a little [[further]] down the road.
