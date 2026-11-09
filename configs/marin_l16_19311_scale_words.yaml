@@ -1,0 +1,101 @@
+# Is 'thousands more' out of distribution, or does a plural scale word read as emphasis?
+# Marin 32B L16 neuron 19311, + side, read with scripts/marin_minimal_pairs.py. Local only.
+# Each frame pairs an exact amount with its plural scale form: a dozen / dozens, a hundred / hundreds, and so on.
+# jobs, people and dollars are frames where 'thousands more' is common. days is the frame from the magnitude run.
+groups:
+- name: scale_jobs
+  prediction: If 'thousands more days' was only odd usage, plural scale words fire in natural frames (jobs, people, dollars). If plural scale words read as emphasis, they go negative in every frame while
+    the exact forms stay positive.
+  items:
+  - id: jobs_a_dozen
+    text: The new factory will bring a dozen [[more]] jobs to the region.
+  - id: jobs_dozens
+    text: The new factory will bring dozens [[more]] jobs to the region.
+  - id: jobs_a_hundred
+    text: The new factory will bring a hundred [[more]] jobs to the region.
+  - id: jobs_hundreds
+    text: The new factory will bring hundreds [[more]] jobs to the region.
+  - id: jobs_a_thousand
+    text: The new factory will bring a thousand [[more]] jobs to the region.
+  - id: jobs_thousands
+    text: The new factory will bring thousands [[more]] jobs to the region.
+  - id: jobs_ten_thousand
+    text: The new factory will bring ten thousand [[more]] jobs to the region.
+  - id: jobs_tens_of_thousands
+    text: The new factory will bring tens of thousands [[more]] jobs to the region.
+  - id: jobs_a_million
+    text: The new factory will bring a million [[more]] jobs to the region.
+  - id: jobs_millions
+    text: The new factory will bring millions [[more]] jobs to the region.
+- name: scale_people
+  prediction: If 'thousands more days' was only odd usage, plural scale words fire in natural frames (jobs, people, dollars). If plural scale words read as emphasis, they go negative in every frame while
+    the exact forms stay positive.
+  items:
+  - id: people_a_dozen
+    text: A dozen [[more]] people joined the protest on Sunday.
+  - id: people_dozens
+    text: Dozens [[more]] people joined the protest on Sunday.
+  - id: people_a_hundred
+    text: A hundred [[more]] people joined the protest on Sunday.
+  - id: people_hundreds
+    text: Hundreds [[more]] people joined the protest on Sunday.
+  - id: people_a_thousand
+    text: A thousand [[more]] people joined the protest on Sunday.
+  - id: people_thousands
+    text: Thousands [[more]] people joined the protest on Sunday.
+  - id: people_ten_thousand
+    text: Ten thousand [[more]] people joined the protest on Sunday.
+  - id: people_tens_of_thousands
+    text: Tens of thousands [[more]] people joined the protest on Sunday.
+  - id: people_a_million
+    text: A million [[more]] people joined the protest on Sunday.
+  - id: people_millions
+    text: Millions [[more]] people joined the protest on Sunday.
+- name: scale_dollars
+  prediction: If 'thousands more days' was only odd usage, plural scale words fire in natural frames (jobs, people, dollars). If plural scale words read as emphasis, they go negative in every frame while
+    the exact forms stay positive.
+  items:
+  - id: dollars_a_dozen
+    text: The repairs will cost a dozen [[more]] dollars than planned.
+  - id: dollars_dozens
+    text: The repairs will cost dozens [[more]] dollars than planned.
+  - id: dollars_a_hundred
+    text: The repairs will cost a hundred [[more]] dollars than planned.
+  - id: dollars_hundreds
+    text: The repairs will cost hundreds [[more]] dollars than planned.
+  - id: dollars_a_thousand
+    text: The repairs will cost a thousand [[more]] dollars than planned.
+  - id: dollars_thousands
+    text: The repairs will cost thousands [[more]] dollars than planned.
+  - id: dollars_ten_thousand
+    text: The repairs will cost ten thousand [[more]] dollars than planned.
+  - id: dollars_tens_of_thousands
+    text: The repairs will cost tens of thousands [[more]] dollars than planned.
+  - id: dollars_a_million
+    text: The repairs will cost a million [[more]] dollars than planned.
+  - id: dollars_millions
+    text: The repairs will cost millions [[more]] dollars than planned.
+- name: scale_days
+  prediction: If 'thousands more days' was only odd usage, plural scale words fire in natural frames (jobs, people, dollars). If plural scale words read as emphasis, they go negative in every frame while
+    the exact forms stay positive.
+  items:
+  - id: days_a_dozen
+    text: We stayed at the cabin for a dozen [[more]] days before driving home.
+  - id: days_dozens
+    text: We stayed at the cabin for dozens [[more]] days before driving home.
+  - id: days_a_hundred
+    text: We stayed at the cabin for a hundred [[more]] days before driving home.
+  - id: days_hundreds
+    text: We stayed at the cabin for hundreds [[more]] days before driving home.
+  - id: days_a_thousand
+    text: We stayed at the cabin for a thousand [[more]] days before driving home.
+  - id: days_thousands
+    text: We stayed at the cabin for thousands [[more]] days before driving home.
+  - id: days_ten_thousand
+    text: We stayed at the cabin for ten thousand [[more]] days before driving home.
+  - id: days_tens_of_thousands
+    text: We stayed at the cabin for tens of thousands [[more]] days before driving home.
+  - id: days_a_million
+    text: We stayed at the cabin for a million [[more]] days before driving home.
+  - id: days_millions
+    text: We stayed at the cabin for millions [[more]] days before driving home.
