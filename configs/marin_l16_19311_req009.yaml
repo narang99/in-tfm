@@ -1,0 +1,49 @@
+# -009 for L16-N19311 (+ side, 0.655), from marin-neuron-hunt dfc9480, converted for scripts/marin_minimal_pairs.py.
+# Generated, do not edit by hand.
+groups:
+- name: req009_should_fire
+  prediction: 'side +, threshold 0.655: should_fire'
+  items:
+  - id: fire_00
+    text: We need two [[more]] chairs for the guests.
+  - id: fire_01
+    text: She bought three [[more]] apples at the market.
+  - id: fire_02
+    text: The library ordered ten [[more]] copies of the book.
+  - id: fire_03
+    text: Please bring a few [[more]] blankets for the kids.
+  - id: fire_04
+    text: The farm planted several [[more]] trees along the fence.
+  - id: fire_05
+    text: We need a couple [[more]] volunteers for Saturday.
+  - id: fire_06
+    text: The bakery made fifty [[more]] loaves for the fair.
+  - id: fire_07
+    text: The workers asked for two [[more]] days off.
+  - id: fire_08
+    text: The school bought five [[more]] laptops for the class.
+  - id: fire_09
+    text: The shop put out four [[more]] tables by the window.
+- name: req009_should_not_fire
+  prediction: 'side +, threshold 0.655: should_not_fire'
+  items:
+  - id: notfire_00
+    text: We need [[more]] chairs for the guests.
+  - id: notfire_01
+    text: She bought [[more]] apples at the market.
+  - id: notfire_02
+    text: The library ordered [[more]] copies of the book.
+  - id: notfire_03
+    text: Please bring [[more]] blankets for the kids.
+  - id: notfire_04
+    text: The farm planted [[more]] trees along the fence.
+  - id: notfire_05
+    text: We need [[more]] volunteers for Saturday.
+  - id: notfire_06
+    text: The bakery made [[more]] loaves for the fair.
+  - id: notfire_07
+    text: The workers asked for [[more]] days off.
+  - id: notfire_08
+    text: The school bought [[more]] laptops for the class.
+  - id: notfire_09
+    text: The shop put out [[more]] tables by the window.
