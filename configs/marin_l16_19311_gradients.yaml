@@ -1,0 +1,88 @@
+# Gradient ladders for Marin 32B L16 neuron 19311, read with scripts/marin_minimal_pairs.py.
+# Each group is one ladder. Items go from least to most return context. Only the - side is expected to move.
+# The "unrelated" ladders add the same amount of text about something else, to separate length from talk about the earlier activity.
+groups:
+  - name: pickup_ladder
+    prediction: the - side grows down the ladder as the return before "pick up" builds up
+    items:
+      - id: pu0_door
+        text: "Please pick [[up]] a study guide at the door."
+      - id: pu1_classroom
+        text: "When you go to the classroom, please pick [[up]] a study guide while leaving."
+      - id: pu2_revise
+        text: "When you go to the classroom to revise the chapter we did last night, please pick [[up]] a study guide at the door."
+      - id: pu3_that_guide
+        text: "When you go to the classroom to revise the chapter we did last night, you will then find a study guide near the door, please pick [[up]] that guide."
+      - id: pu4_resume
+        text: "When you go to the classroom to revise the chapter we did last night, we will go back and pick [[up]] where we stopped."
+
+  - name: pickup_sermon_contrast
+    prediction: the history is kept on both; the resume sentence is more negative than the study-guide sentence
+    items:
+      - id: ps_resume
+        text: "Over the past few months, we’ve been studying from I Corinthians, and this morning I want to continue in that book, but we’re going to jump ahead to chapter 15 and see what Paul has to say about the resurrection, and then next week, we’ll go back and pick [[up]] with chapter 10."
+      - id: ps_guide
+        text: "Over the past few months, we’ve been studying from I Corinthians, and this morning I want to continue in that book, but we’re going to jump ahead to chapter 15 and see what Paul has to say about the resurrection, and then next week, you will find a study guide near the door of the classroom, please pick [[up]] that guide."
+
+  - name: talk_cafe_related
+    prediction: the - side grows with the number of earlier sentences about the cafe visit
+    items:
+      - id: cafe_r0
+        text: "Today I went to the cafe and ordered [[another]] cup."
+      - id: cafe_r1
+        text: "Last week I had coffee at a small cafe near the station. Today I went to the cafe and ordered [[another]] cup."
+      - id: cafe_r2
+        text: "Last week I had coffee at a small cafe near the station. The barista made it with oat milk, and it was the best cup I had all month. Today I went to the cafe and ordered [[another]] cup."
+      - id: cafe_r4
+        text: "Last week I had coffee at a small cafe near the station. The barista made it with oat milk, and it was the best cup I had all month. I kept thinking about it for days, and told my friends about the place. I even looked up the roaster they use, and read about how they choose their beans. Today I went to the cafe and ordered [[another]] cup."
+  - name: talk_cafe_unrelated
+    prediction: if only length matters, these match the related ladder; if the talk matters, they stay flat
+    items:
+      - id: cafe_u1
+        text: "The city repaved the main road near the station last month. Today I went to the cafe and ordered [[another]] cup."
+      - id: cafe_u2
+        text: "The city repaved the main road near the station last month. The work took longer than planned because of heavy rain in the spring. Today I went to the cafe and ordered [[another]] cup."
+      - id: cafe_u4
+        text: "The city repaved the main road near the station last month. The work took longer than planned because of heavy rain in the spring. The mayor said the new surface should last for twenty years. Several shops on the street put up new signs once the work was done. Today I went to the cafe and ordered [[another]] cup."
+
+  - name: talk_trip_related
+    prediction: the - side grows with the number of earlier sentences about the first trip
+    items:
+      - id: trip_r0
+        text: "This [[time]] we took the train to the coast."
+      - id: trip_r1
+        text: "Last summer we drove to the coast for a week. This [[time]] we took the train to the coast."
+      - id: trip_r2
+        text: "Last summer we drove to the coast for a week. The roads were packed, and we spent most of a day stuck in traffic. This [[time]] we took the train to the coast."
+      - id: trip_r4
+        text: "Last summer we drove to the coast for a week. The roads were packed, and we spent most of a day stuck in traffic. When we finally arrived, the beach was crowded and the hotel had lost our booking. We promised ourselves we would plan better the next year. This [[time]] we took the train to the coast."
+  - name: talk_trip_unrelated
+    prediction: if only length matters, these match the related ladder; if the talk matters, they stay flat
+    items:
+      - id: trip_u1
+        text: "Our neighbors planted a new apple tree in their garden. This [[time]] we took the train to the coast."
+      - id: trip_u2
+        text: "Our neighbors planted a new apple tree in their garden. Their children helped dig the hole and water the roots every evening. This [[time]] we took the train to the coast."
+      - id: trip_u4
+        text: "Our neighbors planted a new apple tree in their garden. Their children helped dig the hole and water the roots every evening. The tree came from a nursery two towns over, and it cost more than they expected. They hope to pick the first apples in three years. This [[time]] we took the train to the coast."
+
+  - name: talk_door_related
+    prediction: the - side grows with the number of earlier sentences about the first visit
+    items:
+      - id: door_r0
+        text: "Today she came to the house and knocked [[again]]."
+      - id: door_r1
+        text: "Last Tuesday she knocked on the door of the old house. Today she came to the house and knocked [[again]]."
+      - id: door_r2
+        text: "Last Tuesday she knocked on the door of the old house. Nobody answered, and she left a note under the mat. Today she came to the house and knocked [[again]]."
+      - id: door_r4
+        text: "Last Tuesday she knocked on the door of the old house. Nobody answered, and she left a note under the mat. She waited all week for a reply that never came. Her sister said the owner might be away for the season. Today she came to the house and knocked [[again]]."
+  - name: talk_door_unrelated
+    prediction: if only length matters, these match the related ladder; if the talk matters, they stay flat
+    items:
+      - id: door_u1
+        text: "The bakery on the corner started selling rye bread this month. Today she came to the house and knocked [[again]]."
+      - id: door_u2
+        text: "The bakery on the corner started selling rye bread this month. The owner learned the recipe from her grandmother in Poland. Today she came to the house and knocked [[again]]."
+      - id: door_u4
+        text: "The bakery on the corner started selling rye bread this month. The owner learned the recipe from her grandmother in Poland. The loaves sell out before noon most days. She plans to add a second oven in the spring. Today she came to the house and knocked [[again]]."

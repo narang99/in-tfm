@@ -1,0 +1,406 @@
+# Station House request prompts for L16-N19311 (-001 to -008, commit 8b956ea), converted for scripts/marin_minimal_pairs.py.
+# Our own run of the pre-registered prompts. Generated, do not edit by hand.
+groups:
+- name: req001_should_fire
+  prediction: 'side +, threshold atlas-q99: should_fire'
+  items:
+  - id: 001_should_00
+    text: We camped by the river for a few [[more]] nights before heading home.
+  - id: 001_should_01
+    text: The repair took a few [[extra]] hours than the shop had promised.
+  - id: 001_should_02
+    text: The museum stayed open for an [[additional]] few weeks over the summer.
+  - id: 001_should_03
+    text: She kept the rental car for [[another]] few days to see the coast.
+  - id: 001_should_04
+    text: The crew worked two [[more]] shifts before the holiday.
+  - id: 001_should_05
+    text: The builders needed several [[more]] weeks to finish the roof.
+  - id: 001_should_06
+    text: We waited a couple [[more]] minutes for the bus.
+  - id: 001_should_07
+    text: The festival will run for many [[more]] years if the funding holds.
+  - id: 001_should_08
+    text: The rain kept us indoors for [[more]] days than we planned.
+  - id: 001_should_09
+    text: The climb only got [[more]] steep as we went higher.
+- name: req001_should_not_fire
+  prediction: 'side +, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 001_should_00
+    text: The storm kept us home for even [[more]] days than last winter.
+  - id: 001_should_01
+    text: I finished my tea and I want [[more]].
+  - id: 001_should_02
+    text: I want [[more]] coffee.
+  - id: 001_should_03
+    text: I love this song, and I always want [[more]].
+  - id: 001_should_04
+    text: Compared with white rice, brown rice has [[more]] fiber.
+  - id: 001_should_05
+    text: Compared with green tea, black tea tastes [[more]] bitter.
+  - id: 001_should_06
+    text: I had already eaten two slices of cake, but I wanted [[more]].
+  - id: 001_should_07
+    text: We camped by the [[river]] for a few more nights before heading home.
+  - id: 001_should_08
+    text: The [[crew]] worked two more shifts before the holiday.
+  - id: 001_should_09
+    text: The [[builders]] needed several more weeks to finish the roof.
+- name: req002_should_fire
+  prediction: 'side -, threshold atlas-q99: should_fire'
+  items:
+  - id: 002_should_00
+    text: Another letter arrived from the council, this [[time]] about parking.
+  - id: 002_should_01
+    text: In 1972, a second bridge was built, this [[time]] in steel.
+  - id: 002_should_02
+    text: 'Second half: same [[as]] the first, with the visitors pressing high.'
+  - id: 002_should_03
+    text: 'Kitchen Tips, Part III
+
+      Today we [[continue]] with knife skills.'
+  - id: 002_should_04
+    text: 'Kitchen Tips
+
+      Today we [[continue]] with knife skills.'
+  - id: 002_should_05
+    text: After a short recess, the witness returned to [[continue]] her account.
+  - id: 002_should_06
+    text: The witness took the stand to [[continue]] her account.
+  - id: 002_should_07
+    text: Back on the farm, we had [[more]] chores.
+  - id: 002_should_08
+    text: For weeks we have been reading Genesis, and on Sunday we'll go back and pick [[up]] with chapter 12.
+  - id: 002_should_09
+    text: This Sunday you can pick [[up]] a reading plan at the entrance.
+  - id: 002_should_10
+    text: We have worked through the textbook all term, and next week we'll start [[another]] unit.
+  - id: 002_should_11
+    text: This term we begin the textbook, and next week we'll start [[another]] unit.
+  - id: 002_should_12
+    text: We stayed in Rome last spring. This spring we went back for a few [[more]] days.
+  - id: 002_should_13
+    text: The rash lasted a week. After a short break, it came back for two [[more]] weeks.
+  - id: 002_should_14
+    text: I ate at this cafe yesterday. Today I came back and ordered [[another]] sandwich.
+- name: req002_should_not_fire
+  prediction: 'side -, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 002_should_00
+    text: The first letter arrived from the council, this [[time]] about parking.
+  - id: 002_should_01
+    text: 'Opening half: same [[as]] expected, with the visitors pressing high.'
+  - id: 002_should_02
+    text: In 1972, a bridge was built, this [[time]] in steel.
+  - id: 002_should_03
+    text: On the farm, we had [[more]] chores.
+  - id: 002_should_04
+    text: The rash lasted a week, and it went on for two [[more]] weeks.
+  - id: 002_should_05
+    text: We liked Rome, so we stayed a few [[more]] days.
+  - id: 002_should_06
+    text: The sandwich was good, so I ordered [[another]] one.
+  - id: 002_should_07
+    text: He rang the bell, waited a moment, and rang [[again]].
+  - id: 002_should_08
+    text: He rang the bell last Monday. Today he came back and rang [[again]].
+  - id: 002_should_09
+    text: The [[witness]] took the stand to continue her account.
+- name: req003_pairs
+  prediction: 'side -: high beyond low in each pair'
+  items:
+  - id: 003_p00_high
+    text: The second batch came out of the oven at noon, this [[time]] with less sugar.
+  - id: 003_p00_low
+    text: The first batch came out of the oven at noon, this [[time]] with less sugar.
+  - id: 003_p01_high
+    text: Another storm hit the coast on Friday, this [[time]] with stronger winds.
+  - id: 003_p01_low
+    text: A storm hit the coast on Friday, this [[time]] with stronger winds.
+  - id: 003_p02_high
+    text: Her second album, recorded in Nashville, was this [[time]] produced by her brother.
+  - id: 003_p02_low
+    text: Her debut album, recorded in Nashville, was this [[time]] produced by her brother.
+  - id: 003_p03_high
+    text: The rematch was held in Chicago, this [[time]] in front of a full arena.
+  - id: 003_p03_low
+    text: The match was held in Chicago, this [[time]] in front of a full arena.
+  - id: 003_p04_high
+    text: 'Day 4 of the hike: this [[time]] we left before sunrise.'
+  - id: 003_p04_low
+    text: 'Day 1 of the hike: this [[time]] we left before sunrise.'
+  - id: 003_p05_high
+    text: 'Episode 2: The team meets the client, and this [[time]] they bring a working demo.'
+  - id: 003_p05_low
+    text: 'Episode 1: The team meets the client, and this [[time]] they bring a working demo.'
+  - id: 003_p06_high
+    text: Volume 3 of the series opens in Paris, and this [[time]] the narrator is the sister.
+  - id: 003_p06_low
+    text: Volume 1 of the series opens in Paris, and this [[time]] the narrator is the sister.
+  - id: 003_p07_high
+    text: 'Set 2: Much the same [[as]] the first, with both players holding serve.'
+  - id: 003_p07_low
+    text: 'Set 1: Much the same [[as]] the first, with both players holding serve.'
+  - id: 003_p08_high
+    text: Back in the kitchen, she baked [[more]] bread.
+  - id: 003_p08_low
+    text: In the kitchen, she baked [[more]] bread.
+  - id: 003_p09_high
+    text: Back at the market, we bought [[more]] apples.
+  - id: 003_p09_low
+    text: At the market, we bought [[more]] apples.
+  - id: 003_p10_high
+    text: Back at the office, we had [[more]] meetings.
+  - id: 003_p10_low
+    text: At the office, we had [[more]] meetings.
+  - id: 003_p11_high
+    text: Our second visit to the museum was in June, and this [[time]] we saw the east wing.
+  - id: 003_p11_low
+    text: Our first visit to the museum was in June, and this [[time]] we saw the east wing.
+- name: req004_should_fire
+  prediction: 'side -, threshold atlas-q99: should_fire'
+  items:
+  - id: 004_should_00
+    text: After lunch, we'll pick [[up]] where we left off.
+  - id: 004_should_01
+    text: Next week we will pick [[up]] with the third chapter.
+  - id: 004_should_02
+    text: Please pick [[up]] a handout at the door.
+  - id: 004_should_03
+    text: Can you pick [[up]] some milk on the way home?
+  - id: 004_should_04
+    text: When the meeting resumes, the committee will pick [[up]] the budget item.
+  - id: 004_should_05
+    text: I'll pick [[up]] the kids from school at four.
+  - id: 004_should_06
+    text: The sequel picks [[up]] ten years later.
+  - id: 004_should_07
+    text: Let's pick [[up]] the conversation tomorrow.
+  - id: 004_should_08
+    text: She bent down to pick [[up]] the pen.
+  - id: 004_should_09
+    text: In Act Two, the brothers pick [[up]] the thread of the story.
+- name: req004_should_not_fire
+  prediction: 'side -, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 004_should_00
+    text: Before the meeting, she had to look [[up]] the address.
+  - id: 004_should_01
+    text: He stood [[up]] when the judge entered.
+  - id: 004_should_02
+    text: We need to set [[up]] the chairs before noon.
+  - id: 004_should_03
+    text: Please sign [[up]] for the newsletter at the door.
+  - id: 004_should_04
+    text: The kids woke [[up]] early on Saturday.
+  - id: 004_should_05
+    text: They cleaned [[up]] the kitchen after dinner.
+  - id: 004_should_06
+    text: Can you turn [[up]] the volume a little?
+  - id: 004_should_07
+    text: She grew [[up]] in a small town by the sea.
+  - id: 004_should_08
+    text: The guests showed [[up]] an hour late.
+  - id: 004_should_09
+    text: Prices went [[up]] this spring.
+- name: req005_should_fire
+  prediction: 'side +, threshold 0.655: should_fire'
+  items:
+  - id: 005_should_00
+    text: The train was delayed, so we waited two [[more]] hours at the station.
+  - id: 005_should_01
+    text: She asked for three [[more]] days to finish the report.
+  - id: 005_should_02
+    text: The recipe needs a few [[more]] minutes in the oven.
+  - id: 005_should_03
+    text: They stayed in Rome for a couple [[more]] nights.
+  - id: 005_should_04
+    text: The coach gave the team five [[more]] minutes to warm up.
+  - id: 005_should_05
+    text: After the first lap, she ran four [[more]] laps around the track.
+  - id: 005_should_06
+    text: The doctor told him to rest for several [[more]] weeks.
+  - id: 005_should_07
+    text: He ordered two [[extra]] chairs for the guests.
+  - id: 005_should_08
+    text: I need [[another]] week to finish the painting.
+  - id: 005_should_09
+    text: The landlord asked for an [[additional]] month of rent.
+  - id: 005_should_10
+    text: We have just one [[more]] stop before home.
+- name: req005_should_not_fire
+  prediction: 'side +, threshold 0.655: should_not_fire'
+  items:
+  - id: 005_should_00
+    text: As the night went on, the music got [[more]] intense.
+  - id: 005_should_01
+    text: The second test was much [[more]] difficult than the first.
+  - id: 005_should_02
+    text: She became [[more]] confident after the interview.
+  - id: 005_should_03
+    text: This version of the app feels [[more]] responsive.
+  - id: 005_should_04
+    text: The roads grew [[more]] crowded near the city.
+  - id: 005_should_05
+    text: He is [[more]] careful with money now.
+  - id: 005_should_06
+    text: The soup tastes [[more]] salty than usual.
+  - id: 005_should_07
+    text: Over the years the town became [[more]] expensive.
+  - id: 005_should_08
+    text: The questions were [[more]] personal than I expected.
+  - id: 005_should_09
+    text: Her paintings look [[more]] colorful in daylight.
+- name: req006_should_fire
+  prediction: 'side +, threshold atlas-q99: should_fire'
+  items:
+  - id: 006_should_00
+    text: The weather turned [[more]] humid in July.
+  - id: 006_should_01
+    text: Her handwriting became [[more]] careful over the term.
+  - id: 006_should_02
+    text: The hike got [[more]] difficult after the bridge.
+  - id: 006_should_03
+    text: His answers sounded [[more]] confident than before.
+  - id: 006_should_04
+    text: The city feels [[more]] crowded in summer.
+  - id: 006_should_05
+    text: The new chair is [[more]] comfortable than the old one.
+  - id: 006_should_06
+    text: As the plot thickened, the novel grew [[more]] tense.
+  - id: 006_should_07
+    text: Our neighbors have become [[more]] friendly lately.
+  - id: 006_should_08
+    text: The coffee here is [[more]] bitter than at home.
+  - id: 006_should_09
+    text: The lake looked [[more]] blue in the morning light.
+- name: req006_should_not_fire
+  prediction: 'side +, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 006_should_00
+    text: The [[weather]] turned more humid in July.
+  - id: 006_should_01
+    text: Her [[handwriting]] became more careful over the term.
+  - id: 006_should_02
+    text: The [[hike]] got more difficult after the bridge.
+  - id: 006_should_03
+    text: His [[answers]] sounded more confident than before.
+  - id: 006_should_04
+    text: The [[city]] feels more crowded in summer.
+  - id: 006_should_05
+    text: The new [[chair]] is more comfortable than the old one.
+  - id: 006_should_06
+    text: As the [[plot]] thickened, the novel grew more tense.
+  - id: 006_should_07
+    text: Our [[neighbors]] have become more friendly lately.
+  - id: 006_should_08
+    text: The [[coffee]] here is more bitter than at home.
+  - id: 006_should_09
+    text: The [[lake]] looked more blue in the morning light.
+- name: req007_should_fire
+  prediction: 'side +, threshold atlas-q99: should_fire'
+  items:
+  - id: 007_should_00
+    text: We camped by the river for a few [[more]] nights before heading home.
+  - id: 007_should_01
+    text: The repair took a few [[extra]] hours than the shop had promised.
+  - id: 007_should_02
+    text: The museum stayed open for an [[additional]] few weeks over the summer.
+  - id: 007_should_03
+    text: She kept the rental car for [[another]] few days to see the coast.
+  - id: 007_should_04
+    text: The crew worked two [[more]] shifts before the holiday.
+  - id: 007_should_05
+    text: The builders needed several [[more]] weeks to finish the roof.
+  - id: 007_should_06
+    text: We waited a couple [[more]] minutes for the bus.
+  - id: 007_should_07
+    text: The festival will run for many [[more]] years if the funding holds.
+  - id: 007_should_08
+    text: The rain kept us indoors for [[more]] days than we planned.
+  - id: 007_should_09
+    text: The climb only got [[more]] steep as we went higher.
+- name: req007_should_not_fire
+  prediction: 'side +, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 007_should_00
+    text: The library opens at nine on [[weekdays]].
+  - id: 007_should_01
+    text: My sister painted the fence [[green]].
+  - id: 007_should_02
+    text: The cat slept under the kitchen [[table]].
+  - id: 007_should_03
+    text: He wrote the address on an [[envelope]].
+  - id: 007_should_04
+    text: The farmers sold tomatoes at the [[market]].
+  - id: 007_should_05
+    text: Our teacher drives a small blue [[car]].
+  - id: 007_should_06
+    text: The bridge crosses a narrow [[river]].
+  - id: 007_should_07
+    text: She keeps her keys in a [[drawer]].
+  - id: 007_should_08
+    text: The museum has a famous [[painting]].
+  - id: 007_should_09
+    text: They planted roses along the [[path]].
+- name: req008_should_fire
+  prediction: 'side -, threshold atlas-q99: should_fire'
+  items:
+  - id: 008_should_00
+    text: Another letter arrived from the council, this [[time]] about parking.
+  - id: 008_should_01
+    text: In 1972, a second bridge was built, this [[time]] in steel.
+  - id: 008_should_02
+    text: 'Second half: same [[as]] the first, with the visitors pressing high.'
+  - id: 008_should_03
+    text: 'Kitchen Tips, Part III
+
+      Today we [[continue]] with knife skills.'
+  - id: 008_should_04
+    text: 'Kitchen Tips
+
+      Today we [[continue]] with knife skills.'
+  - id: 008_should_05
+    text: After a short recess, the witness returned to [[continue]] her account.
+  - id: 008_should_06
+    text: The witness took the stand to [[continue]] her account.
+  - id: 008_should_07
+    text: Back on the farm, we had [[more]] chores.
+  - id: 008_should_08
+    text: For weeks we have been reading Genesis, and on Sunday we'll go back and pick [[up]] with chapter 12.
+  - id: 008_should_09
+    text: This Sunday you can pick [[up]] a reading plan at the entrance.
+  - id: 008_should_10
+    text: We have worked through the textbook all term, and next week we'll start [[another]] unit.
+  - id: 008_should_11
+    text: This term we begin the textbook, and next week we'll start [[another]] unit.
+  - id: 008_should_12
+    text: We stayed in Rome last spring. This spring we went back for a few [[more]] days.
+  - id: 008_should_13
+    text: The rash lasted a week. After a short break, it came back for two [[more]] weeks.
+  - id: 008_should_14
+    text: I ate at this cafe yesterday. Today I came back and ordered [[another]] sandwich.
+- name: req008_should_not_fire
+  prediction: 'side -, threshold atlas-q99: should_not_fire'
+  items:
+  - id: 008_should_00
+    text: The bakery on the corner sells fresh [[bread]].
+  - id: 008_should_01
+    text: A tall oak stands in the [[garden]].
+  - id: 008_should_02
+    text: He bought a ticket at the [[station]].
+  - id: 008_should_03
+    text: The children played in the [[park]].
+  - id: 008_should_04
+    text: She ordered soup at the [[restaurant]].
+  - id: 008_should_05
+    text: The phone was on the [[desk]].
+  - id: 008_should_06
+    text: Our neighbor owns a large [[dog]].
+  - id: 008_should_07
+    text: The window looks out over the [[harbor]].
+  - id: 008_should_08
+    text: He tied his boat to the [[dock]].
+  - id: 008_should_09
+    text: The recipe calls for brown [[sugar]].

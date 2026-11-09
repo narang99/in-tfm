@@ -1,0 +1,164 @@
+# Size of the count before "more", Marin 32B L16 neuron 19311, + side.
+# Read with scripts/marin_minimal_pairs.py on Colab. Local only: not for the Station House repo.
+# Each group is one sentence frame. Only the words before [[more]] change.
+# Levels: bare, exact small (one to three), vague small (a few, a couple, several),
+#   exact large (ten to a thousand, plus "50" as digits), vague large (many, lots, thousands), and "even".
+# Atlas scale: pos_q99 0.195, pos_q999 0.655. Our earlier readings on one sentence:
+#   a few +2.40, two +2.29, several +2.39, many +0.76, bare +0.40, even -0.90.
+groups:
+  - name: magnitude_days
+    prediction: >-
+      If the count drives the + side, exact large counts read like "two" (above q999) and only vague counts drop.
+      If a small size drives it, act falls as the count grows, and "a hundred" and "a thousand" read like "many".
+    items:
+      - id: days_bare
+        text: "We stayed at the cabin for [[more]] days before driving home."
+      - id: days_one
+        text: "We stayed at the cabin for one [[more]] days before driving home."
+      - id: days_two
+        text: "We stayed at the cabin for two [[more]] days before driving home."
+      - id: days_three
+        text: "We stayed at the cabin for three [[more]] days before driving home."
+      - id: days_a_few
+        text: "We stayed at the cabin for a few [[more]] days before driving home."
+      - id: days_a_couple
+        text: "We stayed at the cabin for a couple [[more]] days before driving home."
+      - id: days_several
+        text: "We stayed at the cabin for several [[more]] days before driving home."
+      - id: days_ten
+        text: "We stayed at the cabin for ten [[more]] days before driving home."
+      - id: days_twenty
+        text: "We stayed at the cabin for twenty [[more]] days before driving home."
+      - id: days_fifty
+        text: "We stayed at the cabin for fifty [[more]] days before driving home."
+      - id: days_fifty_digits
+        text: "We stayed at the cabin for 50 [[more]] days before driving home."
+      - id: days_a_hundred
+        text: "We stayed at the cabin for a hundred [[more]] days before driving home."
+      - id: days_a_thousand
+        text: "We stayed at the cabin for a thousand [[more]] days before driving home."
+      - id: days_many
+        text: "We stayed at the cabin for many [[more]] days before driving home."
+      - id: days_lots
+        text: "We stayed at the cabin for lots [[more]] days before driving home."
+      - id: days_thousands
+        text: "We stayed at the cabin for thousands [[more]] days before driving home."
+      - id: days_even
+        text: "We stayed at the cabin for even [[more]] days before driving home."
+  - name: magnitude_pages
+    prediction: >-
+      If the count drives the + side, exact large counts read like "two" (above q999) and only vague counts drop.
+      If a small size drives it, act falls as the count grows, and "a hundred" and "a thousand" read like "many".
+    items:
+      - id: pages_bare
+        text: "The author needs [[more]] pages to finish the book."
+      - id: pages_one
+        text: "The author needs one [[more]] pages to finish the book."
+      - id: pages_two
+        text: "The author needs two [[more]] pages to finish the book."
+      - id: pages_three
+        text: "The author needs three [[more]] pages to finish the book."
+      - id: pages_a_few
+        text: "The author needs a few [[more]] pages to finish the book."
+      - id: pages_a_couple
+        text: "The author needs a couple [[more]] pages to finish the book."
+      - id: pages_several
+        text: "The author needs several [[more]] pages to finish the book."
+      - id: pages_ten
+        text: "The author needs ten [[more]] pages to finish the book."
+      - id: pages_twenty
+        text: "The author needs twenty [[more]] pages to finish the book."
+      - id: pages_fifty
+        text: "The author needs fifty [[more]] pages to finish the book."
+      - id: pages_fifty_digits
+        text: "The author needs 50 [[more]] pages to finish the book."
+      - id: pages_a_hundred
+        text: "The author needs a hundred [[more]] pages to finish the book."
+      - id: pages_a_thousand
+        text: "The author needs a thousand [[more]] pages to finish the book."
+      - id: pages_many
+        text: "The author needs many [[more]] pages to finish the book."
+      - id: pages_lots
+        text: "The author needs lots [[more]] pages to finish the book."
+      - id: pages_thousands
+        text: "The author needs thousands [[more]] pages to finish the book."
+      - id: pages_even
+        text: "The author needs even [[more]] pages to finish the book."
+  - name: magnitude_years
+    prediction: >-
+      If the count drives the + side, exact large counts read like "two" (above q999) and only vague counts drop.
+      If a small size drives it, act falls as the count grows, and "a hundred" and "a thousand" read like "many".
+    items:
+      - id: years_bare
+        text: "The town will have to wait [[more]] years for a new bridge."
+      - id: years_one
+        text: "The town will have to wait one [[more]] years for a new bridge."
+      - id: years_two
+        text: "The town will have to wait two [[more]] years for a new bridge."
+      - id: years_three
+        text: "The town will have to wait three [[more]] years for a new bridge."
+      - id: years_a_few
+        text: "The town will have to wait a few [[more]] years for a new bridge."
+      - id: years_a_couple
+        text: "The town will have to wait a couple [[more]] years for a new bridge."
+      - id: years_several
+        text: "The town will have to wait several [[more]] years for a new bridge."
+      - id: years_ten
+        text: "The town will have to wait ten [[more]] years for a new bridge."
+      - id: years_twenty
+        text: "The town will have to wait twenty [[more]] years for a new bridge."
+      - id: years_fifty
+        text: "The town will have to wait fifty [[more]] years for a new bridge."
+      - id: years_fifty_digits
+        text: "The town will have to wait 50 [[more]] years for a new bridge."
+      - id: years_a_hundred
+        text: "The town will have to wait a hundred [[more]] years for a new bridge."
+      - id: years_a_thousand
+        text: "The town will have to wait a thousand [[more]] years for a new bridge."
+      - id: years_many
+        text: "The town will have to wait many [[more]] years for a new bridge."
+      - id: years_lots
+        text: "The town will have to wait lots [[more]] years for a new bridge."
+      - id: years_thousands
+        text: "The town will have to wait thousands [[more]] years for a new bridge."
+      - id: years_even
+        text: "The town will have to wait even [[more]] years for a new bridge."
+  - name: magnitude_miles
+    prediction: >-
+      If the count drives the + side, exact large counts read like "two" (above q999) and only vague counts drop.
+      If a small size drives it, act falls as the count grows, and "a hundred" and "a thousand" read like "many".
+    items:
+      - id: miles_bare
+        text: "After the first loop, she ran [[more]] miles."
+      - id: miles_one
+        text: "After the first loop, she ran one [[more]] miles."
+      - id: miles_two
+        text: "After the first loop, she ran two [[more]] miles."
+      - id: miles_three
+        text: "After the first loop, she ran three [[more]] miles."
+      - id: miles_a_few
+        text: "After the first loop, she ran a few [[more]] miles."
+      - id: miles_a_couple
+        text: "After the first loop, she ran a couple [[more]] miles."
+      - id: miles_several
+        text: "After the first loop, she ran several [[more]] miles."
+      - id: miles_ten
+        text: "After the first loop, she ran ten [[more]] miles."
+      - id: miles_twenty
+        text: "After the first loop, she ran twenty [[more]] miles."
+      - id: miles_fifty
+        text: "After the first loop, she ran fifty [[more]] miles."
+      - id: miles_fifty_digits
+        text: "After the first loop, she ran 50 [[more]] miles."
+      - id: miles_a_hundred
+        text: "After the first loop, she ran a hundred [[more]] miles."
+      - id: miles_a_thousand
+        text: "After the first loop, she ran a thousand [[more]] miles."
+      - id: miles_many
+        text: "After the first loop, she ran many [[more]] miles."
+      - id: miles_lots
+        text: "After the first loop, she ran lots [[more]] miles."
+      - id: miles_thousands
+        text: "After the first loop, she ran thousands [[more]] miles."
+      - id: miles_even
+        text: "After the first loop, she ran even [[more]] miles."

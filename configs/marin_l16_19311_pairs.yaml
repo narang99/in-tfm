@@ -1,0 +1,191 @@
+# Minimal pairs for Marin 32B L16 neuron 19311, read with scripts/marin_minimal_pairs.py.
+# Each [[ ]] marks a word whose token is read: gate, up and act = silu(gate) * up.
+# Hypothesis, from the atlas exemplars alone:
+#   - The gate opens on additive or repetition words ("other", "another", "more", "again").
+#   - The sign comes from up: positive in a fresh frame, negative once the text has framed a repeat or continuation.
+# Predictions are written before the run. Atlas scale: pos_q99 0.19, neg_q99 0.37, top exemplars 2 to 3.8 in size.
+groups:
+  - name: exemplar_pos_add_series_frame
+    prediction: the edit lowers up and act on the target, the gate stays about the same
+    items:
+      - id: p0_ref
+        text: "Now that we’ve covered all we must know about Kajabi, let’s look around and examine some [[other]] platforms similar to Kajabi."
+      - id: p0_edit
+        text: "Part II. As promised last time, we continue our review. Now that we’ve covered all we must know about Kajabi, let’s look around and examine some [[other]] platforms similar to Kajabi."
+      - id: p1_ref
+        text: "It’s such a shame that it took me well over [[another]] year to finally do it."
+      - id: p1_edit
+        text: "It took me a year to start. It’s such a shame that it took me well over [[another]] year to finally do it."
+      - id: p5_ref
+        text: "All you have to do is allow the mixture to dry for a few [[more]] hours, and then it is ready."
+      - id: p5_edit
+        text: "Let the mixture dry for a few hours. Then let it dry again. All you have to do is allow the mixture to dry for a few [[more]] hours, and then it is ready."
+      - id: p8_ref
+        text: "In the end, I sat on it for a few [[more]] days as I pondered."
+      - id: p8_edit
+        text: "I sat on it for a few days. Then I sat on it again. In the end, I sat on it for a few [[more]] days as I pondered."
+
+  - name: exemplar_neg_remove_frame
+    prediction: removing the continuation frame raises up and act, and a fresh verb raises them further
+    items:
+      - id: n0_ref
+        text: "Business Cards: Ideas and Inspiration, Part II\nToday we [[continue]] looking at business cards that stand out."
+      - id: n0_no_part
+        text: "Business Cards: Ideas and Inspiration\nToday we [[continue]] looking at business cards that stand out."
+      - id: n0_begin
+        text: "Business Cards: Ideas and Inspiration\nToday we [[begin]] looking at business cards that stand out."
+      - id: n3_ref
+        text: "FROM THE CITY TO THE BUSH, Part Two, the journey [[continues]]."
+      - id: n3_no_part
+        text: "FROM THE CITY TO THE BUSH, the journey [[continues]]."
+      - id: n3_begin
+        text: "FROM THE CITY TO THE BUSH, the journey [[begins]]."
+      - id: n6_ref
+        text: "Last weekend, Sandy invited me down to take another sneak peek at Cthulhu Wars. This [[time]] to see the whole game."
+      - id: n6_edit
+        text: "Last weekend, Sandy invited me down to take a sneak peek at Cthulhu Wars. This [[time]] to see the whole game."
+      - id: n10_ref
+        text: "At age 16 months, Matthew developed a fever again and this [[time]] he didn’t improve."
+      - id: n10_edit
+        text: "At age 16 months, Matthew developed a fever and this [[time]] he didn’t improve."
+      - id: n24_ref
+        text: "Last time, we discussed the top 5 qualities a freelance client is looking for, so this [[week]], let’s take a look at rates."
+      - id: n24_edit
+        text: "Freelancing can be hard to price, so this [[week]], let’s take a look at rates."
+
+  - name: fresh_vs_series
+    prediction: in every domain the series version has lower up and act than the fresh version, with a similar gate
+    items:
+      - id: cooking_fresh
+        text: "The kitchen smelled of butter. She added [[another]] cup of flour to the bowl."
+      - id: cooking_series
+        text: "She added a cup of flour to the bowl, then a second. She added [[another]] cup of flour to the bowl."
+      - id: sports_fresh
+        text: "The crowd was loud all night. He scored [[another]] goal in the second half."
+      - id: sports_series
+        text: "He scored a goal early, then one more before the break. He scored [[another]] goal in the second half."
+      - id: travel_fresh
+        text: "We landed in Europe in June. We visited [[another]] city on Tuesday."
+      - id: travel_series
+        text: "We visited Rome on Monday and Florence on Sunday. We visited [[another]] city on Tuesday."
+      - id: software_fresh
+        text: "The build failed with a strange error. Let's try [[another]] approach."
+      - id: software_series
+        text: "The first fix failed, and so did the second. Let's try [[another]] approach."
+      - id: people_fresh
+        text: "The party was in a small flat. I met [[another]] friend of hers at the door."
+      - id: people_series
+        text: "I met one friend of hers in the hall and a second in the kitchen. I met [[another]] friend of hers at the door."
+      - id: salt_fresh
+        text: "The soup tasted plain. Add some [[more]] salt."
+      - id: salt_series
+        text: "I added salt, tasted it, and added salt again. Add some [[more]] salt."
+      - id: phone_fresh
+        text: "The house was quiet all day. The phone rang [[again]] at midnight."
+      - id: phone_series
+        text: "The phone rang at noon, at six and at nine. The phone rang [[again]] at midnight."
+
+  - name: synonyms_additive
+    prediction: if the gate is semantic, additive synonyms open it like "another" and the size and flavour controls do not
+    items:
+      - id: another
+        text: "The bakery sold out by noon, so the next morning they baked [[another]] batch of bread."
+      - id: one_more
+        text: "The bakery sold out by noon, so the next morning they baked one [[more]] batch of bread."
+      - id: additional
+        text: "The bakery sold out by noon, so the next morning they baked an [[additional]] batch of bread."
+      - id: extra
+        text: "The bakery sold out by noon, so the next morning they baked an [[extra]] batch of bread."
+      - id: second
+        text: "The bakery sold out by noon, so the next morning they baked a [[second]] batch of bread."
+      - id: further
+        text: "The bakery sold out by noon, so the next morning they baked a [[further]] batch of bread."
+      - id: fresh
+        text: "The bakery sold out by noon, so the next morning they baked a [[fresh]] batch of bread."
+      - id: new
+        text: "The bakery sold out by noon, so the next morning they baked a [[new]] batch of bread."
+      - id: different
+        text: "The bakery sold out by noon, so the next morning they baked a [[different]] batch of bread."
+      - id: same
+        text: "The bakery sold out by noon, so the next morning they baked the [[same]] batch of bread."
+      - id: control_large
+        text: "The bakery sold out by noon, so the next morning they baked a [[large]] batch of bread."
+      - id: control_small
+        text: "The bakery sold out by noon, so the next morning they baked a [[small]] batch of bread."
+      - id: control_chocolate
+        text: "The bakery sold out by noon, so the next morning they baked a [[chocolate]] batch of bread."
+
+  - name: synonyms_continuation
+    prediction: continuation verbs give negative up, fresh-start verbs give up near zero or positive
+    items:
+      - id: continue
+        text: "Part II\nToday we [[continue]] our look at business cards."
+      - id: resume
+        text: "Part II\nToday we [[resume]] our look at business cards."
+      - id: carry_on
+        text: "Part II\nToday we [[carry]] on with our look at business cards."
+      - id: pick_up
+        text: "Part II\nToday we [[pick]] up our look at business cards."
+      - id: return_to
+        text: "Part II\nToday we [[return]] to our look at business cards."
+      - id: control_begin
+        text: "Part II\nToday we [[begin]] our look at business cards."
+      - id: control_start
+        text: "Part II\nToday we [[start]] our look at business cards."
+      - id: control_end
+        text: "Part II\nToday we [[end]] our look at business cards."
+
+  - name: repeated_words
+    prediction: each later repeat has lower up than the first
+    items:
+      - id: again_again
+        text: "She knocked on the door [[again]] and [[again]] until he answered."
+      - id: more_more
+        text: "Over the decade, [[more]] and [[more]] people moved to the city."
+      - id: another_x3
+        text: "He tried one key, then [[another]], and then [[another]], and then [[another]]."
+
+  - name: context_leak
+    prediction: neutral tokens get more negative up in the continuation frame than in the fresh frame
+    items:
+      - id: cards_continued
+        text: "Part II\nToday we look at [[the]] designs [[of]] modern business cards[[.]]"
+      - id: cards_fresh
+        text: "Welcome!\nToday we look at [[the]] designs [[of]] modern business cards[[.]]"
+      - id: team_continued
+        text: "Continued from part one.\nThe team met at [[the]] office [[and]] talked about [[the]] plan[[.]]"
+      - id: team_fresh
+        text: "Notes from the meeting.\nThe team met at [[the]] office [[and]] talked about [[the]] plan[[.]]"
+
+  - name: document_start
+    prediction: if the negative pole depends on being near BOS, a neutral prefix shrinks it, otherwise nothing changes
+    items:
+      - id: n0_short
+        text: "Business Cards: Ideas and Inspiration, Part II\nToday we [[continue]] looking at business cards that stand out."
+      - id: n0_prefixed
+        text: "The weather in the valley was mild this year, and the farmers' market opened early. Local growers brought apples, pears and late tomatoes, and the town square stayed busy until the evening.\n\nBusiness Cards: Ideas and Inspiration, Part II\nToday we [[continue]] looking at business cards that stand out."
+      - id: n3_short
+        text: "FROM THE CITY TO THE BUSH, Part Two, the journey [[continues]]."
+      - id: n3_prefixed
+        text: "The weather in the valley was mild this year, and the farmers' market opened early. Local growers brought apples, pears and late tomatoes, and the town square stayed busy until the evening.\n\nFROM THE CITY TO THE BUSH, Part Two, the journey [[continues]]."
+      - id: p0_short
+        text: "Now that we’ve covered all we must know about Kajabi, let’s look around and examine some [[other]] platforms similar to Kajabi."
+      - id: p0_prefixed
+        text: "The weather in the valley was mild this year, and the farmers' market opened early. Local growers brought apples, pears and late tomatoes, and the town square stayed busy until the evening.\n\nNow that we’ve covered all we must know about Kajabi, let’s look around and examine some [[other]] platforms similar to Kajabi."
+
+  - name: hindi
+    prediction: the same sign pattern as English
+    note: '"एक और" is the direct translation of "another", but "और" alone also means "and", so the "दूसरे" pair is the cleaner test'
+    items:
+      - id: hi_another_fresh
+        text: "आज सुबह मौसम अच्छा था। उसने एक [[और]] ड्रेस खरीदी।"
+      - id: hi_another_series
+        text: "उसने सोमवार को एक ड्रेस खरीदी और मंगलवार को दूसरी। उसने एक [[और]] ड्रेस खरीदी।"
+      - id: hi_continue
+        text: "दूसरा भाग\nआज हम पेरिस की अपनी यात्रा [[जारी]] रखते हैं।"
+      - id: hi_begin
+        text: "स्वागत है\nआज हम पेरिस की अपनी यात्रा [[शुरू]] करते हैं।"
+      - id: hi_other_fresh
+        text: "मौसम अच्छा था। हम एक [[दूसरे]] बाज़ार गए।"
+      - id: hi_other_series
+        text: "हम सोमवार को एक बाज़ार गए और मंगलवार को एक और। हम एक [[दूसरे]] बाज़ार गए।"
