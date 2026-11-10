@@ -280,6 +280,12 @@ class RunConfig(BaseSettings):
     )
     batch_size: int = 8
     seed: int = Field(0, description="corpus shuffle and hit subsampling")
+    attribution: Literal["default", "ov"] = Field(
+        "default",
+        description="how each sampled hit is explained. default is the model's own, AttnLRP for text. "
+        "ov splits a 1-layer attn-only model's stream into the embedding and each head's "
+        "attention-weighted value vectors, leaving the QK circuit out",
+    )
     out_dir: Path = Path("reports")
     device: str = Field(default_factory=default_device)
     text: TextDataConfig = TextDataConfig()

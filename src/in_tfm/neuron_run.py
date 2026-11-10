@@ -44,6 +44,8 @@ from .hit_selection import HitSelection, select_hits
 from .layers import LayerGetter, submodule_getter
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
+from .models.attn_only_2l.model import AttnOnlyForCausalLM
+from .models.attn_only_2l.ov import compute_ov_relevance
 from .neuron_capture import (
     NeuronCapture,
     ScanResult,
@@ -193,6 +195,16 @@ class PreparedRun(BaseModel):
     attr_fn: AttrFn
 
 
+def attr_fn_for(config: RunConfig, adapter: ModelAdapter) -> AttrFn:
+    if config.attribution == "default":
+        return adapter.attr_fn
+    if not isinstance(adapter.get_model(), AttnOnlyForCausalLM):
+        raise ValueError(
+            f"ov attribution needs one of our attn-only models, not {config.model.value}"
+        )
+    return compute_ov_relevance
+
+
 def prepare_run[SamplesT, SourceT: SampleSource](
     config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> PreparedRun:
@@ -218,7 +230,7 @@ def prepare_run[SamplesT, SourceT: SampleSource](
         presenter=presenter,
         capture=capture,
         layout=layout,
-        attr_fn=adapter.attr_fn,
+        attr_fn=attr_fn_for(config, adapter),
     )
 
 
