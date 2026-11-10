@@ -26,7 +26,7 @@ text:
       n_samples: 1500
       not_matching: '\btornado\b'
 hits:
-  method: bucketed
+  method: elbow  # every position above each tail's elbow, subsampled to max_hits
   max_hits: 250000
 clustering:
   "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
