@@ -11,7 +11,8 @@ from pydantic import BaseModel
 from ..html_report import render_template
 from ..viz import mk_overlay, render_hadamard_tiles, to_pil
 from .artifacts import ClusterArtifacts
-from .base import ClusterHit, HadamardShape
+from ..sources import SampleId
+from .base import ClusterHit, HadamardShape, HitLabel
 
 
 class ImageNormalization(Protocol):
@@ -52,6 +53,9 @@ class ImagePresenter:
 
     def page_controls(self) -> str:
         return ""
+
+    def hit_label(self, sample_id: SampleId, token_idx: int) -> HitLabel:
+        return HitLabel(before="", token=f"{sample_id}, patch {token_idx}")
 
     def render(
         self,

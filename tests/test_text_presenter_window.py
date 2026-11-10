@@ -36,6 +36,22 @@ def hit_at(token_idx: int, length: int = 60) -> ClusterHit:
     )
 
 
+class FakeBatch:
+    display_ids = torch.arange(60)[None]
+
+
+class SourceWithBatches(FakeSource):
+    def to_model_batch(self, ids):
+        return FakeBatch()
+
+
+def test_a_hit_label_ends_at_the_firing_token():
+    label = TextPresenter(SourceWithBatches()).hit_label("s", 30)
+    assert label.token == "t30"
+    assert label.before == "".join(f"t{i}" for i in range(20, 30))
+    assert TextPresenter(SourceWithBatches()).hit_label("s", 0).before == ""
+
+
 def test_relevance_runs_from_the_start_to_the_firing_token():
     presenter = TextPresenter(FakeSource())
     assert len(presenter._relevance_up_to_firing(hit_at(30))) == 31

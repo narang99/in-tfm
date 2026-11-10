@@ -173,6 +173,7 @@ def _index_page(
         cluster_nav=_cluster_nav(meta),
         sections=sections,
         mixed_hits_page=mixed_hits_page,
+        persistence_page=data.persistence_page,
         header_html=parts.header_html,
         page_sections_html=parts.sections_html,
         clusters_step=parts.n_sections + 1,

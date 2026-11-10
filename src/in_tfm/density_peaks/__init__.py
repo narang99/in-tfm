@@ -7,6 +7,7 @@
 - Unlike HDBSCAN, it needs no low-density gap between groups.
   - So it still splits a continuous cloud, where HDBSCAN returns one cluster or mostly noise.
   - The cost: it cannot tell two separate peaks from two bumps on one hill.
+  - `persistence.py` measures that afterwards, with ToMATo's merge hierarchy.
 - Identical hits are merged first, with a count.
   - An image patch repeats often, for example a fully inked 3x3 patch, and copies would tie on density.
 """

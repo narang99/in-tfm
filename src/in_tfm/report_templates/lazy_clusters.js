@@ -15,11 +15,20 @@ const nearView = new IntersectionObserver(
 );
 document.querySelectorAll("section.cluster").forEach((section) => nearView.observe(section));
 
-// A link to a cluster lands on its unstamped placeholder, so stamp it and scroll again.
+// A link to a cluster lands on an unstamped placeholder, and the placeholders above it grow once stamped.
+// So stamp everything down to it first. Charts can still resize, so keep following it until the reader moves.
+let followedCluster = null;
+new ResizeObserver(() => followedCluster?.scrollIntoView()).observe(document.body);
+for (const reading of ["wheel", "touchstart", "keydown", "mousedown"]) {
+  window.addEventListener(reading, () => { followedCluster = null; }, { passive: true });
+}
+
 function showLinkedCluster() {
   const target = location.hash && document.getElementById(location.hash.slice(1));
   if (!target || !target.matches("section.cluster")) return;
-  stampCluster(target);
+  const sections = [...document.querySelectorAll("section.cluster")];
+  sections.slice(0, sections.indexOf(target) + 1).forEach(stampCluster);
+  followedCluster = target;
   target.scrollIntoView();
 }
 window.addEventListener("hashchange", showLinkedCluster);

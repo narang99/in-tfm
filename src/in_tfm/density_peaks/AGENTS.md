@@ -23,6 +23,9 @@ The density-peak forest over a neuron's hits (Rodriguez and Laio, 2014).
 - `probabilities/` gives each point a probability per tree, from geodesic distance to each tree's peak.
   - It builds on the forest's stored neighbours.
   - It has its own naive and vectorized split. See its AGENTS.md.
+- `persistence.py` gives ToMATo's merge hierarchy over the forest's density and stored neighbours.
+  - Its sweep is one union-find loop, so it has one implementation and no mirror.
+  - `tests/test_density_peak_persistence.py` checks it against the definition on random graphs.
 - The distance itself comes from `in_tfm.weighted_jaccard`, which has its own naive and vectorized split.
 
 ## Naive and vectorized mirrors

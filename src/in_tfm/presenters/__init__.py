@@ -8,7 +8,7 @@ completely between images and text:
 """
 
 from .artifacts import ClusterArtifacts
-from .base import ClusterHit, ClusterPresenter, HadamardShape
+from .base import ClusterHit, ClusterPresenter, HadamardShape, HitLabel
 from .image import ImagePresenter
 from .text import TextPresenter
 
@@ -16,6 +16,7 @@ __all__ = [
     "ClusterArtifacts",
     "ClusterHit",
     "ClusterPresenter",
+    "HitLabel",
     "HadamardShape",
     "ImagePresenter",
     "TextPresenter",

@@ -74,6 +74,7 @@ def neuron_index(
     cluster_nav: str,
     sections: Sequence[str],
     mixed_hits_page: str | None = None,
+    persistence_page: str | None = None,
     header_html: str = "",
     page_sections_html: str = "",
     clusters_step: int = 1,
@@ -81,6 +82,7 @@ def neuron_index(
     return render_template(
         "neuron_index.html",
         mixed_hits_page=mixed_hits_page,
+        persistence_page=persistence_page,
         title=title,
         threshold_label=threshold_label,
         n_hits=n_hits,

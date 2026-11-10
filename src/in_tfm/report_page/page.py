@@ -22,6 +22,7 @@ class PageData(BaseModel):
     ranges: ActivationRanges | None
     forest: ForestData | None
     mixed_hits_page: str | None = None
+    persistence_page: str | None = None
     border_links: dict[str, str] = {}
 
 
@@ -34,6 +35,8 @@ class PageParts(BaseModel):
 
 MIXED_HITS_PAGE = "mixed_hits.html"
 """The sheet of hits split between clusters, linked from the page when it exists."""
+PERSISTENCE_PAGE = "persistence.html"
+"""The ToMATo merges with their slider, linked from the page when it exists."""
 
 
 def load_page_data(report_dir: Path) -> PageData:
@@ -43,6 +46,9 @@ def load_page_data(report_dir: Path) -> PageData:
         forest=load_forest_data(report_dir),
         mixed_hits_page=MIXED_HITS_PAGE
         if (report_dir / MIXED_HITS_PAGE).exists()
+        else None,
+        persistence_page=PERSISTENCE_PAGE
+        if (report_dir / PERSISTENCE_PAGE).exists()
         else None,
         border_links=load_border_links(report_dir),
     )

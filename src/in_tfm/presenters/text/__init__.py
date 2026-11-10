@@ -16,10 +16,12 @@ import numpy as np
 from ...html_report import SINK_TOGGLE, page, render_template
 from ...viz import render_hadamard_tiles
 from ..artifacts import ClusterArtifacts
-from ..base import ClusterHit, HadamardShape
+from ...sources import SampleId
+from ..base import ClusterHit, HadamardShape, HitLabel
 from .colored_tokens import display_text, symmetric_scale, token_views
 from .views import FiringChip, HitView, RelevanceChip, SinkViews, TextClusterView
 
+LABEL_TOKENS_BEFORE = 10
 HADAMARD_TILE_GAP = 32
 """Pixels between tiles in the composited grid, and around its edge. The default `compose_grid`
 pad of 4 reads as one block, since the tiles are dark and the gap is black."""
@@ -46,6 +48,15 @@ class TextPresenter:
 
     def page_controls(self) -> str:
         return SINK_TOGGLE
+
+    def hit_label(self, sample_id: SampleId, token_idx: int) -> HitLabel:
+        ids = self.source.to_model_batch([sample_id]).display_ids[0]
+        tokens = self.source.tokenizer.convert_ids_to_tokens(ids)
+        start = max(0, token_idx - LABEL_TOKENS_BEFORE)
+        return HitLabel(
+            before="".join(display_text(t) for t in tokens[start:token_idx]),
+            token=display_text(tokens[token_idx]),
+        )
 
     def render(
         self,

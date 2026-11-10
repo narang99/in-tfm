@@ -16,11 +16,18 @@ from .data import (
 )
 from .figures import PLOTLY_JS
 from .membership import cluster_stats_html
-from .page import MIXED_HITS_PAGE, PageData, load_page_data, page_parts
+from .page import (
+    MIXED_HITS_PAGE,
+    PERSISTENCE_PAGE,
+    PageData,
+    load_page_data,
+    page_parts,
+)
 
 __all__ = [
     "FOREST_DATA",
     "MIXED_HITS_PAGE",
+    "PERSISTENCE_PAGE",
     "PLOTLY_JS",
     "ForestData",
     "SelectionCurve",

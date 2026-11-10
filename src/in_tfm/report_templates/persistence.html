@@ -1,0 +1,89 @@
+<style>
+.pers-controls { display: grid; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 12px 0; }
+.pers-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.pers-row input[type="range"] { flex: 1 1 280px; min-width: 0; }
+.pers-row button { font: inherit; padding: 3px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--fg); cursor: pointer; }
+.pers-row button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.pers-row button:disabled { opacity: 0.45; cursor: default; }
+.pers-readout { font-variant-numeric: tabular-nums; }
+.pers-merge { border-top: 1px solid var(--line); padding: 8px 0; }
+.pers-merge h3 { margin: 0 0 4px; font-size: 0.95rem; }
+.pers-columns { display: grid; gap: 12px 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); margin-top: 8px; }
+.pers-column { min-width: 0; }
+.pers-column h4 { margin: 0; font-size: 0.9rem; }
+.pers-examples { display: grid; gap: 0 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); margin-top: 6px; }
+.pers-example { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
+.pers-words { flex: 1; min-width: 0; }
+.pers-tile { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.pers-side { font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; overflow-wrap: anywhere; margin: 2px 0; }
+.pers-side b { font-family: system-ui, sans-serif; }
+.pers-side mark { padding: 0 2px; border-radius: 2px; }
+.pers-meta { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.pers-route { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); margin-top: 8px; }
+.pers-stop { display: flex; flex-direction: column; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.pers-stop .pers-example { flex: 1; border-top: 0; padding: 4px 0 0; }
+.pers-stop-merge { border: 3px solid var(--fg); }
+.pers-stop-title { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.pers-box { overflow: auto; max-height: 420px; border: 1px solid var(--line); border-radius: 6px; }
+.pers-box table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.pers-box th { position: sticky; top: 0; background: var(--panel); text-align: left; padding: 5px 8px; white-space: nowrap; }
+.pers-box td { padding: 4px 8px; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.pers-box td.num, .pers-box th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pers-box td.text { font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; }
+</style>
+
+<h1>{{ title }}</h1>
+<p class="meta"><a href="index.html">back to the report</a></p>
+<ul class="notes">
+<li>Hits enter from densest to sparsest over the kNN graph. When two components meet, the one with the lower peak dies.</li>
+<li>Persistence is that peak's rho minus the rho where they met. A high value means a separate hill. A low value means a bump on one hill.</li>
+<li>Rho is on a log10 scale, so a persistence of 0.3 means the peak is about twice as dense as the point where they met.</li>
+<li>A threshold merges every peak with persistence up to it. The slider moves one threshold at a time, so each step holds at least one new merge.</li>
+<li>Between trees, each side of a merge lists the densest distinct hits labelled with that tree, its root first.</li>
+<li>Between all local modes, each side lists the densest distinct hits of that mode's basin, the hits that climb to it over this graph.</li>
+<li>Between trees, only roots count as peaks, so a root's persistence ignores any denser hit that is no tree's root. A tree that absorbed one can look weaker here than the hill it sits on. The view between all modes has no such gap.</li>
+<li>Tiles are the Hadamard vectors that were clustered, red for negative and green for positive. All tiles in one merge share a colour scale, so they compare across the two sides but not across merges.</li>
+<li>Each merge between trees shows its route, from the merging root, through the merge point (thick border), to the other root.</li>
+<li>A route is the fewest kNN hops over hits at least as dense as the merge point.</li>
+<li>A route can cross other trees, since trees that merged earlier are already part of the hill. So its rho can dip and rise before the merge point, and each card names its own tree.</li>
+<li>A long route is cut to 20 cards at one fixed step, counted out from the merge point. Both roots and the merge point always stay.</li>
+<li>A tree's name links to its cluster in the report, with AttnLRP on each hit. A cluster holds only its tree's confident hits, and the report shows a random sample of them, so its hits can differ from the ones listed here.</li>
+<li>Peaks in separate pieces of the graph never merge, at any threshold.</li>
+<li>A peak marked "copies" is a group of more than k identical hits. Its density is a fixed top value, so its persistence is not a measurement, even when it is the largest on the page.</li>
+</ul>
+
+<section class="pers-controls" aria-label="Threshold">
+  <div class="pers-row">
+    <span>Peaks</span>
+    <button type="button" id="scope-trees" aria-pressed="true">Between trees</button>
+    <button type="button" id="scope-modes" aria-pressed="false">Between all local modes</button>
+  </div>
+  <div class="pers-row">
+    <button type="button" id="step-back" aria-label="Previous merge">Previous</button>
+    <input type="range" id="step" min="0" step="1" value="0" aria-label="Merge step">
+    <button type="button" id="step-next" aria-label="Next merge">Next</button>
+  </div>
+  <div class="pers-readout" id="readout" aria-live="polite"></div>
+</section>
+
+<h2>Merges at this step</h2>
+<div id="step-merges"></div>
+
+<h2>Clusters at this threshold</h2>
+<p class="pers-meta" id="clusters-note"></p>
+<div class="pers-box"><table>
+  <thead><tr><th>Highest peak</th><th class="num">Peak rho</th><th class="num">Peaks</th><th class="num">Hits</th><th>Merged peaks</th><th>Highest peak's hit</th></tr></thead>
+  <tbody id="clusters"></tbody>
+</table></div>
+
+<h2>All merges so far, latest first</h2>
+<p class="pers-meta" id="history-note"></p>
+<div class="pers-box"><table>
+  <thead><tr><th class="num">Persistence</th><th>Dies</th><th>Into</th><th class="num">Met at rho</th></tr></thead>
+  <tbody id="history"></tbody>
+</table></div>
+
+<script id="persistence-data" type="application/json">{{ data_json|safe }}</script>
+<script>
+{% include "persistence.js" %}
+</script>

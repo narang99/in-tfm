@@ -38,8 +38,18 @@ class ClusterHit(BaseModel):
     """Token ids as fed, when the leaf is not invertible - see sources.ModelBatch."""
 
 
+class HitLabel(BaseModel):
+    """A short name for a hit, for pages that list thousands and cannot attribute each one."""
+
+    before: str
+    token: str
+    """The firing token for text. For an image, where the hit is."""
+
+
 @runtime_checkable
 class ClusterPresenter(Protocol):
+    def hit_label(self, sample_id: SampleId, token_idx: int) -> HitLabel: ...
+
     def render(
         self,
         hits: Sequence[ClusterHit],

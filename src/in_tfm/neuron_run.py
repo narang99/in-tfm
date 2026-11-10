@@ -53,7 +53,8 @@ from .neuron_capture import (
     merge_positions,
 )
 from .neuron_report import AttrFn, NeuronClusterHits
-from .presenters import ClusterPresenter
+from .persistence_report import HitDisplay, write_persistence_page
+from .presenters import ClusterPresenter, HitLabel
 from .report_page import ForestData, forest_data
 from .run_config import (
     ClusteringConfig,
@@ -259,6 +260,27 @@ def prepare_run[SamplesT, SourceT: SampleSource](
     )
 
 
+def forest_hit_display(
+    forest: ForestData, hits: NeuronClusterHits, min_uniq_samples: int
+) -> HitDisplay:
+    """A distinct point is drawn as the first of its hits, since its copies are identical."""
+    _, first_hit = np.unique(forest.distinct_of_hit, return_index=True)
+
+    def label_of(point: int) -> HitLabel:
+        hit = first_hit[point]
+        return hits.presenter.hit_label(
+            hits.sample_ids[hits.selection.batch_idx[hit]],
+            int(hits.selection.token_idx[hit]),
+        )
+
+    return HitDisplay(
+        label_of=label_of,
+        hadamards=hits.hdmds[first_hit],
+        shape=hits.hadamard_shape,
+        report_clusters=set(hits.shown_cluster_ids(min_uniq_samples)),
+    )
+
+
 def report_neuron(
     neuron_idx: int,
     polarity: Polarity,
@@ -318,6 +340,16 @@ def report_neuron(
                 run.attr_fn,
             )
         print(f"[{tag}] {len(border_paths)} border pages")
+        with timed(f"{tag}: write peak merges"):
+            persistence_path = write_persistence_page(
+                Path(config.out_dir) / report_name(neuron_idx, polarity),
+                neuron_idx,
+                clustered.forest,
+                forest_hit_display(
+                    clustered.forest, hits, config.report.min_uniq_samples_per_cluster
+                ),
+            )
+        print(f"[{tag}] peak merges -> {persistence_path}")
     with timed(f"{tag}: write report"):
         report_path = hits.write_report(
             config.out_dir,

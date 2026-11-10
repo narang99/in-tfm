@@ -1,5 +1,5 @@
 <h1>{{ title }}</h1>
-<p class="meta">{{ threshold_label }} &middot; {{ n_hits }} hits &middot; {{ n_clusters }} clusters{% if mixed_hits_page %} &middot; <a href="{{ mixed_hits_page }}">hits split between clusters</a>{% endif %}</p>
+<p class="meta">{{ threshold_label }} &middot; {{ n_hits }} hits &middot; {{ n_clusters }} clusters{% if mixed_hits_page %} &middot; <a href="{{ mixed_hits_page }}">hits split between clusters</a>{% endif %}{% if persistence_page %} &middot; <a href="{{ persistence_page }}">peak merges</a>{% endif %}</p>
 {{ header_html|safe }}
 {{ page_controls|safe }}
 {{ page_sections_html|safe }}
