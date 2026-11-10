@@ -1,0 +1,40 @@
+<h1>{{ title }}</h1>
+<ul class="qk-summary">
+<li>{{ n_candidates }} pairs above the elbow cut-off {{ "%.3f"|format(cutoff) }}, {{ n_hits }} clustered.</li>
+<li>Rows are <code>scaling &middot; q &odot; k</code> after q_norm and rope. Each row sums to its pair's attention score.</li>
+<li>In the examples, <span class="qk-key">key</span> is the attended token and <span class="qk-query">query</span> is the attending one.</li>
+</ul>
+{% for cluster in clusters %}
+<details class="qk-cluster"{% if loop.index <= 3 %} open{% endif %}>
+<summary>
+{{ "noise" if cluster.cluster_id < 0 else "cluster " ~ cluster.cluster_id }}
+&middot; {{ cluster.n_hits }} pairs
+&middot; mean score {{ "%.2f"|format(cluster.mean_score) }}
+&middot; median distance {{ cluster.median_distance }}
+&middot; key is the first token {{ "%.0f"|format(100 * cluster.first_key_share) }}%
+&middot; key is the query {{ "%.0f"|format(100 * cluster.self_share) }}%
+</summary>
+<div class="qk-tops">
+<div><span class="label">top keys</span>{% for t in cluster.top_keys %}<code class="qk-chip">{{ t.text }} <b>{{ t.count }}</b></code>{% endfor %}</div>
+<div><span class="label">top queries</span>{% for t in cluster.top_queries %}<code class="qk-chip">{{ t.text }} <b>{{ t.count }}</b></code>{% endfor %}</div>
+<div><span class="label">top dims of the mean row</span>{% for d in cluster.top_dims %}<code class="qk-chip">d{{ d.dim }} <b>{{ "%+.3f"|format(d.value) }}</b></code>{% endfor %}</div>
+</div>
+{% for example in cluster.examples %}
+<div class="qk-example">
+<div class="hit-tag">sample {{ example.sample_id }} &middot; key {{ example.key_idx }} &middot; query {{ example.query_idx }} &middot; score {{ "%.2f"|format(example.score) }}</div>
+<div class="tokens">{% for span in example.spans %}{% if span.kind == "gap" %}<span class="qk-gap"> &hellip; </span>{% else %}<span class="{{ "qk-" ~ span.kind }}">{{ span.text }}</span>{% endif %}{% endfor %}</div>
+</div>
+{% endfor %}
+</details>
+{% endfor %}
+<style>
+.qk-key { background: #1f77b433; outline: 1px solid #1f77b4; }
+.qk-query { background: #d6272833; outline: 1px solid #d62728; }
+.qk-both { background: #9467bd33; outline: 1px solid #9467bd; }
+.qk-gap { opacity: 0.5; }
+.qk-chip { margin-right: 0.4em; white-space: pre; }
+.qk-tops .label { margin-right: 0.6em; font-weight: 600; }
+.qk-example { margin: 0.4em 0 0.8em; }
+.qk-example .tokens { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+.qk-cluster summary { cursor: pointer; font-weight: 600; margin-top: 0.8em; }
+</style>

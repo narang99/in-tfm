@@ -312,3 +312,54 @@ def load_run_config(argv: Sequence[str]) -> RunConfig:
     path = config_path_from(argv)
     values = yaml.safe_load(path.read_text()) if path else {}
     return RunConfig(_cli_parse_args=list(argv), **(values or {}))
+
+
+class PairReportConfig(Section):
+    examples_per_cluster: int = 8
+    context_tokens: int = Field(
+        12, description="tokens shown before the key and around the query"
+    )
+
+
+class QkRunConfig(BaseSettings):
+    """A run over one layer's attention scores, see `in_tfm.qk_pairs`."""
+
+    model_config = SettingsConfigDict(extra="forbid", cli_kebab_case=True)
+
+    config: Path | None = Field(
+        None, description="YAML file with defaults for any of the settings below"
+    )
+    model: ModelName = ModelName.QWEN3_32B
+    layer: int
+    heads: list[int] = Field(description="query heads, repeat the flag per head")
+    batch_size: int = 8
+    seed: int = Field(0, description="corpus shuffle and hit subsampling")
+    out_dir: Path = Path("reports")
+    device: str = Field(default_factory=default_device)
+    max_hits: int = Field(
+        20000, description="pairs kept per head, from those above the elbow"
+    )
+    text: TextDataConfig = TextDataConfig()
+    clustering: ClusteringConfig = ClusteringConfig()
+    report: PairReportConfig = PairReportConfig()
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
+
+    @property
+    def layer_name(self) -> str:
+        return f"layers.{self.layer}.self_attn"
+
+
+def load_qk_run_config(argv: Sequence[str]) -> QkRunConfig:
+    path = config_path_from(argv)
+    values = yaml.safe_load(path.read_text()) if path else {}
+    return QkRunConfig(_cli_parse_args=list(argv), **(values or {}))

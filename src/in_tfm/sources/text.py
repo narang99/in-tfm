@@ -73,6 +73,10 @@ class TextSource:
     def _embed_device(self) -> torch.device:
         return next(self.embed.parameters()).device
 
+    def token_ids(self, ids: Sequence[SampleId]) -> torch.Tensor:
+        """The ids a batch of these samples feeds the model, in the same columns."""
+        return self._encode(ids)["input_ids"]
+
     def _encode(self, ids: Sequence[SampleId]):
         """Every sequence comes back exactly `max_length` wide - padded up, truncated down.
 
