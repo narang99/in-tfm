@@ -1,0 +1,15 @@
+{% macro cluster_bar(bar) %}
+<details class="fire-row" style="{{ bar.style }}">
+<summary><span class="fire-bar"><span style="width:{{ "{:.1f}".format([bar.percent, 1]|max) }}%"></span></span><span class="fire-label">c{{ bar.share.cluster_id }} &middot; {{ bar.share.count }} ({{ "{:.0f}".format(bar.percent) }}%) &middot; median distance {{ "{:.3g}".format(bar.share.median_distance) }}</span></summary>
+{% if bar.body is not none %}<div class="fire-body"><template class="lazy-body">{{ bar.body|safe }}</template></div>{% endif %}
+</details>
+{% endmacro %}
+<div class="dep-clusters">
+<div class="fire-title">{{ matched.label }}: firing by its own cluster</div>
+{% for bar in matched.bars %}{{ cluster_bar(bar) }}{% endfor %}
+{% if matched.outliers %}
+<details class="fire-outliers"><summary class="muted">show outlier clusters ({{ matched.outliers|length }})</summary>
+{% for bar in matched.outliers %}{{ cluster_bar(bar) }}{% endfor %}
+</details>
+{% endif %}
+</div>

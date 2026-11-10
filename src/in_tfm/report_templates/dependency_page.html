@@ -1,6 +1,7 @@
 {% from "dependency_tables.html" import dependency_rows %}
 <h1>{{ origin.layer }}:{{ origin.neuron }}, cluster {{ origin.cluster_id }}: what it depends on</h1>
 <p class="meta"><a href="../../index.html#cluster-{{ origin.cluster_id }}">&larr; the cluster in its neuron report</a></p>
+{{ controls|safe }}
 <div class="stats">{% for tile in tiles %}<div class="stat"><b>{{ tile.value }}</b><span>{{ tile.name }}</span></div>{% endfor %}</div>
 
 <section class="page-section" id="frequent">
@@ -26,3 +27,7 @@
 </details>
 {% endif %}
 </section>
+
+<script>
+{% include "lazy_details.js" %}
+</script>

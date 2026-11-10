@@ -13,6 +13,7 @@ from ..dependencies.collect import (
 from ..dependencies.stats import DependencyStats, StatsSettings, dependency_stats
 from ..dependencies.view import ViewPolicy
 from ..html_report import page, render_template
+from ..presenters import ClusterPresenter
 from ..report_page.sections import StatTile
 from .cards import DependencyCards, dependency_cards
 
@@ -39,6 +40,7 @@ def page_body(
     collected: ClusterDependencies,
     stats: DependencyStats,
     cards: DependencyCards,
+    controls: str,
 ) -> str:
     origin = collected.origin
     return render_template(
@@ -46,6 +48,7 @@ def page_body(
         origin=origin,
         tiles=stat_tiles(collected, stats),
         cards=cards,
+        controls=controls,
     )
 
 
@@ -53,12 +56,14 @@ def render_dependency_page(
     collected: ClusterDependencies,
     settings: StatsSettings = StatsSettings(),
     policy: ViewPolicy = ViewPolicy(),
+    presenter: ClusterPresenter | None = None,
 ) -> str:
     stats = dependency_stats(collected, settings)
     origin = collected.origin
     title = f"{origin.layer}:{origin.neuron} cluster {origin.cluster_id} dependencies"
-    body = page_body(collected, stats, dependency_cards(collected, stats, policy))
-    return page(title, body)
+    cards = dependency_cards(collected, stats, policy, presenter)
+    controls = presenter.page_controls() if presenter else ""
+    return page(title, page_body(collected, stats, cards, controls))
 
 
 def write_dependency_page(
@@ -66,8 +71,9 @@ def write_dependency_page(
     cluster_id: int,
     settings: StatsSettings = StatsSettings(),
     policy: ViewPolicy = ViewPolicy(),
+    presenter: ClusterPresenter | None = None,
 ) -> Path:
     collected = load_cluster_dependencies(report_dir, cluster_id)
     path = dependencies_dir(report_dir, cluster_id) / PAGE_NAME
-    path.write_text(render_dependency_page(collected, settings, policy))
+    path.write_text(render_dependency_page(collected, settings, policy, presenter))
     return path
