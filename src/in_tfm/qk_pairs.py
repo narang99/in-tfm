@@ -103,7 +103,7 @@ class PairScan(BaseModel):
     sample_ids: list[SampleId]
     heads: list[int]
     scores: Float[torch.Tensor, "batch heads seq seq"]
-    """`-inf` where the pair is not causal or touches padding."""
+    """float16, which halves what a large corpus holds in memory. `-inf` where the pair is not causal or touches padding."""
 
 
 def scan_pairs(
@@ -125,7 +125,7 @@ def scan_pairs(
             [head_scores(query_key, attention, head) for head in heads], dim=1
         )
         scores = scores.masked_fill(~pairs[:, None], -torch.inf)
-        chunks.append(scores.cpu())
+        chunks.append(scores.half().cpu())
     return PairScan(sample_ids=sample_ids, heads=list(heads), scores=torch.cat(chunks))
 
 
@@ -146,7 +146,7 @@ def positive_sorted_scores(
     scores: Float[torch.Tensor, "batch seq seq"], device: str
 ) -> Float[torch.Tensor, "n_pairs"]:
     """Ascending, as `selection.positive_sorted_activations` hands the elbow a neuron's tail."""
-    values = scores[torch.isfinite(scores) & (scores > 0)]
+    values = scores[torch.isfinite(scores) & (scores > 0)].float()
     return torch.sort(values.to(device)).values
 
 
@@ -181,7 +181,7 @@ class PairRows(BaseModel):
     rows: Float[torch.Tensor, "n_hits head_dim"]
     """`scaling * q ⊙ k` at each hit. Each row sums to the hit's score."""
     scores: Float[torch.Tensor, "n_hits"]
-    """Read in the scan, to check the gather against."""
+    """Read in the scan, to check the gather against. Rounded to float16 there."""
 
 
 def gather_rows(
@@ -223,12 +223,16 @@ def gather_rows(
                 torch.from_numpy(h.sample_idx),
                 torch.from_numpy(h.query_idx),
                 torch.from_numpy(h.key_idx),
-            ],
+            ].float(),
         )
         for h, r in zip(hits, rows)
     ]
 
 
 def worst_gather_mismatch(pair_rows: PairRows) -> float:
-    """Each row's sum against the score the scan read, which must agree up to float error."""
-    return (pair_rows.rows.sum(-1) - pair_rows.scores).abs().max().item()
+    """Each row's sum against the score the scan read, relative to the score.
+
+    - The scan rounded the scores to float16, so about 1e-3 is expected.
+    """
+    sums = pair_rows.rows.sum(-1)
+    return ((sums - pair_rows.scores).abs() / pair_rows.scores.abs()).max().item()

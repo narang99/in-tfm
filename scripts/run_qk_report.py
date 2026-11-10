@@ -64,7 +64,7 @@ def main() -> None:
     for pair_rows in gathered:
         head = pair_rows.hits.head
         print(
-            f"[head {head}] row sums match the scan's scores to {worst_gather_mismatch(pair_rows):.2e}"
+            f"[head {head}] row sums match the scan's float16 scores to a relative {worst_gather_mismatch(pair_rows):.2e}"
         )
         with timed(f"head {head}: cluster"):
             clustered = cluster_hits(

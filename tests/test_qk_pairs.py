@@ -86,7 +86,7 @@ def test_gathered_rows_sum_to_the_scanned_scores():
     gathered = gather_rows(model, source, LAYER, scan, hits, batch_size=4, device="cpu")
     for pair_rows in gathered:
         assert len(pair_rows.hits.sample_idx) > 0
-        assert worst_gather_mismatch(pair_rows) < 1e-5
+        assert worst_gather_mismatch(pair_rows) < 2e-3
         assert (pair_rows.hits.key_idx <= pair_rows.hits.query_idx).all()
 
 
