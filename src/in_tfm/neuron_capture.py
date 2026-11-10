@@ -124,14 +124,19 @@ class NeuronCapture:
         token_idx: Int[np.ndarray, "n_hits"],
     ) -> GatherResult:
         """`batch_idx` indexes into the scan's samples. Results come back in the order the
-        positions were given, whatever order the samples were re-run in."""
+        positions were given, whatever order the samples were re-run in.
+
+        - Each hit is re-run in the same batch the scan ran it in, neighbours included.
+          - A half-precision kernel can round differently for another batch shape.
+          - At layer 55 of Qwen3-32B that drifted by 0.69, far past the check's tolerance.
+        """
         ids = list(self.source.sample_ids())
-        samples = np.unique(batch_idx)
         order: list[np.ndarray] = []
         inputs: list[torch.Tensor] = []
         activations: list[torch.Tensor] = []
-        for chunk in tqdm(list(batched(samples, self.batch_size)), desc="gather"):
-            chunk = np.asarray(chunk)
+        for chunk in tqdm(
+            self._scan_batches_holding(batch_idx, len(ids)), desc="gather"
+        ):
             hit_rows = np.flatnonzero(np.isin(batch_idx, chunk))
             in_batch = torch.from_numpy(np.searchsorted(chunk, batch_idx[hit_rows]))
             tokens = torch.from_numpy(token_idx[hit_rows])
@@ -154,6 +159,16 @@ class NeuronCapture:
             inputs=torch.cat(inputs)[restore_order],
             activations=torch.cat(activations)[restore_order],
         )
+
+    def _scan_batches_holding(
+        self, batch_idx: Int[np.ndarray, "n_hits"], n_samples: int
+    ) -> list[Int[np.ndarray, "batch"]]:
+        """The scan's batches, as sample indices, that contain at least one hit."""
+        starts = np.unique(batch_idx // self.batch_size) * self.batch_size
+        return [
+            np.arange(start, min(start + self.batch_size, n_samples))
+            for start in starts
+        ]
 
     def check_consistent(
         self,
