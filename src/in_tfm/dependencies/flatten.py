@@ -9,8 +9,8 @@ from collections.abc import Callable
 
 import torch
 
-from .dependency_map import Captures, Tap
-from .refs import Dependency, NeuronWriter, WriterTerm
+from .dependency_map import Captures
+from .refs import Dependency, NeuronWriter, Tap, WriterTerm
 
 Elementwise = Callable[[torch.Tensor], torch.Tensor]
 
