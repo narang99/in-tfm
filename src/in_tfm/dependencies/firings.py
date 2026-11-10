@@ -7,6 +7,9 @@
   - The writers covering `writer_mass` of the terms' |value| are kept on the firing.
 """
 
+from pathlib import Path
+from typing import Protocol
+
 import numpy as np
 import torch
 from jaxtyping import Float
@@ -15,7 +18,7 @@ from pydantic import BaseModel
 from ..sources import SampleId
 from .consistency import check_terms_rebuild_input
 from .dependency_map import Captures, DependencyMap
-from .refs import Dependency, Writer
+from .refs import Dependency, Tap, Writer
 from .selection import covering_indices
 
 
@@ -24,12 +27,43 @@ class Example(BaseModel):
     token: int
 
 
+class ClusterMatch(BaseModel):
+    """The writer's own cluster a firing looks like, see `matching`."""
+
+    cluster_id: int
+    distance: float
+
+
+class WriterReportRef(BaseModel):
+    """A writer neuron's own report, which the dependency page reads its clusters from."""
+
+    layer: str
+    neuron: int
+    report_dir: Path
+
+
+class Matcher(Protocol):
+    """Matches firings of one writer neuron to its own clusters, see `matching.WriterMatcher`."""
+
+    @property
+    def report(self) -> WriterReportRef: ...
+
+    @property
+    def tap(self) -> Tap:
+        """The writer's input, which its Hadamard rows are built from."""
+        ...
+
+    def match(self, inputs: Float[torch.Tensor, "n hidden"]) -> list[ClusterMatch]: ...
+
+
 class WriterFiring(BaseModel):
     writer: Writer
     value: float
     """In the writer's own units, the ones its neuron report uses."""
     term: float
     """The part of the dim's input value this writer accounts for."""
+    match: ClusterMatch | None = None
+    """None for a writer with no report to match against."""
 
 
 def writer_contribution(firing: "DependencyFiring", writer: WriterFiring) -> float:
