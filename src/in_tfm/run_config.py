@@ -32,6 +32,7 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     MARIN_32B = "marin-community/marin-32b-base"
+    QWEN3_32B = "Qwen/Qwen3-32B"
     ATTN_ONLY_2L = "self/attn-only-2l"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
@@ -43,6 +44,7 @@ Modality = Literal["text", "mnist", "inception"]
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.MARIN_32B: "text",
+    ModelName.QWEN3_32B: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
@@ -61,6 +63,22 @@ class Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class TextPart(Section):
+    """One part of a mixed corpus.
+
+    - A rare kind of text, such as code that imports Tornado, only shows up in a run if a part asks for it.
+    - Patterns are regexes searched with `re.MULTILINE`, so `^` anchors at every line.
+    """
+
+    dataset: str
+    dataset_config: str | None = None
+    split: str = "train"
+    column: str = "text"
+    n_samples: int
+    matching: str | None = Field(None, description="keep only texts this regex finds")
+    not_matching: str | None = Field(None, description="drop texts this regex finds")
+
+
 class TextDataConfig(Section):
     dataset: str = Field("Salesforce/wikitext", description="hf dataset name")
     dataset_config: str | None = Field(
@@ -75,6 +93,19 @@ class TextDataConfig(Section):
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
+    mix: list[TextPart] | None = Field(
+        None,
+        description="documents streamed from several datasets instead of the fields above",
+    )
+
+    @model_validator(mode="after")
+    def a_mix_replaces_the_single_dataset(self) -> "TextDataConfig":
+        single = {"dataset", "dataset_config", "split", "n_samples", "unit"}
+        if self.mix is not None and (both := single & self.model_fields_set):
+            raise ValueError(
+                f"text.mix replaces the single dataset, but {sorted(both)} were set too"
+            )
+        return self
 
 
 class MnistDataConfig(Section):

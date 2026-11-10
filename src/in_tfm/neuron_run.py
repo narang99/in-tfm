@@ -8,6 +8,7 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -62,6 +63,8 @@ from .run_config import (
 )
 from .sources import SampleSource
 from .token_layout import TokenLayout
+
+COLLECTED_HITS_NAME = "collected_hits.pt"
 
 
 @contextmanager
@@ -295,7 +298,17 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> None:
     run = prepare_run(config, adapter, samples)
-    report_collected(config, run, collect_hits(config, run))
+    collected = collect_hits(config, run)
+    save_collected(collected, samples, config.out_dir)
+    report_collected(config, run, collected)
+
+
+def save_collected(collected: "CollectedHits", samples: Any, out_dir: Path) -> None:
+    """The forward passes are the expensive part, so their result survives a crash in clustering or reporting."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / COLLECTED_HITS_NAME
+    with timed(f"save collected hits -> {path}"):
+        torch.save({"collected": collected, "samples": samples}, path)
 
 
 class CollectedHits(BaseModel):

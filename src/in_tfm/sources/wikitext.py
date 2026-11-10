@@ -4,6 +4,7 @@ import random
 import re
 
 from ..run_config import TextDataConfig
+from .text_mix import load_mix
 
 WIKITEXT_TITLE = re.compile(r"^ = [^=].* = \n?$")
 """A level-1 heading; the `= =` of a section heading fails the `[^=]` after the first `= `."""
@@ -31,6 +32,8 @@ def load_texts(text_config: TextDataConfig, seed: int) -> list[str]:
     first N would be N paragraphs of the same few articles."""
     from datasets import load_dataset
 
+    if text_config.mix is not None:
+        return load_mix(text_config.mix, seed)
     rows = list(
         load_dataset(
             text_config.dataset, text_config.dataset_config, split=text_config.split

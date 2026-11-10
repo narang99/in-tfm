@@ -46,3 +46,30 @@ def test_a_document_corpus_keeps_every_non_empty_row(monkeypatch):
         seed=0,
     )
     assert sorted(texts) == ["first doc", "second doc"]
+
+
+def test_a_part_keeps_matching_texts_up_to_its_count():
+    from in_tfm.run_config import TextPart
+    from in_tfm.sources.text_mix import wanted_texts
+
+    texts = [
+        "import os\nimport tornado.web",
+        "",
+        "from tornado import gen",
+        "import flask",
+        "from tornado.ioloop import IOLoop",
+    ]
+    part = TextPart(
+        dataset="some/code",
+        n_samples=2,
+        matching=r"^\s*(import tornado|from tornado[\s.])",
+    )
+    assert wanted_texts(texts, part) == texts[0:1] + texts[2:3]
+
+
+def test_a_part_drops_texts_its_exclusion_finds():
+    from in_tfm.run_config import TextPart
+    from in_tfm.sources.text_mix import wanted_texts
+
+    part = TextPart(dataset="some/code", n_samples=5, not_matching=r"\btornado\b")
+    assert wanted_texts(["import tornado", "import flask"], part) == ["import flask"]

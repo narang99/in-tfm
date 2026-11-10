@@ -38,7 +38,7 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
             return Gemma3Adapter.from_pretrained(
                 config.model.value, config.text.max_length
             )
-        case ModelName.MARIN_32B:
+        case ModelName.MARIN_32B | ModelName.QWEN3_32B:
             return Qwen3Adapter.from_pretrained(
                 config.model.value,
                 config.layer_name,
