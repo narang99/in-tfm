@@ -300,6 +300,8 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     run = prepare_run(config, adapter, samples)
     collected = collect_hits(config, run)
     save_collected(collected, samples, config.out_dir)
+    if collected.consistency_error is not None:
+        raise ValueError(collected.consistency_error)
     report_collected(config, run, collected)
 
 
@@ -323,6 +325,8 @@ class CollectedHits(BaseModel):
     selections: dict[tuple[int, Polarity], HitSelection]
     rows: dict[tuple[int, Polarity], Float[torch.Tensor, "n_hits hidden"]]
     weight: torch.Tensor
+    consistency_error: str | None = None
+    """Set when pass 2 disagrees with pass 1. The hits are saved anyway, then the run stops."""
 
 
 def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
@@ -346,17 +350,21 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
     with timed("pass 2: gather"):
         gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
     tolerance = consistency_tolerance(run.module)
-    worst = run.capture.check_consistent(
-        scan,
-        gathered,
-        merged.batch_idx,
-        merged.token_idx,
-        atol=tolerance,
-        rtol=tolerance,
-    )
-    print(
-        f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
-    )
+    consistency_error = None
+    try:
+        worst = run.capture.check_consistent(
+            scan,
+            gathered,
+            merged.batch_idx,
+            merged.token_idx,
+            atol=tolerance,
+            rtol=tolerance,
+        )
+        print(
+            f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
+        )
+    except ValueError as error:
+        consistency_error = str(error)
 
     run.model.to(torch.device("cpu"))
     empty_cache()
@@ -370,6 +378,7 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
             for target, index_map in zip(targets, merged.index_maps)
         },
         weight=run.layout.weight(layer_weight),
+        consistency_error=consistency_error,
     )
 
 
