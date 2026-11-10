@@ -89,6 +89,11 @@ def clustered_rows(
     return normalize(points, "l2") if clustering.normalise else points
 
 
+def clustered_label(clustering: ClusteringConfig) -> str:
+    """What the presenter calls the clustered points."""
+    return "normalised inputs" if clustering.on == "input" else "hadamard products"
+
+
 def report_name(neuron_idx: int, polarity: Polarity) -> str:
     """Positive keeps the historical `neuron_{idx}` so existing reports are not renamed."""
     suffixes = {"positive": "", "negative": "_neg", "signed": "_signed"}
@@ -195,10 +200,7 @@ def prepare_run[SamplesT, SourceT: SampleSource](
     adapter.patch_for_attn_lrp()  # before NNsight wraps: it stores each module's forward at wrap time
     model = NNsight(module).to(torch.device(config.device))
     source = adapter.make_source(samples)
-    clustered_label = (
-        "normalised inputs" if config.clustering.on == "input" else "hadamard products"
-    )
-    presenter = adapter.make_presenter(source, clustered_label)
+    presenter = adapter.make_presenter(source, clustered_label(config.clustering))
     layout = adapter.layout_for(layer_getter_for(config)(module))
     capture = NeuronCapture(
         model,

@@ -229,6 +229,14 @@ class DependencyConfig(Section):
     min_fired_count: int = Field(
         2, description="and in at least this many, however few the examples"
     )
+    outlier_ratio: float = Field(
+        0.1,
+        description="a writer's cluster holding fewer of its matched firings than this is folded as an outlier",
+    )
+    writer_configs: list[Path] = Field(
+        [],
+        description="run configs of the writer layers' own neuron reports. Their firings are matched to those reports' clusters",
+    )
     view: ViewPolicy = ViewPolicy()
 
     @property
@@ -240,6 +248,7 @@ class DependencyConfig(Section):
         return StatsSettings(
             min_fired_ratio=self.min_fired_ratio,
             min_fired_count=self.min_fired_count,
+            outlier_ratio=self.outlier_ratio,
         )
 
 
