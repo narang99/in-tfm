@@ -84,7 +84,8 @@ def load_samples(config: RunConfig) -> list[str] | list[int]:
         labels = load_dataset(config.mnist.dataset, split=config.mnist.split)["label"]
         return first_per_class(labels, config.mnist.images_per_class)
     texts = load_texts(config.text, config.seed)
-    print(f"loaded {len(texts)} {config.text.unit}s")
+    unit = "document" if config.text.mix is not None else config.text.unit
+    print(f"loaded {len(texts)} {unit}s")
     return texts
 
 
