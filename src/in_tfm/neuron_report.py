@@ -32,7 +32,13 @@ from .activation_ranges import (
 )
 from .attribution import compute_attnlrp_relevance
 from .device import default_device, empty_cache
-from .hit_selection import BucketedPick, ElbowPick, HitSelection, TailSelection
+from .hit_selection import (
+    BucketedPick,
+    ElbowPick,
+    HitSelection,
+    RandomPick,
+    TailSelection,
+)
 from .html_report import (
     ClusterLink,
     cluster_nav,
@@ -46,6 +52,8 @@ from .report_meta import (
     BucketedPickMeta,
     ClusterMeta,
     ElbowPickMeta,
+    PickMeta,
+    RandomPickMeta,
     ReportMeta,
     load_report_meta,
     write_report_meta,
@@ -180,7 +188,7 @@ def _index_page(
     return page(title, body, PLOTLY_JS if parts.has_charts else None)
 
 
-def tail_pick_meta(tail: TailSelection) -> ElbowPickMeta | BucketedPickMeta:
+def tail_pick_meta(tail: TailSelection) -> PickMeta:
     match tail.pick:
         case ElbowPick():
             return ElbowPickMeta(tail=tail.tail, cutoff=tail.threshold)
@@ -188,6 +196,8 @@ def tail_pick_meta(tail: TailSelection) -> ElbowPickMeta | BucketedPickMeta:
             return BucketedPickMeta(
                 tail=tail.tail, floor=tail.threshold, bucket_edges=edges.tolist()
             )
+        case RandomPick():
+            return RandomPickMeta(tail=tail.tail, floor=tail.threshold)
 
 
 def threshold_label(meta: ReportMeta) -> str:

@@ -20,6 +20,7 @@ from ..run_config import HitSelectionConfig, Polarity, Tail
 from .picks import Pick, PickedPositions
 from .strategies.bucketed import bucket_floor, bucketed_hits
 from .strategies.elbow import elbow_hits, elbow_pick
+from .strategies.random_sample import RANDOM_FLOOR, random_hits
 
 
 class TailSelection(BaseModel):
@@ -89,12 +90,14 @@ def threshold_of(
             return elbow_pick(sorted_magnitudes).cutoff
         case "bucketed":
             return bucket_floor(sorted_magnitudes, hits.bucket_floor_fraction)
+        case "random":
+            return RANDOM_FLOOR
 
 
 def candidates_beyond(
     sorted_magnitudes: Float[torch.Tensor, "n_pos"], threshold: float
 ) -> int:
-    """Both strategies keep the values strictly above their threshold."""
+    """Every strategy keeps the values strictly above their threshold."""
     return int((sorted_magnitudes > threshold).sum())
 
 
@@ -123,6 +126,8 @@ def run_strategy(
             return elbow_hits(column, sorted_magnitudes, scan, budget, seed)
         case "bucketed":
             return bucketed_hits(column, sorted_magnitudes, scan, hits, budget, seed)
+        case "random":
+            return random_hits(column, scan, budget, seed)
 
 
 def select_tail(

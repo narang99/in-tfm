@@ -46,4 +46,13 @@ class BucketedPick(BaseModel):
         return self.floor
 
 
-Pick = Annotated[ElbowPick | BucketedPick, Field(discriminator="method")]
+class RandomPick(BaseModel):
+    method: Literal["random"] = "random"
+    floor: float
+
+    @property
+    def threshold(self) -> float:
+        return self.floor
+
+
+Pick = Annotated[ElbowPick | BucketedPick | RandomPick, Field(discriminator="method")]
