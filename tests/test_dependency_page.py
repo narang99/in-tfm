@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from in_tfm.dependencies.collect import write_cluster_dependencies
@@ -9,8 +10,9 @@ from in_tfm.dependencies.stats import StatsSettings, dependency_stats
 from in_tfm.dependencies.view import CumulativeShareTrim, NoTrim, ViewPolicy
 from in_tfm.dependency_page import render_dependency_page, write_dependency_page
 from in_tfm.dependency_page.cards import dependency_cards, dependency_title
+from in_tfm.dependency_page.graph import graph_html, origin_edges
 from in_tfm.dependency_page.sparkline import sparkline
-from in_tfm.neuron_report import save_hits
+from in_tfm.neuron_report import dependency_link_html, save_hits
 from in_tfm.presenters import ClusterHit
 from in_tfm.report_meta import ClusterMeta, ReportMeta, write_report_meta
 
@@ -132,3 +134,42 @@ def test_without_a_presenter_the_bars_do_not_open(collected, tmp_path):
     stats = dependency_stats(collected)
     (card,) = dependency_cards(collected, stats, ViewPolicy(trim=NoTrim())).cards
     assert card.clusters[0].bars[0].body is None
+
+
+def matched_collection(collected, tmp_path):
+    collected.origin.report_dir = tmp_path / "head" / "neuron_0"
+    collected.writer_reports = [
+        WriterReportRef(
+            layer="up",
+            neuron=n,
+            report_dir=tmp_path / "up" / f"neuron_{n}",
+        )
+        for n in (0, 1)
+    ]
+    for firing in collected.firings:
+        for writer in firing.writers:
+            writer.match = ClusterMatch(
+                cluster_id=writer.writer.neuron + 3, distance=0.1
+            )
+    return collected
+
+
+def test_an_origin_clusters_graph_edges_share_its_matched_contribution(
+    collected, tmp_path
+):
+    collected = matched_collection(collected, tmp_path)
+    edges = {e.target.label: e for e in origin_edges(collected, tmp_path)}
+    assert set(edges) == {"up:0 c3", "up:1 c4"}
+    assert sum(e.share for e in edges.values()) == pytest.approx(1.0)
+    assert edges["up:0 c3"].href == "up/neuron_0/index.html#cluster-3"
+    assert "head:0 c0" in graph_html([collected], tmp_path, ViewPolicy())
+
+
+def test_a_cluster_links_to_its_dependency_page_only_once_it_exists(tmp_path):
+    assert dependency_link_html(tmp_path, 2) == ""
+    page = tmp_path / "dependencies" / "cluster_2" / "index.html"
+    page.parent.mkdir(parents=True)
+    page.write_text("")
+    assert 'href="dependencies/cluster_2/index.html"' in dependency_link_html(
+        tmp_path, 2
+    )

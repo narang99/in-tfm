@@ -94,7 +94,7 @@ def triton_distances(
     grid = lambda meta: (
         triton.cdiv(len(a), meta["BM"]),
         triton.cdiv(len(b), meta["BN"]),
-    )  # noqa: E731
+    )
     distance_kernel[grid](
         a,
         b,

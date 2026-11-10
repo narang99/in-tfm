@@ -40,6 +40,7 @@ from .html_report import (
     cluster_section,
     neuron_index,
     page,
+    render_template,
 )
 from .layers import LayerGetter
 from .presenters import ClusterArtifacts, ClusterHit, ClusterPresenter, HadamardShape
@@ -105,7 +106,8 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
             cluster_dir_for(report_dir, cid),
             presenter,
             meta.hadamard_shape,
-            cluster_stats_html(data.forest, cid, set(meta.clusters)),
+            dependency_link_html(report_dir, cid)
+            + cluster_stats_html(data.forest, cid, set(meta.clusters)),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
@@ -121,6 +123,18 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
         )
     )
     return report_path
+
+
+DEPENDENCY_PAGE = "dependencies/cluster_{cluster_id}/index.html"
+"""Where `scripts/run_dependency_report.py` writes a cluster's dependency page."""
+
+
+def dependency_link_html(report_dir: Path, cluster_id: int) -> str:
+    """Empty until a dependency report exists, so the report renders the same without one."""
+    page = DEPENDENCY_PAGE.format(cluster_id=cluster_id)
+    if not (report_dir / page).exists():
+        return ""
+    return render_template("dependency_link.html", href=page)
 
 
 def _cluster_section(

@@ -8,7 +8,7 @@
 """
 
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 import torch
@@ -42,6 +42,7 @@ class WriterReportRef(BaseModel):
     report_dir: Path
 
 
+@runtime_checkable
 class Matcher(Protocol):
     """Matches firings of one writer neuron to its own clusters, see `matching.WriterMatcher`."""
 
