@@ -30,6 +30,7 @@ from tqdm import tqdm
 
 from .device import default_device, empty_cache
 from .layers import LayerGetter
+from .run_config import KnownCutoffs
 from .sources import SampleId, SampleSource
 from .token_layout import TokenLayout
 
@@ -82,6 +83,82 @@ def merge_positions(
     )
 
 
+def past_cutoffs(
+    cutoffs: KnownCutoffs, activations: Float[torch.Tensor, "batch seq n_neurons"]
+) -> Bool[torch.Tensor, "batch seq"]:
+    """At or past a cut-off, so a hit the selection keeps strictly past it is always here."""
+    beyond = torch.zeros(
+        activations.shape[:2], dtype=torch.bool, device=activations.device
+    )
+    if cutoffs.positive is not None:
+        beyond |= (activations >= cutoffs.positive).any(-1)
+    if cutoffs.negative is not None:
+        beyond |= (activations <= cutoffs.negative).any(-1)
+    return beyond
+
+
+class KeptInputs(BaseModel):
+    """Layer inputs the scan kept, keyed by `sample * seq_len + token` in ascending order."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    keys: Int[np.ndarray, "n_kept"]
+    inputs: Float[torch.Tensor, "n_kept hidden"]
+    activations: Float[torch.Tensor, "n_kept n_neurons"]
+    seq_len: int = 0
+
+    @classmethod
+    def joined(cls, parts: list["KeptInputs"], seq_len: int) -> "KeptInputs":
+        return cls(
+            keys=np.concatenate([p.keys for p in parts]),
+            inputs=torch.cat([p.inputs for p in parts]),
+            activations=torch.cat([p.activations for p in parts]),
+            seq_len=seq_len,
+        )
+
+    def gather(
+        self,
+        batch_idx: Int[np.ndarray, "n_hits"],
+        token_idx: Int[np.ndarray, "n_hits"],
+    ) -> GatherResult:
+        """The same result `NeuronCapture.gather` gives, read from what the scan kept."""
+        keys = batch_idx.astype(np.int64) * self.seq_len + token_idx
+        rows = np.searchsorted(self.keys, keys)
+        found = (rows < len(self.keys)) & (
+            self.keys[np.minimum(rows, len(self.keys) - 1)] == keys
+        )
+        if not found.all():
+            raise ValueError(
+                f"{int((~found).sum())} hits fall inside the known cut-offs, so the scan did not keep "
+                f"their inputs. The cut-offs do not belong to this corpus."
+            )
+        return GatherResult(
+            inputs=self.inputs[rows], activations=self.activations[rows]
+        )
+
+
+def inputs_past(
+    keep_past: KnownCutoffs,
+    layer_inputs: Float[torch.Tensor, "batch seq hidden"],
+    neuron_outputs: Float[torch.Tensor, "batch seq n_neurons"],
+    valid_mask: Bool[torch.Tensor, "batch seq"],
+    first_sample: int,
+) -> KeptInputs:
+    """Row-major order within a batch, so keys come out ascending."""
+    sample, token = torch.nonzero(
+        past_cutoffs(keep_past, neuron_outputs) & valid_mask, as_tuple=True
+    )
+    seq_len = valid_mask.shape[1]
+    keys = (sample + first_sample).cpu().numpy().astype(
+        np.int64
+    ) * seq_len + token.cpu().numpy()
+    return KeptInputs(
+        keys=keys,
+        inputs=layer_inputs[sample, token].cpu(),
+        activations=neuron_outputs[sample, token].cpu(),
+    )
+
+
 class NeuronCapture:
     def __init__(
         self,
@@ -102,21 +179,44 @@ class NeuronCapture:
         self.batch_size = batch_size
 
     def scan(self) -> ScanResult:
+        return self.scan_keeping_inputs(None)[0]
+
+    def scan_keeping_inputs(
+        self, keep_past: KnownCutoffs | None
+    ) -> tuple[ScanResult, "KeptInputs | None"]:
+        """With `keep_past`, the scan also keeps the layer input at every position past a cut-off.
+
+        - The hits are then all in hand after one pass, and `gather` is not needed.
+        """
         ids = list(self.source.sample_ids())
         activations: list[torch.Tensor] = []
         masks: list[torch.Tensor] = []
-        for chunk in tqdm(list(batched(ids, self.batch_size)), desc="scan"):
-            _, outputs, valid_mask = self._trace(chunk)
-            activations.append(outputs[..., self.neuron_idxs].cpu())
+        kept: list[KeptInputs] = []
+        for start, chunk in zip(
+            range(0, len(ids), self.batch_size),
+            tqdm(list(batched(ids, self.batch_size)), desc="scan"),
+        ):
+            layer_inputs, outputs, valid_mask = self._trace(chunk)
+            neuron_outputs = outputs[..., self.neuron_idxs]
+            activations.append(neuron_outputs.cpu())
             masks.append(valid_mask.cpu())
-            del outputs
+            if keep_past is not None:
+                kept.append(
+                    inputs_past(
+                        keep_past, layer_inputs, neuron_outputs, valid_mask, start
+                    )
+                )
+            del layer_inputs, outputs, neuron_outputs
             self._release()
-        return ScanResult(
+        scan = ScanResult(
             sample_ids=ids,
             neuron_idxs=self.neuron_idxs,
             activations=cat_captures(activations),
             valid_mask=cat_captures(masks),
         )
+        if keep_past is None:
+            return scan, None
+        return scan, KeptInputs.joined(kept, seq_len=scan.valid_mask.shape[1])
 
     def gather(
         self,

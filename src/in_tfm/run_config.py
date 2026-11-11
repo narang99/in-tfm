@@ -134,6 +134,13 @@ class InceptionDataConfig(Section):
     )
 
 
+class KnownCutoffs(Section):
+    """Cut-offs an earlier run printed for the same samples. Either tail may be absent."""
+
+    positive: float | None = None
+    negative: float | None = None
+
+
 class HitSelectionConfig(Section):
     method: Literal["elbow", "bucketed"] = Field(
         "elbow",
@@ -149,6 +156,11 @@ class HitSelectionConfig(Section):
     min_bucket_size: int = Field(
         100,
         description="bucketed only: buckets with fewer positions than this are merged with their neighbour",
+    )
+    known_cutoffs: KnownCutoffs | None = Field(
+        None,
+        description="cut-offs from an earlier run over the same samples. The scan keeps the layer input past them, "
+        "so there is no second pass",
     )
     bucket_floor_fraction: float = Field(
         0.0,

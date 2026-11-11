@@ -46,6 +46,8 @@ from .layers import LayerGetter, submodule_getter
 from .mixed_hits_report import write_mixed_hits_page
 from .models import ModelAdapter
 from .neuron_capture import (
+    GatherResult,
+    MergedPositions,
     NeuronCapture,
     ScanResult,
     consistency_tolerance,
@@ -329,10 +331,38 @@ class CollectedHits(BaseModel):
     """Set when pass 2 disagrees with pass 1. The hits are saved anyway, then the run stops."""
 
 
+def save_scan(scan: ScanResult, out_dir: Path) -> None:
+    """Kept when the known cut-offs fail, so the activations of the one pass are not lost."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(scan, out_dir / "scan.pt")
+
+
+def consistency_check(
+    run: PreparedRun, scan: ScanResult, gathered: GatherResult, merged: MergedPositions
+) -> str | None:
+    """The error, if pass 2 disagrees with pass 1. The caller saves the hits before raising it."""
+    tolerance = consistency_tolerance(run.module)
+    try:
+        worst = run.capture.check_consistent(
+            scan,
+            gathered,
+            merged.batch_idx,
+            merged.token_idx,
+            atol=tolerance,
+            rtol=tolerance,
+        )
+    except ValueError as error:
+        return str(error)
+    print(
+        f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
+    )
+    return None
+
+
 def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
     """Scans, selects and gathers, then moves the model off the accelerator to make room for clustering."""
     with timed("pass 1: scan"):
-        scan = run.capture.scan()
+        scan, kept = run.capture.scan_keeping_inputs(config.hits.known_cutoffs)
     print(
         f"scanned {len(scan.sample_ids)} samples, activations {tuple(scan.activations.shape)}, "
         f"{int(scan.valid_mask.sum())}/{scan.valid_mask.numel()} positions unpadded"
@@ -347,24 +377,21 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
         [(s.batch_idx, s.token_idx) for s in selections.values()],
         scan.valid_mask.shape[1],
     )
-    with timed("pass 2: gather"):
-        gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
-    tolerance = consistency_tolerance(run.module)
     consistency_error = None
-    try:
-        worst = run.capture.check_consistent(
-            scan,
-            gathered,
-            merged.batch_idx,
-            merged.token_idx,
-            atol=tolerance,
-            rtol=tolerance,
-        )
+    if kept is not None:
+        try:
+            gathered = kept.gather(merged.batch_idx, merged.token_idx)
+        except ValueError:
+            save_scan(scan, config.out_dir)
+            raise
         print(
-            f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
+            f"read {len(merged.batch_idx)} positions from the {len(kept.keys)} the scan kept past "
+            f"the known cut-offs, so no second pass"
         )
-    except ValueError as error:
-        consistency_error = str(error)
+    else:
+        with timed("pass 2: gather"):
+            gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
+        consistency_error = consistency_check(run, scan, gathered, merged)
 
     run.model.to(torch.device("cpu"))
     empty_cache()

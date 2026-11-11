@@ -28,6 +28,9 @@ text:
 hits:
   method: elbow  # every position above each tail's elbow, subsampled to max_hits
   max_hits: 250000
+  known_cutoffs:  # printed by the 2026-11-11 run over this same corpus, which then failed in pass 2
+    positive: 4.25
+    negative: -4.0
 clustering:
   "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
   strategy:
