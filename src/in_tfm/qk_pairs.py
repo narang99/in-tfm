@@ -104,6 +104,14 @@ class PairScan(BaseModel):
     heads: list[int]
     scores: Float[torch.Tensor, "batch heads seq seq"]
     """float16, which halves what a large corpus holds in memory. `-inf` where the pair is not causal or touches padding."""
+    first_real: Int[torch.Tensor, "batch"]
+    """Each sample's first real token. Padding may come before it."""
+    batch_size: int
+    """The gather re-runs these same batches, see `NeuronCapture.gather`."""
+
+    def key_is_first(self) -> Bool[torch.Tensor, "batch seq"]:
+        positions = torch.arange(self.scores.shape[-1])
+        return positions[None, :] == self.first_real[:, None]
 
 
 def scan_pairs(
@@ -117,6 +125,7 @@ def scan_pairs(
     attention = attention_of(model, layer)
     sample_ids = list(source.sample_ids())
     chunks = []
+    first_real = []
     for ids in tqdm(list(batched(sample_ids, batch_size)), desc="scan"):
         batch = source.to_model_batch(ids).to(device)
         query_key = capture_query_key(model, layer, batch)
@@ -126,7 +135,14 @@ def scan_pairs(
         )
         scores = scores.masked_fill(~pairs[:, None], -torch.inf)
         chunks.append(scores.half().cpu())
-    return PairScan(sample_ids=sample_ids, heads=list(heads), scores=torch.cat(chunks))
+        first_real.append(batch.valid_mask.int().argmax(dim=1).cpu())
+    return PairScan(
+        sample_ids=sample_ids,
+        heads=list(heads),
+        scores=torch.cat(chunks),
+        first_real=torch.cat(first_real),
+        batch_size=batch_size,
+    )
 
 
 class PairHits(BaseModel):
@@ -143,19 +159,36 @@ class PairHits(BaseModel):
 
 
 def positive_sorted_scores(
-    scores: Float[torch.Tensor, "batch seq seq"], device: str
+    scores: Float[torch.Tensor, "batch seq seq"],
+    allowed: Bool[torch.Tensor, "batch seq seq"],
+    device: str,
 ) -> Float[torch.Tensor, "n_pairs"]:
     """Ascending, as `selection.positive_sorted_activations` hands the elbow a neuron's tail."""
-    values = scores[torch.isfinite(scores) & (scores > 0)].float()
+    values = scores[allowed & torch.isfinite(scores) & (scores > 0)].float()
     return torch.sort(values.to(device)).values
 
 
+def allowed_pairs(
+    scan: PairScan, exclude_first_key: bool
+) -> Bool[torch.Tensor, "batch 1 seq"]:
+    """Without the first token as a key, the attention sink neither moves the elbow nor fills the sample."""
+    if not exclude_first_key:
+        return torch.ones(len(scan.first_real), 1, 1, dtype=torch.bool)
+    return ~scan.key_is_first()[:, None, :]
+
+
 def elbow_pairs(
-    scan: PairScan, head: int, max_hits: int, seed: int, device: str
+    scan: PairScan,
+    head: int,
+    max_hits: int,
+    seed: int,
+    device: str,
+    exclude_first_key: bool = False,
 ) -> PairHits:
     scores = scan.scores[:, scan.heads.index(head)]
-    pick = elbow_pick(positive_sorted_scores(scores, device))
-    above = torch.argwhere(scores > pick.cutoff).numpy()
+    allowed = allowed_pairs(scan, exclude_first_key)
+    pick = elbow_pick(positive_sorted_scores(scores, allowed, device))
+    above = torch.argwhere(allowed & (scores > pick.cutoff)).numpy()
     n_candidates = len(above)
     if n_candidates > max_hits:
         keep = np.random.default_rng(seed).choice(n_candidates, max_hits, replace=False)
@@ -168,6 +201,15 @@ def elbow_pairs(
         query_idx=above[:, 1],
         key_idx=above[:, 2],
     )
+
+
+def scan_batches_holding(
+    scan: PairScan, hits: Sequence[PairHits]
+) -> list[Int[np.ndarray, "batch"]]:
+    samples = np.concatenate([h.sample_idx for h in hits])
+    starts = np.unique(samples // scan.batch_size) * scan.batch_size
+    n_samples = len(scan.sample_ids)
+    return [np.arange(s, min(s + scan.batch_size, n_samples)) for s in starts]
 
 
 def indices_on(values, like: torch.Tensor) -> Int[torch.Tensor, "n"]:
@@ -190,14 +232,16 @@ def gather_rows(
     layer: int,
     scan: PairScan,
     hits: Sequence[PairHits],
-    batch_size: int,
     device: str,
 ) -> list[PairRows]:
-    """Re-runs only the samples holding a hit of any head."""
+    """Re-runs each scan batch that holds a hit of any head, with the same neighbours.
+
+    - A bf16 kernel can round differently for another batch, see `NeuronCapture.gather`.
+    """
     attention = attention_of(model, layer)
     rows = [torch.empty(len(h.sample_idx), attention.head_dim) for h in hits]
-    needed = np.unique(np.concatenate([h.sample_idx for h in hits]))
-    for chunk in tqdm(list(batched(needed.tolist(), batch_size)), desc="gather"):
+    for chunk in tqdm(scan_batches_holding(scan, hits), desc="gather"):
+        chunk = chunk.tolist()
         ids = [scan.sample_ids[i] for i in chunk]
         query, key = capture_query_key(
             model, layer, source.to_model_batch(ids).to(device)

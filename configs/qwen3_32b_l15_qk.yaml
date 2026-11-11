@@ -8,6 +8,7 @@ layer: 15
 heads: [0, 8, 16, 24, 32, 40, 48, 56]
 batch_size: 8
 max_hits: 50000
+exclude_first_key: true  # the first token is an attention sink and held the top scores of every head in the first run
 out_dir: reports/qwen3-32b/layers.15.qk
 text:
   max_length: 512

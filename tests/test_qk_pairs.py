@@ -83,7 +83,7 @@ def test_gathered_rows_sum_to_the_scanned_scores():
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [0, 3], batch_size=4, device="cpu")
     hits = [elbow_pairs(scan, head, 10, seed=0, device="cpu") for head in [0, 3]]
-    gathered = gather_rows(model, source, LAYER, scan, hits, batch_size=4, device="cpu")
+    gathered = gather_rows(model, source, LAYER, scan, hits, device="cpu")
     for pair_rows in gathered:
         assert len(pair_rows.hits.sample_idx) > 0
         assert worst_gather_mismatch(pair_rows) < 2e-3
@@ -108,9 +108,7 @@ def test_the_report_page_marks_key_and_query(tmp_path):
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [0], batch_size=6, device="cpu")
     hits = elbow_pairs(scan, 0, 10_000, seed=0, device="cpu")
-    pair_rows = gather_rows(
-        model, source, LAYER, scan, [hits], batch_size=6, device="cpu"
-    )[0]
+    pair_rows = gather_rows(model, source, LAYER, scan, [hits], device="cpu")[0]
     labels = np.arange(len(hits.sample_idx)) % 2
     path = write_pair_report(
         tmp_path,
@@ -131,3 +129,16 @@ def test_the_report_page_marks_key_and_query(tmp_path):
     assert "cluster 0" in html and "cluster 1" in html
     assert 'class="qk-key"' in html or 'class="qk-both"' in html
     assert (tmp_path / "pairs.pt").exists()
+
+
+def test_excluding_the_first_key_drops_every_pair_that_attends_to_it():
+    model = tiny_qwen3()
+    source = RandomTokens(model)
+    scan = scan_pairs(model, source, LAYER, [2], batch_size=4, device="cpu")
+    kept_all = elbow_pairs(scan, 2, 10_000, seed=0, device="cpu")
+    without_first = elbow_pairs(
+        scan, 2, 10_000, seed=0, device="cpu", exclude_first_key=True
+    )
+    first = scan.first_real.numpy()
+    assert (kept_all.key_idx == first[kept_all.sample_idx]).any()
+    assert not (without_first.key_idx == first[without_first.sample_idx]).any()

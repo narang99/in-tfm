@@ -48,16 +48,16 @@ def main() -> None:
     for head in config.heads:
         # Sorted on the CPU: a head has hundreds of millions of positive scores,
         # and the model still fills the GPU until the gather is done.
-        head_hits = elbow_pairs(scan, head, config.max_hits, config.seed, "cpu")
+        head_hits = elbow_pairs(
+            scan, head, config.max_hits, config.seed, "cpu", config.exclude_first_key
+        )
         print(
             f"[head {head}] elbow cut-off {head_hits.cutoff:.4f}, "
             f"{head_hits.n_candidates} pairs above it, {len(head_hits.sample_idx)} kept"
         )
         hits.append(head_hits)
     with timed("pass 2: gather"):
-        gathered = gather_rows(
-            model, source, config.layer, scan, hits, config.batch_size, config.device
-        )
+        gathered = gather_rows(model, source, config.layer, scan, hits, config.device)
     model.to(torch.device("cpu"))
     token_ids = source.token_ids(scan.sample_ids)
 

@@ -351,6 +351,11 @@ class QkRunConfig(BaseSettings):
     max_hits: int = Field(
         20000, description="pairs kept per head, from those above the elbow"
     )
+    exclude_first_key: bool = Field(
+        False,
+        description="drop pairs whose key is the sample's first token, before the elbow. "
+        "The first token is an attention sink, and its pairs hold the highest scores",
+    )
     text: TextDataConfig = TextDataConfig()
     clustering: ClusteringConfig = ClusteringConfig()
     report: PairReportConfig = PairReportConfig()
