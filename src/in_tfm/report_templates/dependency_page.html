@@ -1,0 +1,28 @@
+{% from "dependency_tables.html" import dependency_rows %}
+<h1>{{ origin.layer }}:{{ origin.neuron }}, cluster {{ origin.cluster_id }}: what it depends on</h1>
+<p class="meta"><a href="../../index.html#cluster-{{ origin.cluster_id }}">&larr; the cluster in its neuron report</a></p>
+<div class="stats">{% for tile in tiles %}<div class="stat"><b>{{ tile.value }}</b><span>{{ tile.name }}</span></div>{% endfor %}</div>
+
+<section class="page-section" id="frequent">
+<h2><span class="step">1</span>Frequent dependencies</h2>
+<p class="lede">Dependencies firing in at least the frequent threshold of examples, one card each.</p>
+<p class="view-note">{{ cards.rest.description }}.{% if cards.rest.rest %} {{ cards.rest.rest|length }} more frequent dependencies hold {{ "{:.3g}".format(cards.rest.rest_share) }} of the share.{% endif %}</p>
+{% for card in cards.cards %}
+{% include "dependency_card.html" %}
+{% endfor %}
+{% if cards.rest.rest %}
+<details><summary>the other {{ cards.rest.rest|length }} frequent dependencies</summary>
+{{ dependency_rows(cards.rest.rest|map(attribute="members")|map("first")|list, cards.titles) }}
+</details>
+{% endif %}
+</section>
+
+<section class="page-section" id="one-off">
+<h2><span class="step">2</span>One-off dependencies</h2>
+<p class="lede">{{ cards.one_offs|length }} dependencies fired in fewer examples than the frequent threshold.</p>
+{% if cards.one_offs %}
+<details><summary>list them</summary>
+{{ dependency_rows(cards.one_offs, cards.titles) }}
+</details>
+{% endif %}
+</section>

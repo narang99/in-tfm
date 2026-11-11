@@ -1,0 +1,40 @@
+{% macro signed(value) -%}
+<span class="{{ 'pos' if value > 0 else 'neg' }}">{{ "{:+.3g}".format(value) }}</span>
+{%- endmacro %}
+
+{% macro writer_rows(rows) %}
+{% for row in rows %}
+{% set w = row.members[0] %}
+<tr>
+<td><code>{{ w.label }}</code>{% if w.kind == "fixed" %} <span class="muted">no clusters</span>{% endif %}</td>
+<td>{{ "{:.0%}".format(w.fired_ratio) }}</td>
+<td>{{ "{:.3g}".format(w.median_value) }}</td>
+<td>{{ signed(w.median_contribution) }}</td>
+<td>{{ "{:.3g}".format(row.share) }}</td>
+</tr>
+{% endfor %}
+{% endmacro %}
+
+{% macro writer_table(writers) %}
+<table class="borders">
+<thead><tr><th>writer</th><th>kept in</th><th>median value</th><th>median contribution</th><th>share</th></tr></thead>
+<tbody>{{ writer_rows(writers.shown) }}</tbody>
+</table>
+<p class="view-note">{{ writers.description }}.{% if writers.rest %} {{ writers.rest|length }} more writers hold {{ "{:.3g}".format(writers.rest_share) }} of the share.{% endif %}</p>
+{% if writers.rest %}
+<details><summary>the other {{ writers.rest|length }} writers</summary>
+<table class="borders"><tbody>{{ writer_rows(writers.rest) }}</tbody></table>
+</details>
+{% endif %}
+{% endmacro %}
+
+{% macro dependency_rows(summaries, titles) %}
+<table class="borders">
+<thead><tr><th>dependency</th><th>fired in</th><th>median contribution</th><th>share</th></tr></thead>
+<tbody>
+{% for d in summaries %}
+<tr><td>{{ titles[d.dim] }}</td><td>{{ d.n_fired }} ({{ "{:.0%}".format(d.fired_ratio) }})</td><td>{{ signed(d.median_contribution) }}</td><td>{{ "{:.3g}".format(d.share) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endmacro %}
