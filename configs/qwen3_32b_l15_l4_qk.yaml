@@ -1,0 +1,28 @@
+# Qwen3-32B layer 15 attention scores, split across head dimensions as scaling * q ⊙ k.
+# Each head is clustered on its own, one page per head.
+# One query head per key head: Qwen3-32B has 64 query heads sharing 8 key heads, 8 to a key head.
+# Sized for an L4 runtime (52 GB RAM): 12k docs x 4 heads x 512² float16 scores, about 24 GB.
+#   python scripts/run_qk_report.py --config configs/qwen3_32b_l15_l4_qk.yaml
+model: Qwen/Qwen3-32B
+layer: 15
+heads: [24, 32, 48, 56]  # head 32: sentence-boundary clusters; 56: d120 flips sign; 24, 48: most structure in the first run
+batch_size: 8
+max_hits: 50000
+exclude_first_key: true  # the first token is an attention sink and held the top scores of every head in the first run
+out_dir: reports/qwen3-32b/layers.15.qk.l4
+text:
+  max_length: 512
+  mix:
+    - dataset: HuggingFaceFW/fineweb
+      dataset_config: sample-10BT
+      n_samples: 12000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  strategy:
+    method: hdbscan
+    min_cluster_size: 25
+    min_samples: 8
+    selection_method: leaf
+report:
+  examples_per_cluster: 8
+  context_tokens: 12
