@@ -63,44 +63,58 @@ class Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TextPart(Section):
-    """One part of a mixed corpus.
+class TextDataset(Section):
+    """One dataset of a text corpus, and how its rows become texts."""
 
-    - A rare kind of text, such as code that imports Tornado, only shows up in a run if a part asks for it.
-    - Patterns are regexes searched with `re.MULTILINE`, so `^` anchors at every line.
-    """
-
-    dataset: str
-    dataset_config: str | None = None
-    split: str = "train"
-    column: str = "text"
-    n_samples: int
-    matching: str | None = Field(None, description="keep only texts this regex finds")
-    not_matching: str | None = Field(None, description="drop texts this regex finds")
-
-
-class TextDataConfig(Section):
     dataset: str = Field("Salesforce/wikitext", description="hf dataset name")
     dataset_config: str | None = Field(
         "wikitext-2-raw-v1", description="none for a dataset without configs"
     )
     split: str = "train"
-    n_samples: int = 64
-    max_length: int = 128
+    column: str = "text"
     unit: Literal["paragraph", "article", "document"] = Field(
         "paragraph",
         description="article joins a wikitext article's paragraphs, so a long max_length is mostly real tokens. "
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
-    mix: list[TextPart] | None = Field(
+    streaming: bool = Field(
+        False,
+        description="read rows as they download, for corpora far larger than one run reads. document unit only",
+    )
+
+    @model_validator(mode="after")
+    def streaming_reads_documents(self) -> "TextDataset":
+        if self.streaming and self.unit != "document":
+            raise ValueError(
+                "streaming needs unit: document, since paragraphs and articles need every row"
+            )
+        return self
+
+
+class MixedTextPart(TextDataset):
+    """No wikitext defaults here, so each part names its own dataset."""
+
+    dataset: str
+    dataset_config: str | None = None
+    share: float = Field(
+        1.0,
+        gt=0,
+        description="this part's share of n_samples, relative to the other parts' shares",
+    )
+
+
+class TextDataConfig(TextDataset):
+    n_samples: int = 64
+    max_length: int = 128
+    mix: list[MixedTextPart] | None = Field(
         None,
-        description="documents streamed from several datasets instead of the fields above",
+        description="several datasets, splitting n_samples by share, instead of the single dataset above",
     )
 
     @model_validator(mode="after")
     def a_mix_replaces_the_single_dataset(self) -> "TextDataConfig":
-        single = {"dataset", "dataset_config", "split", "n_samples", "unit"}
+        single = set(TextDataset.model_fields)
         if self.mix is not None and (both := single & self.model_fields_set):
             raise ValueError(
                 f"text.mix replaces the single dataset, but {sorted(both)} were set too"

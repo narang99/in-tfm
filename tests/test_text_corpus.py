@@ -48,28 +48,54 @@ def test_a_document_corpus_keeps_every_non_empty_row(monkeypatch):
     assert sorted(texts) == ["first doc", "second doc"]
 
 
-def test_a_part_keeps_matching_texts_up_to_its_count():
-    from in_tfm.run_config import TextPart
-    from in_tfm.sources.text_mix import wanted_texts
+def test_a_mix_splits_its_samples_by_share_and_rounds_to_the_largest():
+    from in_tfm.run_config import MixedTextPart
+    from in_tfm.sources.wikitext import samples_per_part
 
-    texts = [
-        "import os\nimport tornado.web",
-        "",
-        "from tornado import gen",
-        "import flask",
-        "from tornado.ioloop import IOLoop",
+    parts = [
+        MixedTextPart(dataset="a", share=4),
+        MixedTextPart(dataset="b", share=1),
+        MixedTextPart(dataset="c", share=1),
     ]
-    part = TextPart(
-        dataset="some/code",
-        n_samples=2,
-        matching=r"^\s*(import tornado|from tornado[\s.])",
+    assert samples_per_part(parts, 15000) == [10000, 2500, 2500]
+    assert samples_per_part(parts, 10) == [8, 1, 1]
+
+
+class FakeStream:
+    def __init__(self, rows: list[dict[str, str]]):
+        self.rows = rows
+
+    def shuffle(self, seed: int, buffer_size: int) -> "FakeStream":
+        return self
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+def test_a_mix_streams_each_part_from_its_own_column(monkeypatch):
+    import datasets
+
+    from in_tfm.run_config import TextDataConfig
+    from in_tfm.sources.wikitext import load_texts
+
+    corpora = {
+        "web": FakeStream(
+            [{"text": "w1"}, {"text": " "}, {"text": "w2"}, {"text": "w3"}]
+        ),
+        "code": FakeStream([{"content": "c1"}, {"content": "c2"}]),
+    }
+    monkeypatch.setattr(
+        datasets, "load_dataset", lambda name, config, split, streaming: corpora[name]
     )
-    assert wanted_texts(texts, part) == texts[0:1] + texts[2:3]
-
-
-def test_a_part_drops_texts_its_exclusion_finds():
-    from in_tfm.run_config import TextPart
-    from in_tfm.sources.text_mix import wanted_texts
-
-    part = TextPart(dataset="some/code", n_samples=5, not_matching=r"\btornado\b")
-    assert wanted_texts(["import tornado", "import flask"], part) == ["import flask"]
+    part = {"unit": "document", "streaming": True}
+    texts = load_texts(
+        TextDataConfig(
+            n_samples=3,
+            mix=[
+                {"dataset": "web", "share": 2, **part},
+                {"dataset": "code", "column": "content", **part},
+            ],
+        ),
+        seed=0,
+    )
+    assert sorted(texts) == ["c1", "w1", "w2"]

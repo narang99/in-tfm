@@ -1,8 +1,8 @@
 # Qwen3-32B layer 55 MLP neuron 11703, its gate_proj row. The up_proj row runs with --layer-name.
 # Goodfire's "Neurons as an interpretable basis" calls it a Colorado neuron with a rare Tornado mode.
 #   - Clustering its firings by upstream inputs separates Colorado from Tornado perfectly, they say.
-#   - Tornado is a Python web framework. It barely appears in web text, so code that imports it is mixed in.
-#   - Python without Tornado is the control: does the neuron fire on Tornado, or on Python at large?
+#   - Tornado is a Python web framework. It barely appears in web text, so Python code is mixed in.
+#   - The code is not filtered for Tornado. About 0.37% of codeparrot files import it.
 # Layers 0..55 are about 57 GB in bf16, so this needs an A100 80GB.
 #   python scripts/run_neuron_report.py --config configs/qwen3_32b_l55_11703_colorado.yaml
 model: Qwen/Qwen3-32B
@@ -13,18 +13,18 @@ batch_size: 8
 out_dir: reports/qwen3-32b/layers.55.mlp.gate_proj
 text:
   max_length: 512
+  n_samples: 15000
   mix:
     - dataset: HuggingFaceFW/fineweb
       dataset_config: sample-10BT
-      n_samples: 12000
+      unit: document
+      streaming: true
+      share: 4  # 12000 documents
     - dataset: codeparrot/codeparrot-clean
       column: content
-      n_samples: 1500  # about 0.37% of files import tornado, so this streams about 400k files
-      matching: '^\s*(import tornado|from tornado[\s.])'
-    - dataset: codeparrot/codeparrot-clean
-      column: content
-      n_samples: 1500
-      not_matching: '\btornado\b'
+      unit: document
+      streaming: true
+      share: 1  # 3000 files
 hits:
   method: elbow  # every position above each tail's elbow, subsampled to max_hits
   max_hits: 250000
