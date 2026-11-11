@@ -55,6 +55,15 @@ def cluster_activations(
     return {cid: activations[labels == cid].tolist() for cid in cluster_ids}
 
 
+def cluster_medians(ranges: ActivationRanges) -> dict[int, float]:
+    """Signed, so a page can tell its strongest positive clusters from its strongest negative ones."""
+    return {
+        cid: float(np.median(values))
+        for cid, values in ranges.clusters.items()
+        if values
+    }
+
+
 def write_activation_ranges(report_dir: Path, ranges: ActivationRanges) -> None:
     (report_dir / RANGES_NAME).write_text(ranges.model_dump_json())
 
