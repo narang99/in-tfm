@@ -49,8 +49,13 @@ def details(summary: str, body: str, start_open: bool = False) -> str:
 
 
 def cluster_section(
-    cluster_id: int, n_hits: int, n_unique_images: int, body: str
+    cluster_id: int,
+    n_hits: int,
+    n_unique_images: int,
+    body: str,
+    median_activation: float | None = None,
 ) -> str:
+    """`median_activation` lets the page open its strongest clusters and collapse the rest, see `lazy_clusters.js`."""
     return render_template(
         "cluster_section.html",
         cluster_id=cluster_id,
@@ -58,6 +63,7 @@ def cluster_section(
         n_hits=n_hits,
         n_unique_images=n_unique_images,
         body=body,
+        median_activation=median_activation,
     )
 
 

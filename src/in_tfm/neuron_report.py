@@ -28,6 +28,7 @@ from tqdm import tqdm
 from .activation_ranges import (
     ActivationRanges,
     cluster_activations,
+    cluster_medians,
     write_activation_ranges,
 )
 from .attribution import compute_attnlrp_relevance
@@ -96,6 +97,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
     report_dir = Path(report_dir)
     meta = load_report_meta(report_dir)
     data = load_page_data(report_dir)
+    medians = cluster_medians(data.ranges) if data.ranges is not None else {}
     sections = [
         _cluster_section(
             cid,
@@ -105,6 +107,7 @@ def render_report(report_dir: str | Path, presenter: ClusterPresenter) -> Path:
             presenter,
             meta.hadamard_shape,
             cluster_stats_html(data.forest, cid, set(meta.clusters)),
+            medians.get(cid),
         )
         for position, (cid, cluster) in enumerate(meta.clusters.items())
     ]
@@ -130,6 +133,7 @@ def _cluster_section(
     presenter: ClusterPresenter,
     hadamard_shape: HadamardShape,
     stats_html: str = "",
+    median_activation: float | None = None,
 ) -> str:
     """The header is sticky and accent-coloured so that, mid-scroll, it is obvious which
     cluster the hits on screen belong to and when that changes."""
@@ -141,7 +145,11 @@ def _cluster_section(
         else "<p>no hits sampled.</p>"
     )
     return cluster_section(
-        cluster_id, cluster.n_hits, cluster.n_unique_images, stats_html + body
+        cluster_id,
+        cluster.n_hits,
+        cluster.n_unique_images,
+        stats_html + body,
+        median_activation,
     )
 
 
