@@ -122,11 +122,15 @@ def scan_pairs(
     batch_size: int,
     device: str,
 ) -> PairScan:
+    """Fills one preallocated tensor, since joining per-batch pieces would briefly hold two copies."""
     attention = attention_of(model, layer)
     sample_ids = list(source.sample_ids())
-    chunks = []
-    first_real = []
-    for ids in tqdm(list(batched(sample_ids, batch_size)), desc="scan"):
+    all_scores: torch.Tensor | None = None
+    first_real = torch.empty(len(sample_ids), dtype=torch.long)
+    starts = range(0, len(sample_ids), batch_size)
+    for start, ids in zip(
+        starts, tqdm(list(batched(sample_ids, batch_size)), desc="scan")
+    ):
         batch = source.to_model_batch(ids).to(device)
         query_key = capture_query_key(model, layer, batch)
         pairs = causal_pairs(batch.valid_mask)
@@ -134,13 +138,20 @@ def scan_pairs(
             [head_scores(query_key, attention, head) for head in heads], dim=1
         )
         scores = scores.masked_fill(~pairs[:, None], -torch.inf)
-        chunks.append(scores.half().cpu())
-        first_real.append(batch.valid_mask.int().argmax(dim=1).cpu())
+        if all_scores is None:
+            all_scores = torch.empty(
+                (len(sample_ids), *scores.shape[1:]), dtype=torch.float16
+            )
+        all_scores[start : start + len(ids)] = scores.half().cpu()
+        first_real[start : start + len(ids)] = (
+            batch.valid_mask.int().argmax(dim=1).cpu()
+        )
+    assert all_scores is not None
     return PairScan(
         sample_ids=sample_ids,
         heads=list(heads),
-        scores=torch.cat(chunks),
-        first_real=torch.cat(first_real),
+        scores=all_scores,
+        first_real=first_real,
         batch_size=batch_size,
     )
 
@@ -158,14 +169,51 @@ class PairHits(BaseModel):
     key_idx: Int[np.ndarray, "n_hits"]
 
 
+SELECTION_BLOCK = 256
+"""Samples per block when masking scores, so no full-size mask is ever built."""
+
+
+def blocks(n_samples: int) -> range:
+    return range(0, n_samples, SELECTION_BLOCK)
+
+
 def positive_sorted_scores(
     scores: Float[torch.Tensor, "batch seq seq"],
-    allowed: Bool[torch.Tensor, "batch seq seq"],
-    device: str,
+    allowed: Bool[torch.Tensor, "batch 1 seq"],
 ) -> Float[torch.Tensor, "n_pairs"]:
-    """Ascending, as `selection.positive_sorted_activations` hands the elbow a neuron's tail."""
-    values = scores[allowed & torch.isfinite(scores) & (scores > 0)].float()
-    return torch.sort(values.to(device)).values
+    """Ascending, as `selection.positive_sorted_activations` hands the elbow a neuron's tail.
+
+    - numpy sorts in place with no index array, which `torch.sort` would add at 8 bytes a value.
+    """
+    parts = []
+    for start in blocks(len(scores)):
+        block = scores[start : start + SELECTION_BLOCK]
+        keep = (
+            allowed[start : start + SELECTION_BLOCK]
+            & torch.isfinite(block)
+            & (block > 0)
+        )
+        parts.append(block[keep].float().numpy())
+    values = np.concatenate(parts)
+    del parts
+    values.sort()
+    return torch.from_numpy(values)
+
+
+def pairs_above(
+    scores: Float[torch.Tensor, "batch seq seq"],
+    allowed: Bool[torch.Tensor, "batch 1 seq"],
+    cutoff: float,
+) -> Int[np.ndarray, "n_candidates 3"]:
+    parts = []
+    for start in blocks(len(scores)):
+        block = scores[start : start + SELECTION_BLOCK]
+        found = torch.argwhere(
+            allowed[start : start + SELECTION_BLOCK] & (block > cutoff)
+        )
+        found[:, 0] += start
+        parts.append(found.numpy())
+    return np.concatenate(parts)
 
 
 def allowed_pairs(
@@ -182,13 +230,12 @@ def elbow_pairs(
     head: int,
     max_hits: int,
     seed: int,
-    device: str,
     exclude_first_key: bool = False,
 ) -> PairHits:
     scores = scan.scores[:, scan.heads.index(head)]
     allowed = allowed_pairs(scan, exclude_first_key)
-    pick = elbow_pick(positive_sorted_scores(scores, allowed, device))
-    above = torch.argwhere(allowed & (scores > pick.cutoff)).numpy()
+    pick = elbow_pick(positive_sorted_scores(scores, allowed))
+    above = pairs_above(scores, allowed, pick.cutoff)
     n_candidates = len(above)
     if n_candidates > max_hits:
         keep = np.random.default_rng(seed).choice(n_candidates, max_hits, replace=False)

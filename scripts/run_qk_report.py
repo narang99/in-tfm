@@ -15,14 +15,37 @@ from in_tfm.cluster_membership import most_probable_labels
 from in_tfm.models.qwen3 import Qwen3Adapter
 from in_tfm.neuron_run import cluster_hits, forest_device, timed
 from in_tfm.qk_pairs import (
+    PairScan,
     elbow_pairs,
     gather_rows,
     scan_pairs,
     worst_gather_mismatch,
 )
 from in_tfm.qk_report import PairReportInputs, write_pair_report
-from in_tfm.run_config import load_qk_run_config
+from in_tfm.run_config import QkRunConfig, load_qk_run_config
 from in_tfm.sources.wikitext import load_texts
+
+
+def scanned_or_resumed(config: QkRunConfig, model, source) -> PairScan:
+    """Pass 1 is saved as soon as it ends, so a crash later costs only what came after it.
+
+    - A saved scan is reused only for the same heads and sample count.
+    """
+    path = config.out_dir / "scan.pt"
+    if path.exists():
+        saved = torch.load(path, weights_only=False)
+        if saved.heads == config.heads and len(saved.sample_ids) == len(source.texts):
+            print(f"resumed pass 1 from {path}")
+            return saved
+        print(f"{path} is for other heads or samples, scanning again")
+    with timed("pass 1: scan"):
+        scan = scan_pairs(
+            model, source, config.layer, config.heads, config.batch_size, config.device
+        )
+    config.out_dir.mkdir(parents=True, exist_ok=True)
+    with timed(f"save scan -> {path}"):
+        torch.save(scan, path)
+    return scan
 
 
 def main() -> None:
@@ -40,16 +63,11 @@ def main() -> None:
     model = adapter.get_model()
     source = adapter.make_source(texts)
 
-    with timed("pass 1: scan"):
-        scan = scan_pairs(
-            model, source, config.layer, config.heads, config.batch_size, config.device
-        )
+    scan = scanned_or_resumed(config, model, source)
     hits = []
     for head in config.heads:
-        # Sorted on the CPU: a head has hundreds of millions of positive scores,
-        # and the model still fills the GPU until the gather is done.
         head_hits = elbow_pairs(
-            scan, head, config.max_hits, config.seed, "cpu", config.exclude_first_key
+            scan, head, config.max_hits, config.seed, config.exclude_first_key
         )
         print(
             f"[head {head}] elbow cut-off {head_hits.cutoff:.4f}, "

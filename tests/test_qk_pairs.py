@@ -82,7 +82,7 @@ def test_gathered_rows_sum_to_the_scanned_scores():
     model = tiny_qwen3()
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [0, 3], batch_size=4, device="cpu")
-    hits = [elbow_pairs(scan, head, 10, seed=0, device="cpu") for head in [0, 3]]
+    hits = [elbow_pairs(scan, head, 10, seed=0) for head in [0, 3]]
     gathered = gather_rows(model, source, LAYER, scan, hits, device="cpu")
     for pair_rows in gathered:
         assert len(pair_rows.hits.sample_idx) > 0
@@ -94,7 +94,7 @@ def test_padding_and_future_keys_never_become_hits():
     model = tiny_qwen3()
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [1], batch_size=6, device="cpu")
-    hits = elbow_pairs(scan, 1, 10_000, seed=0, device="cpu")
+    hits = elbow_pairs(scan, 1, 10_000, seed=0)
     padded = source.mask.numpy() == 0
     assert not padded[hits.sample_idx, hits.key_idx].any()
     assert not padded[hits.sample_idx, hits.query_idx].any()
@@ -107,7 +107,7 @@ def test_the_report_page_marks_key_and_query(tmp_path):
     model = tiny_qwen3()
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [0], batch_size=6, device="cpu")
-    hits = elbow_pairs(scan, 0, 10_000, seed=0, device="cpu")
+    hits = elbow_pairs(scan, 0, 10_000, seed=0)
     pair_rows = gather_rows(model, source, LAYER, scan, [hits], device="cpu")[0]
     labels = np.arange(len(hits.sample_idx)) % 2
     path = write_pair_report(
@@ -135,10 +135,8 @@ def test_excluding_the_first_key_drops_every_pair_that_attends_to_it():
     model = tiny_qwen3()
     source = RandomTokens(model)
     scan = scan_pairs(model, source, LAYER, [2], batch_size=4, device="cpu")
-    kept_all = elbow_pairs(scan, 2, 10_000, seed=0, device="cpu")
-    without_first = elbow_pairs(
-        scan, 2, 10_000, seed=0, device="cpu", exclude_first_key=True
-    )
+    kept_all = elbow_pairs(scan, 2, 10_000, seed=0)
+    without_first = elbow_pairs(scan, 2, 10_000, seed=0, exclude_first_key=True)
     first = scan.first_real.numpy()
     assert (kept_all.key_idx == first[kept_all.sample_idx]).any()
     assert not (without_first.key_idx == first[without_first.sample_idx]).any()
