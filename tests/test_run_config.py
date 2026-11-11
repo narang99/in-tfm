@@ -7,6 +7,7 @@ from in_tfm.run_config import (
     DensityPeaksConfig,
     HdbscanConfig,
     ModelName,
+    load_qk_run_config,
     load_run_config,
 )
 
@@ -94,7 +95,9 @@ def test_a_strategy_without_a_method_is_hdbscan():
     "path", sorted(Path("configs").glob("*.yaml")), ids=lambda path: path.name
 )
 def test_every_checked_in_config_loads(path):
-    load_run_config(["--config", str(path)])
+    """Configs ending in `_qk.yaml` drive `scripts/run_qk_report.py`, the rest `run_neuron_report.py`."""
+    load = load_qk_run_config if path.name.endswith("_qk.yaml") else load_run_config
+    load(["--config", str(path)])
 
 
 def test_neurons_come_from_repeated_flags():
