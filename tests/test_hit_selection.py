@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from in_tfm.hit_selection import BucketedPick, TailSelection, select_hits
+from in_tfm.hit_selection import BucketedPick, RandomPick, TailSelection, select_hits
 from in_tfm.hit_selection.selection import tail_budgets
 from in_tfm.neuron_capture import ScanResult
 from in_tfm.run_config import HitSelectionConfig
@@ -31,7 +31,7 @@ def values_at(scan: ScanResult, selection) -> np.ndarray:
     return scan.activations[selection.batch_idx, selection.token_idx, 0].numpy()
 
 
-@pytest.mark.parametrize("method", ["elbow", "bucketed"])
+@pytest.mark.parametrize("method", ["elbow", "bucketed", "random"])
 def test_padding_is_never_selected(scan, method):
     selection = select_hits(
         scan, 7, "positive", HitSelectionConfig(method=method), seed=0
@@ -69,7 +69,7 @@ def test_max_hits_caps_the_selection_and_the_seed_makes_it_repeatable(scan):
     ).all()
 
 
-@pytest.mark.parametrize("method", ["elbow", "bucketed"])
+@pytest.mark.parametrize("method", ["elbow", "bucketed", "random"])
 def test_signed_selection_takes_each_tail_beyond_its_own_threshold(scan, method):
     hits = HitSelectionConfig(method=method, max_hits=200, bucket_floor_fraction=0.3)
     selection = select_hits(scan, 7, "signed", hits, seed=0)
@@ -118,3 +118,19 @@ def test_a_neuron_that_never_fires_in_a_tail_is_refused(scan):
         select_hits(relu_scan, 7, "negative", HitSelectionConfig(), seed=0)
     signed = select_hits(relu_scan, 7, "signed", HitSelectionConfig(), seed=0)
     assert [tail.tail for tail in signed.tails] == ["positive"]
+
+
+def test_random_selection_draws_from_every_firing_position(scan):
+    hits = HitSelectionConfig(method="random", max_hits=100_000)
+    selection = select_hits(scan, 7, "positive", hits, seed=0)
+    valid = scan.activations[:, :40, 0]
+    assert len(selection.batch_idx) == int((valid > 0).sum())
+    assert isinstance(only_tail(selection).pick, RandomPick)
+
+
+def test_random_selection_keeps_low_activations(scan):
+    hits = HitSelectionConfig(method="random", max_hits=200)
+    selection = select_hits(scan, 7, "positive", hits, seed=0)
+    values = values_at(scan, selection)
+    assert len(values) == 200
+    assert np.median(values) < 1.0

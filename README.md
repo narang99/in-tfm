@@ -17,6 +17,8 @@
 - Pick the hits, the positions to cluster.
   - `elbow`: everything above the elbow of the sorted activations.
   - `bucketed`: equal-width activation buckets, with an equal share of hits from each.
+  - `random`: a simple random sample of every position the tail fires in.
+    - The hits follow the activation distribution, so most of them are low activations.
   - `polarity` picks the positive tail, the negative tail, or both together (`signed`).
 - For each hit, take the layer's *input* and multiply it element-wise by the neuron's weight row.
   - This is an exact decomposition of the activation: `sum(input * weight[neuron])`.

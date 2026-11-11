@@ -104,10 +104,11 @@ class InceptionDataConfig(Section):
 
 
 class HitSelectionConfig(Section):
-    method: Literal["elbow", "bucketed"] = Field(
+    method: Literal["elbow", "bucketed", "random"] = Field(
         "elbow",
         description="elbow: everything above the elbow, uniformly subsampled to max_hits. "
-        "bucketed: equal-width activation buckets, an equal share of max_hits from each",
+        "bucketed: equal-width activation buckets, an equal share of max_hits from each. "
+        "random: max_hits drawn uniformly from every position the tail fires in",
     )
     max_hits: int = Field(
         20000,

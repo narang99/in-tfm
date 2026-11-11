@@ -42,7 +42,18 @@ class BucketedPickMeta(BaseModel):
     """
 
 
-PickMeta = Annotated[ElbowPickMeta | BucketedPickMeta, Field(discriminator="method")]
+class RandomPickMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["random"] = "random"
+    tail: Tail = "positive"
+    floor: float
+    """Signed, like the elbow cutoff."""
+
+
+PickMeta = Annotated[
+    ElbowPickMeta | BucketedPickMeta | RandomPickMeta, Field(discriminator="method")
+]
 
 
 class ReportMeta(BaseModel):
@@ -71,7 +82,7 @@ def threshold_of(pick: PickMeta) -> float:
     match pick:
         case ElbowPickMeta(cutoff=cutoff):
             return cutoff
-        case BucketedPickMeta(floor=floor):
+        case BucketedPickMeta(floor=floor) | RandomPickMeta(floor=floor):
             return floor
 
 
