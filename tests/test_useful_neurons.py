@@ -15,6 +15,7 @@ from in_tfm.useful_neurons.neurons import (
 from in_tfm.useful_neurons.terms import terms_of
 from in_tfm.useful_neurons.top_share import top_share_mask
 from in_tfm.useful_neurons.trace import Trace, trace_sequence
+from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
 
 @pytest.fixture
@@ -87,3 +88,10 @@ def test_top_share_keeps_each_sign_separately() -> None:
     values = torch.tensor([5.0, 3.0, 2.0, -4.0, -1.0])
     kept = top_share_mask(values, share=0.6)
     assert kept.tolist() == [True, True, False, True, False]
+
+
+def test_every_picked_input_is_itself_expanded(trace: Trace) -> None:
+    useful = find_useful_neurons(trace, AllLogits(), share=0.9)
+    assert useful.logit_picks.any()
+    for inputs in useful.picks.values():
+        assert all(input in useful.picks for input in inputs)
