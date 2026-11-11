@@ -7,6 +7,7 @@ from in_tfm.run_config import (
     DensityPeaksConfig,
     HdbscanConfig,
     ModelName,
+    TextDataConfig,
     load_run_config,
 )
 
@@ -125,3 +126,24 @@ def test_a_typo_in_the_file_is_an_error(tmp_path):
 def test_environment_variables_do_not_reach_the_config(monkeypatch):
     monkeypatch.setenv("LAYER_NAME", "layers.0.self_attn.k_proj")
     assert load_run_config([]).layer_name == "layers.10.mlp.down_proj"
+
+
+def test_a_text_mix_cannot_be_set_with_a_single_dataset(tmp_path):
+    path = write_yaml(
+        tmp_path,
+        "text:\n  dataset: some/corpus\n  mix:\n    - {dataset: other/corpus}\n",
+    )
+    with pytest.raises(ValidationError, match="text.mix replaces"):
+        load_run_config(["--config", path])
+
+
+def test_the_colorado_config_loads():
+    config = load_run_config(["--config", "configs/qwen3_32b_l55_11703_colorado.yaml"])
+    assert config.model is ModelName.QWEN3_32B
+    assert config.text.mix is not None
+    assert [part.share for part in config.text.mix] == [4, 1]
+
+
+def test_streaming_reads_whole_documents_only():
+    with pytest.raises(ValidationError, match="streaming needs unit: document"):
+        TextDataConfig(streaming=True)

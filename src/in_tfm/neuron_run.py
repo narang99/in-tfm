@@ -8,6 +8,7 @@ and NNsight stores each module's forward at wrap time (see ModelAdapter.patch_fo
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -62,6 +63,8 @@ from .run_config import (
 )
 from .sources import SampleSource
 from .token_layout import TokenLayout
+
+COLLECTED_HITS_NAME = "collected_hits.pt"
 
 
 @contextmanager
@@ -295,7 +298,19 @@ def run_neuron_reports[SamplesT, SourceT: SampleSource](
     config: RunConfig, adapter: ModelAdapter[SamplesT, SourceT], samples: SamplesT
 ) -> None:
     run = prepare_run(config, adapter, samples)
-    report_collected(config, run, collect_hits(config, run))
+    collected = collect_hits(config, run)
+    save_collected(collected, samples, config.out_dir)
+    if collected.consistency_error is not None:
+        raise ValueError(collected.consistency_error)
+    report_collected(config, run, collected)
+
+
+def save_collected(collected: "CollectedHits", samples: Any, out_dir: Path) -> None:
+    """The forward passes are the expensive part, so their result survives a crash in clustering or reporting."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / COLLECTED_HITS_NAME
+    with timed(f"save collected hits -> {path}"):
+        torch.save({"collected": collected, "samples": samples}, path)
 
 
 class CollectedHits(BaseModel):
@@ -310,6 +325,8 @@ class CollectedHits(BaseModel):
     selections: dict[tuple[int, Polarity], HitSelection]
     rows: dict[tuple[int, Polarity], Float[torch.Tensor, "n_hits hidden"]]
     weight: torch.Tensor
+    consistency_error: str | None = None
+    """Set when pass 2 disagrees with pass 1. The hits are saved anyway, then the run stops."""
 
 
 def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
@@ -333,17 +350,21 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
     with timed("pass 2: gather"):
         gathered = run.capture.gather(merged.batch_idx, merged.token_idx)
     tolerance = consistency_tolerance(run.module)
-    worst = run.capture.check_consistent(
-        scan,
-        gathered,
-        merged.batch_idx,
-        merged.token_idx,
-        atol=tolerance,
-        rtol=tolerance,
-    )
-    print(
-        f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
-    )
+    consistency_error = None
+    try:
+        worst = run.capture.check_consistent(
+            scan,
+            gathered,
+            merged.batch_idx,
+            merged.token_idx,
+            atol=tolerance,
+            rtol=tolerance,
+        )
+        print(
+            f"gathered {len(merged.batch_idx)} positions; pass 2 matches pass 1 to {worst:.2e}"
+        )
+    except ValueError as error:
+        consistency_error = str(error)
 
     run.model.to(torch.device("cpu"))
     empty_cache()
@@ -357,6 +378,7 @@ def collect_hits(config: RunConfig, run: PreparedRun) -> CollectedHits:
             for target, index_map in zip(targets, merged.index_maps)
         },
         weight=run.layout.weight(layer_weight),
+        consistency_error=consistency_error,
     )
 
 

@@ -32,6 +32,7 @@ class ModelName(StrEnum):
 
     GEMMA3_270M = "google/gemma-3-270m"
     MARIN_32B = "marin-community/marin-32b-base"
+    QWEN3_32B = "Qwen/Qwen3-32B"
     ATTN_ONLY_2L = "self/attn-only-2l"
     MNIST_CNN = "self/mnist-cnn"
     MNIST_CNN_SMALL = "self/mnist-cnn-small"
@@ -43,6 +44,7 @@ Modality = Literal["text", "mnist", "inception"]
 MODALITY: dict[ModelName, Modality] = {
     ModelName.GEMMA3_270M: "text",
     ModelName.MARIN_32B: "text",
+    ModelName.QWEN3_32B: "text",
     ModelName.ATTN_ONLY_2L: "text",
     ModelName.MNIST_CNN: "mnist",
     ModelName.MNIST_CNN_SMALL: "mnist",
@@ -61,20 +63,63 @@ class Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TextDataConfig(Section):
+class TextDataset(Section):
+    """One dataset of a text corpus, and how its rows become texts."""
+
     dataset: str = Field("Salesforce/wikitext", description="hf dataset name")
     dataset_config: str | None = Field(
         "wikitext-2-raw-v1", description="none for a dataset without configs"
     )
     split: str = "train"
-    n_samples: int = 64
-    max_length: int = 128
+    column: str = "text"
     unit: Literal["paragraph", "article", "document"] = Field(
         "paragraph",
         description="article joins a wikitext article's paragraphs, so a long max_length is mostly real tokens. "
         "document takes each row as it is, for corpora like NeelNanda/pile-10k",
     )
     min_article_chars: int = 0
+    streaming: bool = Field(
+        False,
+        description="read rows as they download, for corpora far larger than one run reads. document unit only",
+    )
+
+    @model_validator(mode="after")
+    def streaming_reads_documents(self) -> "TextDataset":
+        if self.streaming and self.unit != "document":
+            raise ValueError(
+                "streaming needs unit: document, since paragraphs and articles need every row"
+            )
+        return self
+
+
+class MixedTextPart(TextDataset):
+    """No wikitext defaults here, so each part names its own dataset."""
+
+    dataset: str
+    dataset_config: str | None = None
+    share: float = Field(
+        1.0,
+        gt=0,
+        description="this part's share of n_samples, relative to the other parts' shares",
+    )
+
+
+class TextDataConfig(TextDataset):
+    n_samples: int = 64
+    max_length: int = 128
+    mix: list[MixedTextPart] | None = Field(
+        None,
+        description="several datasets, splitting n_samples by share, instead of the single dataset above",
+    )
+
+    @model_validator(mode="after")
+    def a_mix_replaces_the_single_dataset(self) -> "TextDataConfig":
+        single = set(TextDataset.model_fields)
+        if self.mix is not None and (both := single & self.model_fields_set):
+            raise ValueError(
+                f"text.mix replaces the single dataset, but {sorted(both)} were set too"
+            )
+        return self
 
 
 class MnistDataConfig(Section):

@@ -38,7 +38,7 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
             return Gemma3Adapter.from_pretrained(
                 config.model.value, config.text.max_length
             )
-        case ModelName.MARIN_32B:
+        case ModelName.MARIN_32B | ModelName.QWEN3_32B:
             return Qwen3Adapter.from_pretrained(
                 config.model.value,
                 config.layer_name,
@@ -84,7 +84,8 @@ def load_samples(config: RunConfig) -> list[str] | list[int]:
         labels = load_dataset(config.mnist.dataset, split=config.mnist.split)["label"]
         return first_per_class(labels, config.mnist.images_per_class)
     texts = load_texts(config.text, config.seed)
-    print(f"loaded {len(texts)} {config.text.unit}s")
+    unit = "text" if config.text.mix is not None else config.text.unit
+    print(f"loaded {len(texts)} {unit}s")
     return texts
 
 
