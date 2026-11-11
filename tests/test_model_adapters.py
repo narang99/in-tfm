@@ -16,6 +16,7 @@ from in_tfm.models.attn_only_2l import (
     AttnOnly2LAdapter,
     AttnOnlyConfig,
     AttnOnlyForCausalLM,
+    TinyAttnOnly1LD128Adapter,
 )
 from in_tfm.models.gemma3 import Gemma3Adapter
 from in_tfm.models.qwen3 import Qwen3Adapter, kept_weight, layers_needed
@@ -225,3 +226,30 @@ def test_checkpointed_relevance_matches_the_plain_one():
         adapter.get_model(), batch, getter, 3, 4
     )
     assert torch.allclose(torch.from_numpy(plain), torch.from_numpy(checkpointed))
+
+
+def trained_attn_only_adapter() -> TinyAttnOnly1LD128Adapter:
+    config = AttnOnlyConfig(
+        hidden_size=HIDDEN,
+        num_attention_heads=N_HEADS,
+        head_dim=HEAD_DIM,
+        num_hidden_layers=1,
+        max_position_embeddings=MAX_LENGTH,
+        vocab_size=VOCAB,
+    )
+    return TinyAttnOnly1LD128Adapter(
+        AttnOnlyForCausalLM(config), fake_tokenizer(), max_length=MAX_LENGTH
+    )
+
+
+def test_a_trained_attn_only_model_reports_on_its_unembed():
+    adapter = trained_attn_only_adapter()
+    lm_head = submodule_getter("lm_head")(adapter.get_model())
+    assert lm_head.weight.shape == (VOCAB, HIDDEN)
+
+    source = adapter.make_source(["a"])
+    batch = source.to_model_batch(list(source.sample_ids()))
+    with torch.no_grad():
+        logits = adapter.get_model()(**batch.kwargs).logits
+    assert logits.shape == (1, MAX_LENGTH, VOCAB)
+    assert adapter.tokenizer.seen == ["<bos>a"]
