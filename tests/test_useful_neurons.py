@@ -18,6 +18,7 @@ from in_tfm.useful_neurons.neurons import (
     Score,
     Value,
 )
+from in_tfm.useful_neurons.random_control import random_keep
 from in_tfm.useful_neurons.top_share import top_share_mask
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
@@ -119,3 +120,18 @@ def test_unchanged_logits_have_zero_kl(trace: Trace) -> None:
     shift = logit_shift(trace.logits, trace.logits, trace.tokens)
     assert max(shift.kl) == pytest.approx(0, abs=1e-6)
     assert all(pct == 0 for pct in shift.percent_change)
+
+
+def test_random_keep_keeps_each_count_and_only_real_sources(
+    model: AttnOnlyForCausalLM, trace: Trace
+) -> None:
+    seq = trace.tokens.shape[0]
+    keep = keep_all(model.config, seq, fill=False)
+    keep.resid[0][:3] = True
+    keep.layers[0].pattern[1, 4, :3] = True
+    shuffled = random_keep(keep, torch.Generator().manual_seed(0))
+
+    assert shuffled.resid[0].sum() == keep.resid[0].sum()
+    assert shuffled.layers[0].pattern.sum() == 3
+    assert not shuffled.layers[0].pattern.triu(diagonal=1).any()
+    assert not shuffled.resid[1].any()
