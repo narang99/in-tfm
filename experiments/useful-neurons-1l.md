@@ -209,3 +209,30 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode writers --recompute-norms --out writers.html
 ```
+
+## Mean ablation: dropped neurons take their mean instead of 0
+
+- Means are per neuron, over the first 100k val tokens (99,968 used) in 64-token windows, from the unablated model.
+- Attention weights still become 0.
+- The random baseline uses the same means. Share 0.9, 64 tokens. Mean KL in nats; random is the range over 5 seeds.
+
+| model, mode, norms | zero: KL | mean: KL | mean: random KL | mean: top-1 unchanged |
+|---|---|---|---|---|
+| 1L, logits | 0.021 | 0.320 | 1.82 to 2.21 | 68.8% |
+| 1L, blocks | 0.012 | 0.099 | 1.17 to 1.54 | 85.9% |
+| 1L, writers | 0.065 | 0.290 | 1.87 to 2.08 | 76.6% |
+| TS-1M, logits, frozen | 5.55 | 8.71 | 24.5 to 37.6 | 4.7% |
+| TS-1M, logits, recomputed | 5.47 | 3.71 | 6.16 to 6.65 | 10.9% |
+| TS-1M, blocks, frozen | 4.20 | 2.38 | 41.0 to 63.1 | 31.2% |
+| TS-1M, blocks, recomputed | 2.27 | 1.46 | 5.01 to 5.52 | 40.6% |
+| TS-1M, writers, frozen | 21.48 | 45.16 | 112.7 to 152.9 | 0.0% |
+| TS-1M, writers, recomputed | 4.47 | 5.73 | 8.95 to 9.55 | 12.5% |
+
+- On 1L, means are worse than 0 in every mode.
+- On TinyStories-1M, means help logits (recomputed) and blocks, and hurt writers.
+- Blocks with means and recomputed norms is the best TinyStories-1M setting so far.
+
+```
+python scripts/collect_neuron_means.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out checkpoints/tinystories_1m/neuron_means_100k.pt
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --replace-with checkpoints/tinystories_1m/neuron_means_100k.pt --out blocks_means.html
+```

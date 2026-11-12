@@ -20,6 +20,8 @@ from transformers.models.gpt_neo.modeling_gpt_neo import (
 
 from ..attention import AttnLayerKeep, AttnLayerTrace, attend, per_head
 from ..flow import Unembed
+from ..neuron_means import SiteActivations
+from ..replacement import LayerFill, Replace, Site, at_layer, keep_or_fill, zeros
 from .keep import GptNeoKeep, keep_all
 
 Stream = Float[torch.Tensor, "seq hidden"]
@@ -96,6 +98,18 @@ class GptNeoTrace(BaseModel):
         )
 
 
+def block_fill(replace: Replace, idx: int) -> LayerFill:
+    """Block idx's sites, except the resid it writes, which belongs to layer idx + 1."""
+    fill_here = at_layer(replace, idx)
+
+    def fill(name: str) -> torch.Tensor:
+        if name == "resid_next":
+            return replace(Site(name="resid", layer=idx + 1))
+        return fill_here(name)
+
+    return fill
+
+
 def layer_norm(x: Stream, ln: nn.LayerNorm, stats: NormStats | None) -> LayerNormTrace:
     if stats is None:
         variance = x.var(dim=-1, keepdim=True, unbiased=False)
@@ -119,7 +133,7 @@ def blocked_sources(
 
 
 def trace_attn(
-    attn: GPTNeoSelfAttention, ln_out: Stream, keep: AttnLayerKeep
+    attn: GPTNeoSelfAttention, ln_out: Stream, keep: AttnLayerKeep, fill: LayerFill
 ) -> AttnLayerTrace:
     """GPT-Neo does not scale its scores by 1/sqrt(head_dim), so `scaling` is 1."""
     heads, head_dim = attn.num_heads, attn.head_dim
@@ -128,14 +142,14 @@ def trace_attn(
     W_V = per_head(attn.v_proj.weight, heads)
     W_O = attn.out_proj.weight.view(-1, heads, head_dim).transpose(0, 1)
 
-    q = torch.einsum("hjd,sd->hsj", W_Q, ln_out) * keep.q
-    k = torch.einsum("hjd,sd->hsj", W_K, ln_out) * keep.k
-    v = torch.einsum("hjd,sd->hsj", W_V, ln_out) * keep.v
+    q = keep_or_fill(torch.einsum("hjd,sd->hsj", W_Q, ln_out), keep.q, fill("q"))
+    k = keep_or_fill(torch.einsum("hjd,sd->hsj", W_K, ln_out), keep.k, fill("k"))
+    v = keep_or_fill(torch.einsum("hjd,sd->hsj", W_V, ln_out), keep.v, fill("v"))
 
     blocked = blocked_sources(
         ln_out.shape[0], attn.attention_type, attn.config.window_size
     )
-    pattern, z, head_writes = attend(q, k, v, W_O, 1.0, blocked, keep)
+    pattern, z, head_writes = attend(q, k, v, W_O, 1.0, blocked, keep, fill)
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,
@@ -156,11 +170,12 @@ def trace_mlp(
     ln_out: Stream,
     keep_hidden: torch.Tensor,
     keep_down: torch.Tensor,
+    fill: LayerFill,
 ) -> MlpTrace:
     mlp = block.mlp
     pre = ln_out @ mlp.c_fc.weight.T + mlp.c_fc.bias
-    hidden = mlp.act(pre) * keep_hidden
-    writes = hidden @ mlp.c_proj.weight.T * keep_down
+    hidden = keep_or_fill(mlp.act(pre), keep_hidden, fill("mlp_hidden"))
+    writes = keep_or_fill(hidden @ mlp.c_proj.weight.T, keep_down, fill("mlp_down"))
     return MlpTrace(
         W_in=mlp.c_fc.weight, W_out=mlp.c_proj.weight, hidden=hidden, writes=writes
     )
@@ -172,16 +187,21 @@ def trace_block(
     resid: Stream,
     keep: GptNeoKeep,
     frozen: FrozenNorms | None,
+    fill: LayerFill,
 ) -> tuple[BlockTrace, Stream, Stream]:
     attn = block.attn.attention
     ln_1 = layer_norm(resid, block.ln_1, frozen.ln_1[idx] if frozen else None)
-    attn_trace = trace_attn(attn, ln_1.output, keep.layers[idx])
+    attn_trace = trace_attn(attn, ln_1.output, keep.layers[idx], fill)
     attn_out = attn_trace.head_writes.sum(dim=0) + attn.out_proj.bias
-    resid_mid = (resid + attn_out) * keep.resid_mid[idx]
+    resid_mid = keep_or_fill(resid + attn_out, keep.resid_mid[idx], fill("resid_mid"))
 
     ln_2 = layer_norm(resid_mid, block.ln_2, frozen.ln_2[idx] if frozen else None)
-    mlp = trace_mlp(block, ln_2.output, keep.mlp_hidden[idx], keep.mlp_down[idx])
-    resid_next = (resid_mid + mlp.writes + block.mlp.c_proj.bias) * keep.resid[idx + 1]
+    mlp = trace_mlp(block, ln_2.output, keep.mlp_hidden[idx], keep.mlp_down[idx], fill)
+    resid_next = keep_or_fill(
+        resid_mid + mlp.writes + block.mlp.c_proj.bias,
+        keep.resid[idx + 1],
+        fill("resid_next"),
+    )
     trace = BlockTrace(ln_1=ln_1, attn=attn_trace, ln_2=ln_2, mlp=mlp)
     return trace, resid_mid, resid_next
 
@@ -192,17 +212,28 @@ def trace_gpt_neo(
     tokens: Int[torch.Tensor, " seq"],
     keep: GptNeoKeep | None = None,
     frozen: FrozenNorms | None = None,
+    replace: Replace = zeros,
 ) -> GptNeoTrace:
     seq = tokens.shape[0]
     keep = keep or keep_all(model.config, seq)
     stack = model.transformer
-    token_embed = stack.wte.weight[tokens] * keep.token_embed
-    pos_embed = stack.wpe.weight[:seq] * keep.pos_embed
-    resid = [(token_embed + pos_embed) * keep.resid[0]]
+    token_embed = keep_or_fill(
+        stack.wte.weight[tokens], keep.token_embed, replace(Site(name="token_embed"))
+    )
+    pos_embed = keep_or_fill(
+        stack.wpe.weight[:seq], keep.pos_embed, replace(Site(name="pos_embed"))
+    )
+    resid_0 = replace(Site(name="resid", layer=0))
+    resid = [keep_or_fill(token_embed + pos_embed, keep.resid[0], resid_0)]
     resid_mid, blocks = [], []
     for idx, block in enumerate(stack.h):
         block_trace, mid, resid_next = trace_block(
-            cast(GPTNeoBlock, block), idx, resid[-1], keep, frozen
+            cast(GPTNeoBlock, block),
+            idx,
+            resid[-1],
+            keep,
+            frozen,
+            block_fill(replace, idx),
         )
         blocks.append(block_trace)
         resid_mid.append(mid)
@@ -218,3 +249,20 @@ def trace_gpt_neo(
         blocks=blocks,
         ln_f=ln_f,
     )
+
+
+def site_activations(trace: GptNeoTrace) -> SiteActivations:
+    """Every site the ablation can fill, with its sequence axis. Attention weights are left out."""
+    sites: SiteActivations = {
+        Site(name="token_embed"): (trace.token_embed, 0),
+        Site(name="pos_embed"): (trace.pos_embed, 0),
+    }
+    for layer, resid in enumerate(trace.resid):
+        sites[Site(name="resid", layer=layer)] = (resid, 0)
+    for layer, block in enumerate(trace.blocks):
+        sites[Site(name="resid_mid", layer=layer)] = (trace.resid_mid[layer], 0)
+        for name in ("q", "k", "v", "z", "head_writes"):
+            sites[Site(name=name, layer=layer)] = (getattr(block.attn, name), 1)
+        sites[Site(name="mlp_hidden", layer=layer)] = (block.mlp.hidden, 0)
+        sites[Site(name="mlp_down", layer=layer)] = (block.mlp.writes, 0)
+    return sites

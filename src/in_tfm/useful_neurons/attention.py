@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from .flow import Terms
 from .neurons import HeadOut, Key, Neuron, OProj, Query, Score, Value
+from .replacement import LayerFill, keep_or_fill
 
 HeadActs = Float[torch.Tensor, "head seq head_dim"]
 HeadMask = Bool[torch.Tensor, "head seq head_dim"]
@@ -70,15 +71,18 @@ def attend(
     scaling: float,
     blocked: Bool[torch.Tensor, "seq src"],
     keep: AttnLayerKeep,
+    fill: LayerFill,
 ) -> tuple[
     Float[torch.Tensor, "head seq src"],
     HeadActs,
     Float[torch.Tensor, "head seq hidden"],
 ]:
     scores = torch.einsum("hpj,hsj->hps", q, k) * scaling
-    pattern = scores.masked_fill(blocked, float("-inf")).softmax(dim=-1) * keep.pattern
-    z = torch.einsum("hps,hsj->hpj", pattern, v) * keep.z
-    head_writes = torch.einsum("hdj,hpj->hpd", W_O, z) * keep.head_writes
+    pattern = scores.masked_fill(blocked, float("-inf")).softmax(dim=-1)
+    pattern = keep_or_fill(pattern, keep.pattern, fill("pattern"))
+    z = keep_or_fill(torch.einsum("hps,hsj->hpj", pattern, v), keep.z, fill("z"))
+    head_writes = torch.einsum("hdj,hpj->hpd", W_O, z)
+    head_writes = keep_or_fill(head_writes, keep.head_writes, fill("head_writes"))
     return pattern, z, head_writes
 
 

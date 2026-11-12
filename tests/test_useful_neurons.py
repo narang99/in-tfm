@@ -6,8 +6,13 @@ import torch
 from in_tfm.models.attn_only_2l.model import AttnOnlyConfig, AttnOnlyForCausalLM
 from in_tfm.useful_neurons.attn_only.keep import keep_all
 from in_tfm.useful_neurons.attn_only.terms import terms_of
-from in_tfm.useful_neurons.attn_only.trace import Trace, trace_sequence
+from in_tfm.useful_neurons.attn_only.trace import (
+    Trace,
+    site_activations,
+    trace_sequence,
+)
 from in_tfm.useful_neurons.logit_shift import logit_shift
+from in_tfm.useful_neurons.neuron_means import MeanAccumulator
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
     Key,
@@ -19,6 +24,7 @@ from in_tfm.useful_neurons.neurons import (
     Value,
 )
 from in_tfm.useful_neurons.random_control import random_keep
+from in_tfm.useful_neurons.replacement import Site
 from in_tfm.useful_neurons.top_share import top_share_mask
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
@@ -135,3 +141,29 @@ def test_random_keep_keeps_each_count_and_only_real_sources(
     assert shuffled.layers[0].pattern.sum() == 3
     assert not shuffled.layers[0].pattern.triu(diagonal=1).any()
     assert not shuffled.resid[1].any()
+
+
+def test_dropped_value_is_replaced_by_its_stored_number(
+    model: AttnOnlyForCausalLM, trace: Trace
+) -> None:
+    seq = trace.tokens.shape[0]
+    keep = keep_all(model.config, seq)
+    keep.layers[0].v[1, 2, 3] = False
+
+    def replace(site: Site) -> torch.Tensor:
+        return torch.full((2, 1, 4), 0.5) if site.key == "v/0" else torch.tensor(0.0)
+
+    ablated = trace_sequence(model, trace.tokens, keep, replace=replace)
+
+    layer = trace.layers[0]
+    change = layer.pattern[1, :, 2] * (0.5 - layer.v[1, 2, 3])
+    torch.testing.assert_close(ablated.layers[0].z[1, :, 3], layer.z[1, :, 3] + change)
+
+
+def test_means_are_per_neuron_averages_over_tokens(trace: Trace) -> None:
+    accumulator = MeanAccumulator()
+    accumulator.add(site_activations(trace), n_tokens=trace.tokens.shape[0])
+    means = accumulator.means(n_layers=1)
+    expected_q = trace.layers[0].q.mean(dim=1, keepdim=True)
+    torch.testing.assert_close(means(Site(name="q", layer=0)), expected_q)
+    assert means(Site(name="pattern", layer=0)).item() == 0

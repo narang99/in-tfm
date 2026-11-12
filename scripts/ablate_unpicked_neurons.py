@@ -29,12 +29,14 @@ from in_tfm.useful_neurons.attn_only.keep import (
     with_stream_and_writers,
 )
 from in_tfm.useful_neurons.attn_only.trace import trace_sequence
+from in_tfm.useful_neurons.corpus import attn_only_tokens, retokenized
 from in_tfm.useful_neurons.gpt_neo import keep as gpt_neo_keep
 from in_tfm.useful_neurons.gpt_neo import terms as gpt_neo_terms
 from in_tfm.useful_neurons.gpt_neo.keep import GptNeoKeep
 from in_tfm.useful_neurons.gpt_neo.trace import trace_gpt_neo
 from in_tfm.useful_neurons.logit_shift import Logits, LogitShift, logit_shift
 from in_tfm.useful_neurons.random_control import kept_shares, random_keep
+from in_tfm.useful_neurons.replacement import PersistedValues, Replace, zeros
 from in_tfm.useful_neurons.walk import (
     AllLogits,
     find_block_neurons,
@@ -59,11 +61,6 @@ class AblationRun(NamedTuple):
     ablate: Callable[[Any], Logits]
     """Logits with only `keep`'s neurons running. Takes the walk's keep or a random one."""
     n_kept: int
-
-
-def val_sequence(checkpoint: Path, start: int, seq_len: int) -> torch.Tensor:
-    tokens = np.load(checkpoint / "val_tokens.npy", mmap_mode="r")
-    return torch.from_numpy(tokens[start : start + seq_len].astype(np.int64))
 
 
 def bar_layout(title: str, y_title: str) -> go.Layout:
@@ -236,19 +233,34 @@ def print_random_baseline(run: AblationRun, seeds: int) -> None:
         )
 
 
-def run_attn_only(
-    checkpoint: Path, start: int, seq_len: int, share: float, mode: Mode
-) -> AblationRun:
+class RunOptions(BaseModel):
+    start: int
+    seq_len: int
+    share: float
+    mode: Mode
+    recompute_norms: bool
+    """TinyStories-1M only. The walk always reads frozen norms; this changes the ablated pass."""
+    replace_with: Path | None
+    """A `PersistedValues` file for dropped neurons. Without one they become 0."""
+
+    def replace(self) -> Replace:
+        if self.replace_with is None:
+            return zeros
+        return PersistedValues.load(self.replace_with)
+
+
+def run_attn_only(checkpoint: Path, options: RunOptions) -> AblationRun:
     model, tokenizer = load_trained_attn_only(checkpoint)
-    tokens = val_sequence(checkpoint, start, seq_len)
+    tokens = attn_only_tokens(checkpoint, options.start, options.seq_len)
 
     original = trace_sequence(model, tokens)
     terms_of = partial(attn_only_terms.terms_of, trace=original)
-    if mode == "logits":
+    share = options.share
+    if options.mode == "logits":
         useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
         picked = list(useful.picks)
         keep = keep_only(picked, model.config, len(tokens))
-    elif mode == "blocks":
+    elif options.mode == "blocks":
         writers = attn_only_terms.block_writers(original)
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = with_stream_and_writers(keep_only(picked, model.config, len(tokens)))
@@ -257,39 +269,29 @@ def run_attn_only(
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = with_stream(keep_only(picked, model.config, len(tokens)))
 
+    replace = options.replace()
+
     def ablate(keep: Keep) -> Logits:
-        return trace_sequence(model, tokens, keep).logits
+        return trace_sequence(model, tokens, keep, replace=replace).logits
 
     return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
 
-def run_tinystories(
-    checkpoint: Path,
-    start: int,
-    seq_len: int,
-    share: float,
-    mode: Mode,
-    recompute_norms: bool = False,
-) -> AblationRun:
-    """The walk always reads frozen norms, see `gpt_neo.trace`.
-
-    `recompute_norms` only changes the ablated pass: it renormalises the trimmed stream.
-    """
-    _, val_tokenizer = load_trained_attn_only(checkpoint)
-    text = val_tokenizer.decode(val_sequence(checkpoint, start, 4 * seq_len))
+def run_tinystories(checkpoint: Path, options: RunOptions) -> AblationRun:
     tokenizer = cast(
         PreTrainedTokenizerBase, AutoTokenizer.from_pretrained(TINYSTORIES_1M)
     )
-    tokens = torch.tensor(tokenizer(text)["input_ids"][:seq_len])
+    tokens = retokenized(checkpoint, options.start, options.seq_len, tokenizer)
     model = GPTNeoForCausalLM.from_pretrained(TINYSTORIES_1M).eval()
 
     original = trace_gpt_neo(model, tokens)
     terms_of = partial(gpt_neo_terms.terms_of, trace=original)
-    if mode == "logits":
+    share = options.share
+    if options.mode == "logits":
         useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
         picked = list(useful.picks)
         keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
-    elif mode == "blocks":
+    elif options.mode == "blocks":
         writers = gpt_neo_terms.block_writers(original)
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = gpt_neo_keep.with_stream_and_writers(
@@ -302,10 +304,11 @@ def run_tinystories(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )
 
-    frozen = None if recompute_norms else original.frozen_norms
+    frozen = None if options.recompute_norms else original.frozen_norms
+    replace = options.replace()
 
     def ablate(keep: GptNeoKeep) -> Logits:
-        return trace_gpt_neo(model, tokens, keep, frozen=frozen).logits
+        return trace_gpt_neo(model, tokens, keep, frozen=frozen, replace=replace).logits
 
     return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
@@ -339,13 +342,23 @@ def main() -> None:
         action="store_true",
         help="tinystories-1m only: the ablated pass recomputes LayerNorm stats",
     )
+    parser.add_argument(
+        "--replace-with",
+        type=Path,
+        help="values for dropped neurons, from collect_neuron_means.py. Default 0",
+    )
     args = parser.parse_args()
+    options = RunOptions(
+        start=args.start,
+        seq_len=args.seq_len,
+        share=args.share,
+        mode=args.mode,
+        recompute_norms=args.recompute_norms,
+        replace_with=args.replace_with,
+    )
 
     began = time.perf_counter()
-    run_model = RUNS[args.model]
-    if args.recompute_norms:
-        run_model = partial(run_tinystories, recompute_norms=True)
-    run = run_model(args.checkpoint, args.start, args.seq_len, args.share, args.mode)
+    run = RUNS[args.model](args.checkpoint, options)
     print(f"walked and ablated in {time.perf_counter() - began:.0f}s")
     tokens, tokenizer, before = run.tokens, run.tokenizer, run.before
     after = run.ablate(run.keep)
