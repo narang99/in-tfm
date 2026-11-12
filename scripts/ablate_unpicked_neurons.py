@@ -9,23 +9,27 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 
 import argparse
 import time
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import plotly.graph_objects as go
 import torch
+from pydantic import BaseModel
 from transformers import AutoTokenizer, GPTNeoForCausalLM, PreTrainedTokenizerBase
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
 from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
-from in_tfm.useful_neurons.attn_only.keep import keep_only
+from in_tfm.useful_neurons.attn_only.keep import Keep, keep_only
 from in_tfm.useful_neurons.attn_only.trace import trace_sequence
 from in_tfm.useful_neurons.gpt_neo import keep as gpt_neo_keep
 from in_tfm.useful_neurons.gpt_neo import terms as gpt_neo_terms
+from in_tfm.useful_neurons.gpt_neo.keep import GptNeoKeep
 from in_tfm.useful_neurons.gpt_neo.trace import trace_gpt_neo
 from in_tfm.useful_neurons.logit_shift import Logits, LogitShift, logit_shift
+from in_tfm.useful_neurons.random_control import random_keep
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
 UP = "#2a78d6"
@@ -41,7 +45,9 @@ class AblationRun(NamedTuple):
     tokens: torch.Tensor
     tokenizer: PreTrainedTokenizerBase
     before: Logits
-    after: Logits
+    keep: BaseModel
+    ablate: Callable[[Any], Logits]
+    """Logits with only `keep`'s neurons running. Takes the walk's keep or a random one."""
     n_kept: int
 
 
@@ -198,6 +204,20 @@ def print_summary(shift: LogitShift, n_kept: int) -> None:
     print(f"median next-token change: {np.median(shift.percent_change):+.1f}%")
 
 
+def print_random_baseline(run: AblationRun, seeds: int) -> None:
+    print(f"random baseline, same count per mask, {seeds} seeds:")
+    for seed in range(seeds):
+        generator = torch.Generator().manual_seed(seed)
+        after = run.ablate(random_keep(run.keep, generator))
+        shift = logit_shift(run.before, after, run.tokens)
+        same_top = np.mean(
+            np.array(shift.top_token_before) == np.array(shift.top_token_after)
+        )
+        print(
+            f"  seed {seed}: mean KL {np.mean(shift.kl):.4f}, top-1 unchanged {same_top:.1%}"
+        )
+
+
 def run_attn_only(
     checkpoint: Path, start: int, seq_len: int, share: float
 ) -> AblationRun:
@@ -209,8 +229,11 @@ def run_attn_only(
     useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
     picked = list(useful.picks)
     keep = keep_only(picked, model.config, len(tokens))
-    ablated = trace_sequence(model, tokens, keep)
-    return AblationRun(tokens, tokenizer, original.logits, ablated.logits, len(picked))
+
+    def ablate(keep: Keep) -> Logits:
+        return trace_sequence(model, tokens, keep).logits
+
+    return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
 
 def run_tinystories(
@@ -230,8 +253,11 @@ def run_tinystories(
     useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
     picked = list(useful.picks)
     keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
-    ablated = trace_gpt_neo(model, tokens, keep, frozen=original.frozen_norms)
-    return AblationRun(tokens, tokenizer, original.logits, ablated.logits, len(picked))
+
+    def ablate(keep: GptNeoKeep) -> Logits:
+        return trace_gpt_neo(model, tokens, keep, frozen=original.frozen_norms).logits
+
+    return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
 
 RUNS = {"attn-only": run_attn_only, "tinystories-1m": run_tinystories}
@@ -247,14 +273,17 @@ def main() -> None:
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--share", type=float, default=0.9)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--random-seeds", type=int, default=5)
     args = parser.parse_args()
 
     began = time.perf_counter()
     run = RUNS[args.model](args.checkpoint, args.start, args.seq_len, args.share)
     print(f"walked and ablated in {time.perf_counter() - began:.0f}s")
-    tokens, tokenizer, before, after = run.tokens, run.tokenizer, run.before, run.after
+    tokens, tokenizer, before = run.tokens, run.tokenizer, run.before
+    after = run.ablate(run.keep)
     shift = logit_shift(before, after, tokens)
     print_summary(shift, run.n_kept)
+    print_random_baseline(run, args.random_seeds)
     labels = next_token_labels(tokens, tokenizer)
     figures = [
         vocab_chart(before, after, tokens, tokenizer),
