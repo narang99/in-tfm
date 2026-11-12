@@ -46,11 +46,15 @@ def mark_kept(keep: Keep, neuron: Neuron) -> None:
             mark_attention_kept(keep.layers, neuron)
 
 
-def with_stream_and_writers(keep: Keep) -> Keep:
-    """Block mode keeps the residual stream and every head's write, and trims only inside blocks."""
+def with_stream(keep: Keep) -> Keep:
     for resid in keep.resid:
         resid.fill_(True)
     keep.pos_embed.fill_(True)
-    for layer in keep.layers:
+    return keep
+
+
+def with_stream_and_writers(keep: Keep) -> Keep:
+    """Block mode keeps the residual stream and every head's write, and trims only inside blocks."""
+    for layer in with_stream(keep).layers:
         layer.head_writes.fill_(True)
     return keep

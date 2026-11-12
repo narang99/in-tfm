@@ -7,6 +7,7 @@ import torch
 from ..attention import head_out_terms, o_proj_terms, score_terms
 from ..flow import Terms
 from ..neurons import HeadOut, Key, Neuron, OProj, PosEmbed, Query, Resid, Score, Value
+from ..top_share import top_share_mask
 from .trace import Trace
 
 
@@ -76,4 +77,13 @@ def block_writers(trace: Trace) -> list[Neuron]:
         OProj(layer=layer, pos=pos, head=head, dim=dim)
         for layer, attn in enumerate(trace.layers)
         for head, pos, dim in product(*map(range, attn.head_writes.shape))
+    ]
+
+
+def top_share_writers(trace: Trace, share: float) -> list[Neuron]:
+    """Each head's write vector at each token keeps its top-share dims, per sign."""
+    return [
+        OProj(layer=layer, pos=pos, head=head, dim=dim)
+        for layer, attn in enumerate(trace.layers)
+        for head, pos, dim in top_share_mask(attn.head_writes, share).nonzero().tolist()
     ]
