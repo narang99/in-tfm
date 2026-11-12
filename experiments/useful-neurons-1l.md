@@ -129,3 +129,18 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --s
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out ablation.html
 ```
+
+## Random baseline
+
+- Each mask (one per kind per layer) drops the same number of neurons as the walk did, at random.
+  - Attention weights are only reshuffled among sources a token can attend to.
+- Five seeds per setting, 64 tokens.
+
+| model, share | walk: mean KL | random: mean KL | walk: top-1 unchanged | random: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128, 0.9 | 0.021 | 2.65 to 3.32 | 93.8% | 12.5% to 23.4% |
+| TinyStories-1M, 0.9 | 5.55 | 34.5 to 64.5 | 9.4% | 0% |
+| TinyStories-1M, 0.95 | 2.57 | 40.1 to 53.5 | 29.7% | 0% to 3.1% |
+
+- The walk's picks carry real signal in both models.
+- On TinyStories-1M, random drops wreck the model completely, so the walk's KL of 2.6 to 5.6 is far from chance.
