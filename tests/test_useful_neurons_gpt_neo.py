@@ -7,7 +7,11 @@ from transformers import GPTNeoConfig, GPTNeoForCausalLM
 from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
 from in_tfm.useful_neurons.gpt_neo.keep import keep_all
-from in_tfm.useful_neurons.gpt_neo.terms import block_writers, terms_of
+from in_tfm.useful_neurons.gpt_neo.terms import (
+    block_writers,
+    terms_of,
+    top_share_writers,
+)
 from in_tfm.useful_neurons.gpt_neo.trace import GptNeoTrace, trace_gpt_neo
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
@@ -18,6 +22,7 @@ from in_tfm.useful_neurons.neurons import (
     ResidMid,
     Score,
 )
+from in_tfm.useful_neurons.top_share import top_share_mask
 from in_tfm.useful_neurons.walk import (
     AllLogits,
     find_block_neurons,
@@ -148,3 +153,16 @@ def test_block_walk_never_leaves_its_block(trace: GptNeoTrace) -> None:
         if neuron.kind in stream_kinds:
             assert inputs == []
     assert any(neuron.kind == "mlp_hidden" for neuron in picks)
+
+
+def test_each_write_vector_is_cut_on_its_own(trace: GptNeoTrace) -> None:
+    writers = top_share_writers(trace, share=0.9)
+    head_row = trace.blocks[1].attn.head_writes[2, 5]
+    kept_dims = {
+        n.dim
+        for n in writers
+        if isinstance(n, OProj) and (n.layer, n.head, n.pos) == (1, 2, 5)
+    }
+    expected = set(top_share_mask(head_row, 0.9).nonzero().flatten().tolist())
+    assert kept_dims == expected
+    assert any(isinstance(n, MlpDown) for n in writers)

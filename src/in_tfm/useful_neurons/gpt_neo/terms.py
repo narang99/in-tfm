@@ -25,6 +25,7 @@ from ..neurons import (
     TokenEmbed,
     Value,
 )
+from ..top_share import top_share_mask
 from .trace import GptNeoTrace
 
 
@@ -144,5 +145,22 @@ def block_writers(trace: GptNeoTrace) -> list[Neuron]:
         MlpDown(layer=layer, pos=pos, dim=dim)
         for layer, block in enumerate(trace.blocks)
         for pos, dim in product(*map(range, block.mlp.writes.shape))
+    ]
+    return head_writes + mlp_writes
+
+
+def top_share_writers(trace: GptNeoTrace, share: float) -> list[Neuron]:
+    """Each head's and each MLP's write vector at each token keeps its top-share dims, per sign."""
+    head_writes: list[Neuron] = [
+        OProj(layer=layer, pos=pos, head=head, dim=dim)
+        for layer, block in enumerate(trace.blocks)
+        for head, pos, dim in top_share_mask(block.attn.head_writes, share)
+        .nonzero()
+        .tolist()
+    ]
+    mlp_writes: list[Neuron] = [
+        MlpDown(layer=layer, pos=pos, dim=dim)
+        for layer, block in enumerate(trace.blocks)
+        for pos, dim in top_share_mask(block.mlp.writes, share).nonzero().tolist()
     ]
     return head_writes + mlp_writes

@@ -25,6 +25,7 @@ from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
 from in_tfm.useful_neurons.attn_only.keep import (
     Keep,
     keep_only,
+    with_stream,
     with_stream_and_writers,
 )
 from in_tfm.useful_neurons.attn_only.trace import trace_sequence
@@ -47,7 +48,7 @@ NEUTRAL_INK = "#52514e"
 GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
 TINYSTORIES_1M = "roneneldan/TinyStories-1M"
-Mode = Literal["logits", "blocks"]
+Mode = Literal["logits", "blocks", "writers"]
 
 
 class AblationRun(NamedTuple):
@@ -247,10 +248,14 @@ def run_attn_only(
         useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
         picked = list(useful.picks)
         keep = keep_only(picked, model.config, len(tokens))
-    else:
+    elif mode == "blocks":
         writers = attn_only_terms.block_writers(original)
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = with_stream_and_writers(keep_only(picked, model.config, len(tokens)))
+    else:
+        writers = attn_only_terms.top_share_writers(original, share)
+        picked = list(find_block_neurons(writers, terms_of, share))
+        keep = with_stream(keep_only(picked, model.config, len(tokens)))
 
     def ablate(keep: Keep) -> Logits:
         return trace_sequence(model, tokens, keep).logits
@@ -284,10 +289,16 @@ def run_tinystories(
         useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
         picked = list(useful.picks)
         keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
-    else:
+    elif mode == "blocks":
         writers = gpt_neo_terms.block_writers(original)
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = gpt_neo_keep.with_stream_and_writers(
+            gpt_neo_keep.keep_only(picked, model.config, len(tokens))
+        )
+    else:
+        writers = gpt_neo_terms.top_share_writers(original, share)
+        picked = list(find_block_neurons(writers, terms_of, share))
+        keep = gpt_neo_keep.with_stream(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )
 
@@ -315,9 +326,13 @@ def main() -> None:
     parser.add_argument("--random-seeds", type=int, default=5)
     parser.add_argument(
         "--mode",
-        choices=["logits", "blocks"],
+        choices=["logits", "blocks", "writers"],
         default="logits",
-        help="logits: walk back from every logit. blocks: keep every writer, trim inside blocks",
+        help=(
+            "logits: walk back from every logit. "
+            "blocks: keep every writer, trim inside blocks. "
+            "writers: keep each write vector's top-share dims, trim inside blocks"
+        ),
     )
     parser.add_argument(
         "--recompute-norms",

@@ -187,3 +187,25 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --out blocks.html
 ```
+
+## Writer mode: keep each write vector's top share
+
+- At each token, each head's write vector and each MLP's write vector keep their top-share dims, per sign.
+- From the kept writer dims, the walk goes back inside the block and stops at the stream.
+- Embeddings are untouched and no stream neuron is zeroed. Dropped writer dims are zeroed.
+- Share 0.9, 64 tokens.
+
+| setting | walk: mean KL | random: mean KL | walk: top-1 unchanged | random: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128 | 0.065 | 2.50 to 3.04 | 85.9% | 15.6% to 21.9% |
+| TinyStories-1M, frozen norms | 21.48 | 115.3 to 162.6 | 4.7% | 0% |
+| TinyStories-1M, recomputed norms | 4.47 | 8.36 to 9.06 | 20.3% | 3.1% to 9.4% |
+
+- Writers kept: 65.0% of head writes on 1L. 66.6% of head writes and 66.8% of MLP writes on TinyStories-1M.
+- Inside the blocks, the kept shares are almost the same as in block mode.
+  - TinyStories-1M: q 95.5%, k 95.7%, v 88.6%, attention weights 69.0%, z 100%, MLP hidden 90.3%.
+  - A neuron inside a block is kept if any kept writer reaches it, and a third fewer writers barely changes that.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode writers --recompute-norms --out writers.html
+```
