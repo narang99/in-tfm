@@ -52,3 +52,23 @@ Built 2026-11-11.
 ```
 python scripts/find_useful_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-len 64 --share 0.9
 ```
+
+## Ablation: zero every unpicked neuron
+
+- One forward pass keeps only the picked neurons and zeroes the rest.
+  - A dropped score zeroes its attention weight, with no renormalising.
+    - That removes exactly the term the walk judged.
+  - Biases and logits are untouched.
+- The model has 98,432 neurons at 64 tokens.
+
+| share | neurons kept | mean KL (nats) | max KL | top-1 unchanged | median next-token change |
+|---|---|---|---|---|---|
+| 0.9 | 85,503 | 0.021 | 0.113 | 93.8% | -0.4% |
+| 0.5 | 55,131 | 1.263 | 4.879 | 50.0% | -58.6% |
+
+- KL is KL(original || ablated) at each position, summed over the vocab.
+- Not done yet: a control that drops the same number of neurons of each kind at random.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-len 64 --share 0.9 --out ablation.html
+```
