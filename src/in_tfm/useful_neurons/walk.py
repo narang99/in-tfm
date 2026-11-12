@@ -4,6 +4,7 @@ A neuron's kept inputs depend only on the neuron, never on which logit reached i
 neuron is expanded once and shared by all the logits that reach it.
 """
 
+from collections.abc import Sequence
 from typing import Annotated, Literal
 
 import torch
@@ -73,14 +74,18 @@ def walk_back(
 
 
 def find_useful_neurons(
-    unembed: Unembed, terms_of: TermsOf, selector: LogitSelector, share: float
+    unembed: Unembed,
+    terms_of: TermsOf,
+    selector: LogitSelector,
+    share: float,
+    extra_roots: Sequence[Neuron] = (),
 ) -> UsefulNeurons:
     logit_picks = pick_logit_inputs(unembed, selector, share)
     picked_resid = logit_picks.any(dim=1).nonzero().tolist()
     roots: list[Neuron] = [
         Resid(layer=unembed.final_layer, pos=pos, dim=dim) for pos, dim in picked_resid
     ]
-    picks = walk_back(roots, terms_of, share)
+    picks = walk_back(roots + list(extra_roots), terms_of, share)
     return UsefulNeurons(logit_picks=logit_picks, picks=picks)
 
 

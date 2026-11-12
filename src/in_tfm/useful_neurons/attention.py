@@ -4,7 +4,7 @@ import torch
 from jaxtyping import Bool, Float
 from pydantic import BaseModel, ConfigDict
 
-from .flow import Terms
+from .flow import Terms, TermsOf
 from .neurons import HeadOut, Key, Neuron, OProj, Query, Score, Value
 from .replacement import LayerFill, keep_or_fill
 
@@ -142,3 +142,28 @@ def mark_attention_kept(layers: list[AttnLayerKeep], neuron: Neuron) -> None:
             layers[layer].k[head, pos, dim] = True
         case Score(layer=layer, pos=pos, src=src, head=head):
             layers[layer].pattern[head, pos, src] = True
+
+
+def head_out_picks_values_only(terms_of: TermsOf) -> TermsOf:
+    """head_out keeps a source's value neuron, not its score. Scores come from `all_scores` instead."""
+
+    def values_only(neuron: Neuron) -> Terms | None:
+        terms = terms_of(neuron)
+        if terms is None or not isinstance(neuron, HeadOut):
+            return terms
+
+        def inputs_of(src: int) -> tuple[Neuron, ...]:
+            return tuple(n for n in terms.inputs_of(src) if not isinstance(n, Score))
+
+        return Terms(terms.values, inputs_of)
+
+    return values_only
+
+
+def all_scores(layers: list[AttnLayerTrace]) -> list[Neuron]:
+    """Every score whose attention weight is above 0, so masked pairs never flow back."""
+    return [
+        Score(layer=layer, pos=pos, src=src, head=head)
+        for layer, attn in enumerate(layers)
+        for head, pos, src in (attn.pattern > 0).nonzero().tolist()
+    ]

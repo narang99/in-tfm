@@ -6,6 +6,7 @@ import torch
 from transformers import GPTNeoConfig, GPTNeoForCausalLM
 from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
+from in_tfm.useful_neurons.attention import all_scores, head_out_picks_values_only
 from in_tfm.useful_neurons.gpt_neo.keep import keep_all
 from in_tfm.useful_neurons.gpt_neo.terms import (
     block_writers,
@@ -166,3 +167,18 @@ def test_each_write_vector_is_cut_on_its_own(trace: GptNeoTrace) -> None:
     expected = set(top_share_mask(head_row, 0.9).nonzero().flatten().tolist())
     assert kept_dims == expected
     assert any(isinstance(n, MlpDown) for n in writers)
+
+
+def test_all_scores_split_on_their_own(trace: GptNeoTrace) -> None:
+    """Window 3 on the local layer, so its far sources get no score."""
+    scores = all_scores([block.attn for block in trace.blocks])
+    seq = len(trace.tokens)
+    causal_pairs = seq * (seq + 1) // 2
+    local_pairs = sum(min(pos + 1, 3) for pos in range(seq))
+    assert len(scores) == 4 * (causal_pairs + local_pairs)
+
+    terms = head_out_picks_values_only(partial(terms_of, trace=trace))
+    head_out = terms(HeadOut(layer=1, pos=6, head=2, dim=1))
+    assert head_out is not None
+    picked = [n for i in range(len(head_out.values)) for n in head_out.inputs_of(i)]
+    assert picked and not any(isinstance(n, Score) for n in picked)

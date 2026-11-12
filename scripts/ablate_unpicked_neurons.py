@@ -21,6 +21,11 @@ from pydantic import BaseModel
 from transformers import AutoTokenizer, GPTNeoForCausalLM, PreTrainedTokenizerBase
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
+from in_tfm.useful_neurons.attention import (
+    AttnLayerTrace,
+    all_scores,
+    head_out_picks_values_only,
+)
 from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
 from in_tfm.useful_neurons.attn_only.keep import (
     Keep,
@@ -30,11 +35,13 @@ from in_tfm.useful_neurons.attn_only.keep import (
 )
 from in_tfm.useful_neurons.attn_only.trace import trace_sequence
 from in_tfm.useful_neurons.corpus import attn_only_tokens, retokenized
+from in_tfm.useful_neurons.flow import TermsOf
 from in_tfm.useful_neurons.gpt_neo import keep as gpt_neo_keep
 from in_tfm.useful_neurons.gpt_neo import terms as gpt_neo_terms
 from in_tfm.useful_neurons.gpt_neo.keep import GptNeoKeep
 from in_tfm.useful_neurons.gpt_neo.trace import trace_gpt_neo
 from in_tfm.useful_neurons.logit_shift import Logits, LogitShift, logit_shift
+from in_tfm.useful_neurons.neurons import Neuron
 from in_tfm.useful_neurons.random_control import kept_shares, random_keep
 from in_tfm.useful_neurons.replacement import PersistedValues, Replace, zeros
 from in_tfm.useful_neurons.walk import (
@@ -51,6 +58,7 @@ GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
 TINYSTORIES_1M = "roneneldan/TinyStories-1M"
 Mode = Literal["logits", "blocks", "writers"]
+AttentionSplit = Literal["with-values", "all-scores"]
 
 
 class AblationRun(NamedTuple):
@@ -242,6 +250,9 @@ class RunOptions(BaseModel):
     """TinyStories-1M only. The walk always reads frozen norms; this changes the ablated pass."""
     replace_with: Path | None
     only_mlp: bool
+    attention_split: AttentionSplit
+    """with-values: head_out keeps a source's value and score together.
+    all-scores: head_out keeps values only, and every unmasked score splits by q·k on its own."""
     """TinyStories-1M only. Every attention neuron is kept, so only MLP neurons are dropped."""
     """A `PersistedValues` file for dropped neurons. Without one they become 0."""
 
@@ -251,23 +262,36 @@ class RunOptions(BaseModel):
         return PersistedValues.load(self.replace_with)
 
 
+def attention_split(
+    terms_of: TermsOf, attn_layers: list[AttnLayerTrace], options: RunOptions
+) -> tuple[TermsOf, list[Neuron]]:
+    """The terms to walk with, and any scores that start walks of their own."""
+    if options.attention_split == "with-values":
+        return terms_of, []
+    return head_out_picks_values_only(terms_of), all_scores(attn_layers)
+
+
 def run_attn_only(checkpoint: Path, options: RunOptions) -> AblationRun:
     model, tokenizer = load_trained_attn_only(checkpoint)
     tokens = attn_only_tokens(checkpoint, options.start, options.seq_len)
 
     original = trace_sequence(model, tokens)
-    terms_of = partial(attn_only_terms.terms_of, trace=original)
+    terms_of, scores = attention_split(
+        partial(attn_only_terms.terms_of, trace=original), original.layers, options
+    )
     share = options.share
     if options.mode == "logits":
-        useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+        useful = find_useful_neurons(
+            original.unembed, terms_of, AllLogits(), share, extra_roots=scores
+        )
         picked = list(useful.picks)
         keep = keep_only(picked, model.config, len(tokens))
     elif options.mode == "blocks":
-        writers = attn_only_terms.block_writers(original)
+        writers = attn_only_terms.block_writers(original) + scores
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = with_stream_and_writers(keep_only(picked, model.config, len(tokens)))
     else:
-        writers = attn_only_terms.top_share_writers(original, share)
+        writers = attn_only_terms.top_share_writers(original, share) + scores
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = with_stream(keep_only(picked, model.config, len(tokens)))
 
@@ -287,20 +311,25 @@ def run_tinystories(checkpoint: Path, options: RunOptions) -> AblationRun:
     model = GPTNeoForCausalLM.from_pretrained(TINYSTORIES_1M).eval()
 
     original = trace_gpt_neo(model, tokens)
-    terms_of = partial(gpt_neo_terms.terms_of, trace=original)
+    attn_layers = [block.attn for block in original.blocks]
+    terms_of, scores = attention_split(
+        partial(gpt_neo_terms.terms_of, trace=original), attn_layers, options
+    )
     share = options.share
     if options.mode == "logits":
-        useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+        useful = find_useful_neurons(
+            original.unembed, terms_of, AllLogits(), share, extra_roots=scores
+        )
         picked = list(useful.picks)
         keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
     elif options.mode == "blocks":
-        writers = gpt_neo_terms.block_writers(original)
+        writers = gpt_neo_terms.block_writers(original) + scores
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = gpt_neo_keep.with_stream_and_writers(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )
     else:
-        writers = gpt_neo_terms.top_share_writers(original, share)
+        writers = gpt_neo_terms.top_share_writers(original, share) + scores
         picked = list(find_block_neurons(writers, terms_of, share))
         keep = gpt_neo_keep.with_stream(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
@@ -352,6 +381,15 @@ def main() -> None:
         help="tinystories-1m only: keep every attention neuron, drop only MLP neurons",
     )
     parser.add_argument(
+        "--attention-split",
+        choices=["with-values", "all-scores"],
+        default="with-values",
+        help=(
+            "with-values: head_out keeps a source's value and score together. "
+            "all-scores: head_out keeps values only, every unmasked score splits by q·k"
+        ),
+    )
+    parser.add_argument(
         "--replace-with",
         type=Path,
         help="values for dropped neurons, from collect_neuron_means.py. Default 0",
@@ -365,6 +403,7 @@ def main() -> None:
         recompute_norms=args.recompute_norms,
         replace_with=args.replace_with,
         only_mlp=args.only_mlp,
+        attention_split=args.attention_split,
     )
 
     began = time.perf_counter()

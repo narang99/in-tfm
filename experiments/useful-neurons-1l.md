@@ -253,3 +253,22 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --only-mlp --out mlp_only.html
 ```
+
+## All-scores attention split
+
+- head_out splits a z dim by `pattern[src] * v[src, j]` and keeps value neurons only.
+- Every score with attention weight above 0 is its own root. It splits by `q[j] * k[j]`, which picks q and k neurons.
+- No attention weight is zeroed. Only dropped q and k dims change the scores.
+- Block mode, share 0.9, zero fill. TinyStories-1M recomputes its norms.
+
+| model | with-values: KL | all-scores: KL | all-scores: random KL | all-scores: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128 | 0.012 | 0.0117 | 1.24 to 1.75 | 96.9% |
+| TinyStories-1M | 2.27 | 0.488 | 5.76 to 6.21 | 64.1% |
+
+- Kept on TinyStories-1M: q 95.8%, k 96.7%, v 88.6%, MLP hidden 90.9%.
+- For comparison, trimming only the MLP gave 0.0505.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --attention-split all-scores --recompute-norms --out all_scores.html
+```
