@@ -259,9 +259,17 @@ def run_attn_only(
 
 
 def run_tinystories(
-    checkpoint: Path, start: int, seq_len: int, share: float, mode: Mode
+    checkpoint: Path,
+    start: int,
+    seq_len: int,
+    share: float,
+    mode: Mode,
+    recompute_norms: bool = False,
 ) -> AblationRun:
-    """Norms are frozen at the original pass's stats, see `gpt_neo.trace`."""
+    """The walk always reads frozen norms, see `gpt_neo.trace`.
+
+    `recompute_norms` only changes the ablated pass: it renormalises the trimmed stream.
+    """
     _, val_tokenizer = load_trained_attn_only(checkpoint)
     text = val_tokenizer.decode(val_sequence(checkpoint, start, 4 * seq_len))
     tokenizer = cast(
@@ -283,8 +291,10 @@ def run_tinystories(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )
 
+    frozen = None if recompute_norms else original.frozen_norms
+
     def ablate(keep: GptNeoKeep) -> Logits:
-        return trace_gpt_neo(model, tokens, keep, frozen=original.frozen_norms).logits
+        return trace_gpt_neo(model, tokens, keep, frozen=frozen).logits
 
     return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
@@ -309,12 +319,18 @@ def main() -> None:
         default="logits",
         help="logits: walk back from every logit. blocks: keep every writer, trim inside blocks",
     )
+    parser.add_argument(
+        "--recompute-norms",
+        action="store_true",
+        help="tinystories-1m only: the ablated pass recomputes LayerNorm stats",
+    )
     args = parser.parse_args()
 
     began = time.perf_counter()
-    run = RUNS[args.model](
-        args.checkpoint, args.start, args.seq_len, args.share, args.mode
-    )
+    run_model = RUNS[args.model]
+    if args.recompute_norms:
+        run_model = partial(run_tinystories, recompute_norms=True)
+    run = run_model(args.checkpoint, args.start, args.seq_len, args.share, args.mode)
     print(f"walked and ablated in {time.perf_counter() - began:.0f}s")
     tokens, tokenizer, before = run.tokens, run.tokenizer, run.before
     after = run.ablate(run.keep)
