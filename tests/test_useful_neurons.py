@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from in_tfm.models.attn_only_2l.model import AttnOnlyConfig, AttnOnlyForCausalLM
+from in_tfm.useful_neurons.attention import all_scores
 from in_tfm.useful_neurons.attn_only.keep import keep_all
 from in_tfm.useful_neurons.attn_only.terms import terms_of
 from in_tfm.useful_neurons.attn_only.trace import Trace, trace_sequence
@@ -96,7 +97,10 @@ def test_top_share_keeps_each_sign_separately() -> None:
 
 def test_every_picked_input_is_itself_expanded(trace: Trace) -> None:
     terms = partial(terms_of, trace=trace)
-    useful = find_useful_neurons(trace.unembed, terms, AllLogits(), share=0.9)
+    scores = all_scores(trace.layers)
+    useful = find_useful_neurons(
+        trace.unembed, terms, AllLogits(), share=0.9, scores=scores
+    )
     assert useful.logit_picks.any()
     for inputs in useful.picks.values():
         assert all(input in useful.picks for input in inputs)

@@ -112,19 +112,29 @@ def o_proj_terms(neuron: OProj, layer: AttnLayerTrace) -> Terms:
 def head_out_terms(neuron: HeadOut, layer: AttnLayerTrace) -> Terms:
     """z[pos, j] = sum over sources of pattern[pos, src] * v[src, j].
 
-    Keeping a source keeps both its value neuron and the score that weighted it.
+    A kept source keeps its value neuron only. Scores start walks of their own, see `all_scores`.
     """
     sources = slice(0, neuron.pos + 1)
     pattern = layer.pattern[neuron.head, neuron.pos, sources]
     v = layer.v[neuron.head, sources, neuron.dim]
 
     def inputs_of(src: int) -> tuple[Neuron, ...]:
-        return (
-            Value(layer=neuron.layer, pos=src, head=neuron.head, dim=neuron.dim),
-            Score(layer=neuron.layer, pos=neuron.pos, src=src, head=neuron.head),
-        )
+        return (Value(layer=neuron.layer, pos=src, head=neuron.head, dim=neuron.dim),)
 
     return Terms(pattern * v, inputs_of)
+
+
+def all_scores(layers: list[AttnLayerTrace]) -> list[Neuron]:
+    """Every score whose attention weight is above 0, so masked pairs never flow back.
+
+    Each starts its own walk and splits by q·k. This keeps the attention mix close to the
+    original, so no attention weight needs zeroing.
+    """
+    return [
+        Score(layer=layer, pos=pos, src=src, head=head)
+        for layer, attn in enumerate(layers)
+        for head, pos, src in (attn.pattern > 0).nonzero().tolist()
+    ]
 
 
 def score_terms(neuron: Score, layer: AttnLayerTrace) -> Terms:
