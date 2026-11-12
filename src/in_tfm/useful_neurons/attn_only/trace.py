@@ -10,27 +10,10 @@ import torch
 from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
-from ..models.attn_only_2l.model import AttnOnlyAttention, AttnOnlyForCausalLM
-from .keep import AttnLayerKeep, Keep, keep_all
-
-HeadActs = Float[torch.Tensor, "head seq head_dim"]
-
-
-class AttnLayerTrace(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    W_Q: Float[torch.Tensor, "head head_dim hidden"]
-    W_K: Float[torch.Tensor, "head head_dim hidden"]
-    W_V: Float[torch.Tensor, "head head_dim hidden"]
-    W_O: Float[torch.Tensor, "head hidden head_dim"]
-    scaling: float
-
-    q: HeadActs
-    k: HeadActs
-    v: HeadActs
-    pattern: Float[torch.Tensor, "head seq src"]
-    z: HeadActs
-    head_writes: Float[torch.Tensor, "head seq hidden"]
+from ...models.attn_only_2l.model import AttnOnlyAttention, AttnOnlyForCausalLM
+from ..attention import AttnLayerKeep, AttnLayerTrace, attend, per_head
+from ..flow import Unembed
+from .keep import Keep, keep_all
 
 
 class Trace(BaseModel):
@@ -38,20 +21,21 @@ class Trace(BaseModel):
 
     tokens: Int[torch.Tensor, " seq"]
     W_U: Float[torch.Tensor, "vocab hidden"]
+    b_U: Float[torch.Tensor, " vocab"]
     pos_embed: Float[torch.Tensor, "seq hidden"]
     resid: list[Float[torch.Tensor, "seq hidden"]]
     """`resid[l]` is the stream entering layer l, so `resid[-1]` is what the unembed reads."""
     layers: list[AttnLayerTrace]
 
     @property
-    def final_layer(self) -> int:
-        return len(self.layers)
+    def unembed(self) -> Unembed:
+        return Unembed(
+            W_U=self.W_U, inputs=self.resid[-1], final_layer=len(self.layers)
+        )
 
-
-def per_head(
-    weight: Float[torch.Tensor, "inner hidden"], n_heads: int
-) -> Float[torch.Tensor, "head head_dim hidden"]:
-    return weight.view(n_heads, -1, weight.shape[-1])
+    @property
+    def logits(self) -> Float[torch.Tensor, "seq vocab"]:
+        return self.resid[-1] @ self.W_U.T + self.b_U
 
 
 def trace_attn_layer(
@@ -72,13 +56,9 @@ def trace_attn_layer(
     k = torch.einsum("hjd,sd->hsj", W_K, qk_input) * keep.k
     v = torch.einsum("hjd,sd->hsj", W_V, resid) * keep.v
 
-    scores = torch.einsum("hpj,hsj->hps", q, k) * attn.scaling
     seq = resid.shape[0]
     future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
-    pattern = scores.masked_fill(future, float("-inf")).softmax(dim=-1) * keep.pattern
-
-    z = torch.einsum("hps,hsj->hpj", pattern, v) * keep.z
-    head_writes = torch.einsum("hdj,hpj->hpd", W_O, z) * keep.head_writes
+    pattern, z, head_writes = attend(q, k, v, W_O, attn.scaling, future, keep)
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,
@@ -115,6 +95,7 @@ def trace_sequence(
     return Trace(
         tokens=tokens,
         W_U=model.lm_head.weight,
+        b_U=model.lm_head.bias,
         pos_embed=pos_embed,
         resid=resid,
         layers=layers,

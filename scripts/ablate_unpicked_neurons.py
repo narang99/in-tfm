@@ -1,26 +1,31 @@
 #!/usr/bin/env python
 """Zeroes every neuron the useful-neurons walk did not pick, and compares the logits.
 
+The text is always the start of the attn-only checkpoint's val stream. Other models re-tokenize it.
+
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-len 64 --out ablation.html
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out ablation.html
 """
 
 import argparse
+import time
+from functools import partial
 from pathlib import Path
+from typing import NamedTuple, cast
 
 import numpy as np
 import plotly.graph_objects as go
 import torch
-from transformers import PreTrainedTokenizerFast
+from transformers import AutoTokenizer, GPTNeoForCausalLM, PreTrainedTokenizerBase
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
-from in_tfm.useful_neurons.keep import keep_only
-from in_tfm.useful_neurons.logit_shift import (
-    Logits,
-    LogitShift,
-    logit_shift,
-    trace_logits,
-)
-from in_tfm.useful_neurons.trace import trace_sequence
+from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
+from in_tfm.useful_neurons.attn_only.keep import keep_only
+from in_tfm.useful_neurons.attn_only.trace import trace_sequence
+from in_tfm.useful_neurons.gpt_neo import keep as gpt_neo_keep
+from in_tfm.useful_neurons.gpt_neo import terms as gpt_neo_terms
+from in_tfm.useful_neurons.gpt_neo.trace import trace_gpt_neo
+from in_tfm.useful_neurons.logit_shift import Logits, LogitShift, logit_shift
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
 UP = "#2a78d6"
@@ -29,6 +34,15 @@ DOWN = "#e34948"
 NEUTRAL_INK = "#52514e"
 GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
+TINYSTORIES_1M = "roneneldan/TinyStories-1M"
+
+
+class AblationRun(NamedTuple):
+    tokens: torch.Tensor
+    tokenizer: PreTrainedTokenizerBase
+    before: Logits
+    after: Logits
+    n_kept: int
 
 
 def val_sequence(checkpoint: Path, start: int, seq_len: int) -> torch.Tensor:
@@ -83,7 +97,7 @@ def vocab_chart(
     before: Logits,
     after: Logits,
     tokens: torch.Tensor,
-    tokenizer: PreTrainedTokenizerFast,
+    tokenizer: PreTrainedTokenizerBase,
     top_k: int = 20,
 ) -> go.Figure:
     """One position at a time, picked with a slider: the original's top tokens, before and after."""
@@ -134,7 +148,7 @@ def top_token_labels(
     top: torch.Tensor,
     tokens: torch.Tensor,
     pos: int,
-    tokenizer: PreTrainedTokenizerFast,
+    tokenizer: PreTrainedTokenizerBase,
 ) -> list[str]:
     actual_next = tokens[pos + 1].item() if pos + 1 < len(tokens) else None
     return [
@@ -144,7 +158,7 @@ def top_token_labels(
 
 
 def position_title(
-    tokens: torch.Tensor, pos: int, tokenizer: PreTrainedTokenizerFast
+    tokens: torch.Tensor, pos: int, tokenizer: PreTrainedTokenizerBase
 ) -> str:
     context = tokenizer.decode(tokens[max(0, pos - 8) : pos + 1])
     actual_next = (
@@ -154,7 +168,7 @@ def position_title(
 
 
 def next_token_labels(
-    tokens: torch.Tensor, tokenizer: PreTrainedTokenizerFast
+    tokens: torch.Tensor, tokenizer: PreTrainedTokenizerBase
 ) -> list[str]:
     """Plotly needs unique category labels, so each carries its position."""
     return [
@@ -184,28 +198,63 @@ def print_summary(shift: LogitShift, n_kept: int) -> None:
     print(f"median next-token change: {np.median(shift.percent_change):+.1f}%")
 
 
+def run_attn_only(
+    checkpoint: Path, start: int, seq_len: int, share: float
+) -> AblationRun:
+    model, tokenizer = load_trained_attn_only(checkpoint)
+    tokens = val_sequence(checkpoint, start, seq_len)
+
+    original = trace_sequence(model, tokens)
+    terms_of = partial(attn_only_terms.terms_of, trace=original)
+    useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+    picked = list(useful.picks)
+    keep = keep_only(picked, model.config, len(tokens))
+    ablated = trace_sequence(model, tokens, keep)
+    return AblationRun(tokens, tokenizer, original.logits, ablated.logits, len(picked))
+
+
+def run_tinystories(
+    checkpoint: Path, start: int, seq_len: int, share: float
+) -> AblationRun:
+    """Norms are frozen at the original pass's stats, see `gpt_neo.trace`."""
+    _, val_tokenizer = load_trained_attn_only(checkpoint)
+    text = val_tokenizer.decode(val_sequence(checkpoint, start, 4 * seq_len))
+    tokenizer = cast(
+        PreTrainedTokenizerBase, AutoTokenizer.from_pretrained(TINYSTORIES_1M)
+    )
+    tokens = torch.tensor(tokenizer(text)["input_ids"][:seq_len])
+    model = GPTNeoForCausalLM.from_pretrained(TINYSTORIES_1M).eval()
+
+    original = trace_gpt_neo(model, tokens)
+    terms_of = partial(gpt_neo_terms.terms_of, trace=original)
+    useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+    picked = list(useful.picks)
+    keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
+    ablated = trace_gpt_neo(model, tokens, keep, frozen=original.frozen_norms)
+    return AblationRun(tokens, tokenizer, original.logits, ablated.logits, len(picked))
+
+
+RUNS = {"attn-only": run_attn_only, "tinystories-1m": run_tinystories}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("checkpoint", type=Path)
+    parser.add_argument(
+        "checkpoint", type=Path, help="attn-only checkpoint, also the text source"
+    )
+    parser.add_argument("--model", choices=list(RUNS), default="attn-only")
     parser.add_argument("--seq-len", type=int, default=64)
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--share", type=float, default=0.9)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    model, tokenizer = load_trained_attn_only(args.checkpoint)
-    tokens = val_sequence(args.checkpoint, args.start, args.seq_len)
-
-    original = trace_sequence(model, tokens)
-    useful = find_useful_neurons(original, AllLogits(), args.share)
-    picked = list(useful.picks)
-    ablated = trace_sequence(
-        model, tokens, keep_only(picked, model.config, len(tokens))
-    )
-
-    before, after = trace_logits(original, model), trace_logits(ablated, model)
+    began = time.perf_counter()
+    run = RUNS[args.model](args.checkpoint, args.start, args.seq_len, args.share)
+    print(f"walked and ablated in {time.perf_counter() - began:.0f}s")
+    tokens, tokenizer, before, after = run.tokens, run.tokenizer, run.before, run.after
     shift = logit_shift(before, after, tokens)
-    print_summary(shift, len(picked))
+    print_summary(shift, run.n_kept)
     labels = next_token_labels(tokens, tokenizer)
     figures = [
         vocab_chart(before, after, tokens, tokenizer),
