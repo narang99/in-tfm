@@ -4,6 +4,8 @@ Biases and the frozen norms' constants are left out of every sum, so terms add u
 neuron's value minus a constant.
 """
 
+from itertools import product
+
 import torch
 
 from ..attention import head_out_terms, o_proj_terms, score_terms
@@ -130,3 +132,17 @@ def mlp_hidden_terms(neuron: MlpHidden, trace: GptNeoTrace) -> Terms:
         return (ResidMid(layer=neuron.layer, pos=neuron.pos, dim=i),)
 
     return Terms(weight * normed, inputs_of)
+
+
+def block_writers(trace: GptNeoTrace) -> list[Neuron]:
+    head_writes: list[Neuron] = [
+        OProj(layer=layer, pos=pos, head=head, dim=dim)
+        for layer, block in enumerate(trace.blocks)
+        for head, pos, dim in product(*map(range, block.attn.head_writes.shape))
+    ]
+    mlp_writes: list[Neuron] = [
+        MlpDown(layer=layer, pos=pos, dim=dim)
+        for layer, block in enumerate(trace.blocks)
+        for pos, dim in product(*map(range, block.mlp.writes.shape))
+    ]
+    return head_writes + mlp_writes

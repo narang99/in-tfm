@@ -1,5 +1,7 @@
 """How each neuron of the attn-only model flows back. The rules past q, k and v are in `attention`."""
 
+from itertools import product
+
 import torch
 
 from ..attention import head_out_terms, o_proj_terms, score_terms
@@ -67,3 +69,11 @@ def query_key_terms(neuron: Query | Key, trace: Trace) -> Terms:
         return (PosEmbed(pos=neuron.pos, dim=i - hidden),)
 
     return Terms(torch.cat([weight * resid, weight * pos_embed]), inputs_of)
+
+
+def block_writers(trace: Trace) -> list[Neuron]:
+    return [
+        OProj(layer=layer, pos=pos, head=head, dim=dim)
+        for layer, attn in enumerate(trace.layers)
+        for head, pos, dim in product(*map(range, attn.head_writes.shape))
+    ]

@@ -7,7 +7,7 @@ from transformers import GPTNeoConfig, GPTNeoForCausalLM
 from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
 from in_tfm.useful_neurons.gpt_neo.keep import keep_all
-from in_tfm.useful_neurons.gpt_neo.terms import terms_of
+from in_tfm.useful_neurons.gpt_neo.terms import block_writers, terms_of
 from in_tfm.useful_neurons.gpt_neo.trace import GptNeoTrace, trace_gpt_neo
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
@@ -18,7 +18,11 @@ from in_tfm.useful_neurons.neurons import (
     ResidMid,
     Score,
 )
-from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
+from in_tfm.useful_neurons.walk import (
+    AllLogits,
+    find_block_neurons,
+    find_useful_neurons,
+)
 
 
 @pytest.fixture
@@ -134,3 +138,13 @@ def test_every_picked_input_is_itself_expanded(trace: GptNeoTrace) -> None:
     assert useful.logit_picks.any()
     for inputs in useful.picks.values():
         assert all(input in useful.picks for input in inputs)
+
+
+def test_block_walk_never_leaves_its_block(trace: GptNeoTrace) -> None:
+    terms = partial(terms_of, trace=trace)
+    picks = find_block_neurons(block_writers(trace), terms, share=0.9)
+    stream_kinds = {"resid", "resid_mid", "token", "pos"}
+    for neuron, inputs in picks.items():
+        if neuron.kind in stream_kinds:
+            assert inputs == []
+    assert any(neuron.kind == "mlp_hidden" for neuron in picks)
