@@ -1,6 +1,8 @@
 """Every neuron the walk can pick, as one discriminated union keyed by `kind`.
 
-- `Resid(layer=0)` is the token embedding and `Resid(layer=n_layers)` is the stream the unembed reads.
+- `Resid(layer=l)` is the stream entering layer l, so `Resid(layer=n_layers)` is what the unembed reads.
+  - In the attn-only model `Resid(layer=0)` is the token embedding.
+  - In GPT-Neo it is token embedding + position embedding, and `ResidMid` sits between attention and MLP.
 - Attention neurons carry the layer they belong to.
 - `pos` is always the token whose activation this is. `Score.src` is the token being attended to.
 """
@@ -23,6 +25,21 @@ class Logit(NeuronKey):
 class Resid(NeuronKey):
     kind: Literal["resid"] = "resid"
     layer: int
+    pos: int
+    dim: int
+
+
+class ResidMid(NeuronKey):
+    """The stream after layer l's attention and before its MLP."""
+
+    kind: Literal["resid_mid"] = "resid_mid"
+    layer: int
+    pos: int
+    dim: int
+
+
+class TokenEmbed(NeuronKey):
+    kind: Literal["token"] = "token"
     pos: int
     dim: int
 
@@ -87,7 +104,37 @@ class Score(NeuronKey):
     head: int
 
 
+class MlpHidden(NeuronKey):
+    """One MLP hidden neuron, after its activation function."""
+
+    kind: Literal["mlp_hidden"] = "mlp_hidden"
+    layer: int
+    pos: int
+    dim: int
+
+
+class MlpDown(NeuronKey):
+    """The MLP's write to one residual dim."""
+
+    kind: Literal["mlp_down"] = "mlp_down"
+    layer: int
+    pos: int
+    dim: int
+
+
 Neuron = Annotated[
-    Logit | Resid | PosEmbed | OProj | HeadOut | Value | Query | Key | Score,
+    Logit
+    | Resid
+    | ResidMid
+    | TokenEmbed
+    | PosEmbed
+    | OProj
+    | HeadOut
+    | Value
+    | Query
+    | Key
+    | Score
+    | MlpHidden
+    | MlpDown,
     Field(discriminator="kind"),
 ]

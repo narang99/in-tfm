@@ -7,13 +7,15 @@ python scripts/find_useful_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-l
 import argparse
 import time
 from collections import Counter
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 import torch
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
-from in_tfm.useful_neurons.trace import Trace, trace_sequence
+from in_tfm.useful_neurons.attn_only.terms import terms_of
+from in_tfm.useful_neurons.attn_only.trace import Trace, trace_sequence
 from in_tfm.useful_neurons.walk import AllLogits, UsefulNeurons, find_useful_neurons
 
 
@@ -64,7 +66,8 @@ def main() -> None:
 
     began = time.perf_counter()
     trace = trace_sequence(model, tokens)
-    useful = find_useful_neurons(trace, AllLogits(), args.share)
+    neuron_terms = partial(terms_of, trace=trace)
+    useful = find_useful_neurons(trace.unembed, neuron_terms, AllLogits(), args.share)
     print(f"walked in {time.perf_counter() - began:.1f}s")
     print_summary(useful, trace)
     if args.out:

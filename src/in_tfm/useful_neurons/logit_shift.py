@@ -2,9 +2,6 @@ import torch
 from jaxtyping import Float, Int
 from pydantic import BaseModel
 
-from ..models.attn_only_2l.model import AttnOnlyForCausalLM
-from .trace import Trace
-
 Logits = Float[torch.Tensor, "seq vocab"]
 
 
@@ -25,10 +22,6 @@ class LogitShift(BaseModel):
                 self.next_token_prob_before, self.next_token_prob_after
             )
         ]
-
-
-def trace_logits(trace: Trace, model: AttnOnlyForCausalLM) -> Logits:
-    return trace.resid[-1] @ trace.W_U.T + model.lm_head.bias
 
 
 def kl_per_position(before: Logits, after: Logits) -> Float[torch.Tensor, " seq"]:

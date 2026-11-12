@@ -1,9 +1,13 @@
+from functools import partial
+
 import pytest
 import torch
 
 from in_tfm.models.attn_only_2l.model import AttnOnlyConfig, AttnOnlyForCausalLM
-from in_tfm.useful_neurons.keep import keep_all
-from in_tfm.useful_neurons.logit_shift import logit_shift, trace_logits
+from in_tfm.useful_neurons.attn_only.keep import keep_all
+from in_tfm.useful_neurons.attn_only.terms import terms_of
+from in_tfm.useful_neurons.attn_only.trace import Trace, trace_sequence
+from in_tfm.useful_neurons.logit_shift import logit_shift
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
     Key,
@@ -14,9 +18,7 @@ from in_tfm.useful_neurons.neurons import (
     Score,
     Value,
 )
-from in_tfm.useful_neurons.terms import terms_of
 from in_tfm.useful_neurons.top_share import top_share_mask
-from in_tfm.useful_neurons.trace import Trace, trace_sequence
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
 
@@ -62,8 +64,7 @@ def neuron_value(neuron: Neuron, trace: Trace) -> float:
 
 def test_trace_reproduces_logits(model: AttnOnlyForCausalLM, trace: Trace) -> None:
     logits = model(input_ids=trace.tokens[None]).logits[0]
-    traced = trace.resid[-1] @ trace.W_U.T + model.lm_head.bias
-    torch.testing.assert_close(traced, logits)
+    torch.testing.assert_close(trace.logits, logits)
 
 
 @pytest.mark.parametrize(
@@ -93,7 +94,8 @@ def test_top_share_keeps_each_sign_separately() -> None:
 
 
 def test_every_picked_input_is_itself_expanded(trace: Trace) -> None:
-    useful = find_useful_neurons(trace, AllLogits(), share=0.9)
+    terms = partial(terms_of, trace=trace)
+    useful = find_useful_neurons(trace.unembed, terms, AllLogits(), share=0.9)
     assert useful.logit_picks.any()
     for inputs in useful.picks.values():
         assert all(input in useful.picks for input in inputs)
@@ -113,10 +115,7 @@ def test_dropping_a_value_removes_only_its_terms(
     torch.testing.assert_close(ablated.layers[0].z[1, :, 3], expected)
 
 
-def test_unchanged_logits_have_zero_kl(
-    model: AttnOnlyForCausalLM, trace: Trace
-) -> None:
-    logits = trace_logits(trace, model)
-    shift = logit_shift(logits, logits, trace.tokens)
+def test_unchanged_logits_have_zero_kl(trace: Trace) -> None:
+    shift = logit_shift(trace.logits, trace.logits, trace.tokens)
     assert max(shift.kl) == pytest.approx(0, abs=1e-6)
     assert all(pct == 0 for pct in shift.percent_change)
