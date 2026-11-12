@@ -14,11 +14,17 @@ from transformers import PreTrainedTokenizerFast
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
 from in_tfm.useful_neurons.keep import keep_only
-from in_tfm.useful_neurons.logit_shift import LogitShift, logit_shift, trace_logits
+from in_tfm.useful_neurons.logit_shift import (
+    Logits,
+    LogitShift,
+    logit_shift,
+    trace_logits,
+)
 from in_tfm.useful_neurons.trace import trace_sequence
 from in_tfm.useful_neurons.walk import AllLogits, find_useful_neurons
 
 UP = "#2a78d6"
+ORIGINAL = "#898781"
 DOWN = "#e34948"
 NEUTRAL_INK = "#52514e"
 GRID = "#e1e0d9"
@@ -73,6 +79,80 @@ def kl_chart(shift: LogitShift, labels: list[str]) -> go.Figure:
     return go.Figure(bars, bar_layout(title, "KL (nats)"))
 
 
+def vocab_chart(
+    before: Logits,
+    after: Logits,
+    tokens: torch.Tensor,
+    tokenizer: PreTrainedTokenizerFast,
+    top_k: int = 20,
+) -> go.Figure:
+    """One position at a time, picked with a slider: the original's top tokens, before and after."""
+    before_probs, after_probs = before.softmax(dim=-1), after.softmax(dim=-1)
+    figure = go.Figure(layout=bar_layout("", "probability"))
+    titles = []
+    for pos in range(len(tokens)):
+        top = before_probs[pos].topk(top_k).indices
+        names = top_token_labels(top, tokens, pos, tokenizer)
+        for name, probs, color in (
+            ("original", before_probs, ORIGINAL),
+            ("ablated", after_probs, UP),
+        ):
+            figure.add_bar(
+                x=names,
+                y=probs[pos, top].tolist(),
+                name=name,
+                marker_color=color,
+                visible=pos == 0,
+                hovertemplate=f"%{{x}}<br>{name} %{{y:.4f}}<extra></extra>",
+            )
+        titles.append(position_title(tokens, pos, tokenizer))
+
+    steps = [
+        {
+            "label": str(pos),
+            "method": "update",
+            "args": [
+                {"visible": [shown // 2 == pos for shown in range(2 * len(tokens))]},
+                {"title": titles[pos]},
+            ],
+        }
+        for pos in range(len(tokens))
+    ]
+    figure.update_layout(
+        title=titles[0],
+        barmode="group",
+        xaxis_title=f"original's top {top_k} tokens (* = actual next token)",
+        sliders=[
+            {"steps": steps, "currentvalue": {"prefix": "position "}, "pad": {"t": 130}}
+        ],
+        height=660,
+    )
+    return figure
+
+
+def top_token_labels(
+    top: torch.Tensor,
+    tokens: torch.Tensor,
+    pos: int,
+    tokenizer: PreTrainedTokenizerFast,
+) -> list[str]:
+    actual_next = tokens[pos + 1].item() if pos + 1 < len(tokens) else None
+    return [
+        f"{tokenizer.decode(token)!r}{' *' if token == actual_next else ''}"
+        for token in top.tolist()
+    ]
+
+
+def position_title(
+    tokens: torch.Tensor, pos: int, tokenizer: PreTrainedTokenizerFast
+) -> str:
+    context = tokenizer.decode(tokens[max(0, pos - 8) : pos + 1])
+    actual_next = (
+        repr(tokenizer.decode(tokens[pos + 1])) if pos + 1 < len(tokens) else "none"
+    )
+    return f"Position {pos}: ...{context!r}, actual next {actual_next}"
+
+
 def next_token_labels(
     tokens: torch.Tensor, tokenizer: PreTrainedTokenizerFast
 ) -> list[str]:
@@ -123,12 +203,16 @@ def main() -> None:
         model, tokens, keep_only(picked, model.config, len(tokens))
     )
 
-    shift = logit_shift(
-        trace_logits(original, model), trace_logits(ablated, model), tokens
-    )
+    before, after = trace_logits(original, model), trace_logits(ablated, model)
+    shift = logit_shift(before, after, tokens)
     print_summary(shift, len(picked))
     labels = next_token_labels(tokens, tokenizer)
-    write_page([percent_change_chart(shift, labels), kl_chart(shift, labels)], args.out)
+    figures = [
+        vocab_chart(before, after, tokens, tokenizer),
+        percent_change_chart(shift, labels),
+        kl_chart(shift, labels),
+    ]
+    write_page(figures, args.out)
 
 
 if __name__ == "__main__":
