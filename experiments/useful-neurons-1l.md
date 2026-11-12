@@ -166,3 +166,24 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --out blocks.html
 ```
+
+## Recomputed LayerNorm stats in the ablated pass
+
+- The walk still reads frozen stats, so its picks are unchanged.
+- Only the ablated pass recomputes each token's mean and std after trimming.
+
+| TinyStories-1M, share 0.9 | walk: mean KL | random: mean KL | walk: top-1 unchanged | random: top-1 unchanged |
+|---|---|---|---|---|
+| logits, frozen norms | 5.55 | 34.5 to 64.5 | 9.4% | 0% |
+| logits, recomputed norms | 5.47 | 6.47 to 7.06 | 9.4% | 4.7% to 7.8% |
+| blocks, frozen norms | 4.20 | 47.9 to 61.0 | 20.3% | 0% to 3.1% |
+| blocks, recomputed norms | 2.27 | 5.63 to 6.32 | 29.7% | 4.7% to 15.6% |
+
+- Frozen norms inflated the random baseline about sevenfold. They barely changed the logit walk.
+  - Random drops shrink the stream, and a frozen norm cannot scale it back up.
+- With recomputed norms, the logit walk is only slightly better than random.
+- Block mode with recomputed norms is the best setting so far, at about 2.5 times better than random.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --out blocks.html
+```
