@@ -241,6 +241,8 @@ class RunOptions(BaseModel):
     recompute_norms: bool
     """TinyStories-1M only. The walk always reads frozen norms; this changes the ablated pass."""
     replace_with: Path | None
+    only_mlp: bool
+    """TinyStories-1M only. Every attention neuron is kept, so only MLP neurons are dropped."""
     """A `PersistedValues` file for dropped neurons. Without one they become 0."""
 
     def replace(self) -> Replace:
@@ -304,6 +306,8 @@ def run_tinystories(checkpoint: Path, options: RunOptions) -> AblationRun:
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )
 
+    if options.only_mlp:
+        keep = gpt_neo_keep.with_attention(keep)
     frozen = None if options.recompute_norms else original.frozen_norms
     replace = options.replace()
 
@@ -343,6 +347,11 @@ def main() -> None:
         help="tinystories-1m only: the ablated pass recomputes LayerNorm stats",
     )
     parser.add_argument(
+        "--only-mlp",
+        action="store_true",
+        help="tinystories-1m only: keep every attention neuron, drop only MLP neurons",
+    )
+    parser.add_argument(
         "--replace-with",
         type=Path,
         help="values for dropped neurons, from collect_neuron_means.py. Default 0",
@@ -355,6 +364,7 @@ def main() -> None:
         mode=args.mode,
         recompute_norms=args.recompute_norms,
         replace_with=args.replace_with,
+        only_mlp=args.only_mlp,
     )
 
     began = time.perf_counter()

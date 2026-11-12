@@ -236,3 +236,20 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 python scripts/collect_neuron_means.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out checkpoints/tinystories_1m/neuron_means_100k.pt
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --replace-with checkpoints/tinystories_1m/neuron_means_100k.pt --out blocks_means.html
 ```
+
+## TinyStories-1M, MLP neurons only
+
+- Block mode (every writer kept), share 0.9, recomputed norms, dropped neurons set to 0.
+- Every attention neuron is kept. Only MLP hidden neurons are dropped.
+
+| | mean KL | max KL | top-1 unchanged | median next-token change |
+|---|---|---|---|---|
+| walk | 0.0505 | 0.162 | 89.1% | -1.2% |
+| random, 5 seeds | 4.14 to 4.83 | | 6.2% to 15.6% | |
+
+- The walk keeps 90.9% of MLP hidden neurons.
+- With attention trimmed too, the same setting gave KL 2.27. Most of the damage came from trimming attention.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --only-mlp --out mlp_only.html
+```

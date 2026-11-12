@@ -96,3 +96,18 @@ def with_stream_and_writers(keep: GptNeoKeep) -> GptNeoKeep:
     for layer in keep.layers:
         layer.head_writes.fill_(True)
     return keep
+
+
+def with_attention(keep: GptNeoKeep) -> GptNeoKeep:
+    """Keeps every attention neuron, so only MLP neurons can be dropped."""
+    for layer in keep.layers:
+        for mask in (
+            layer.q,
+            layer.k,
+            layer.v,
+            layer.pattern,
+            layer.z,
+            layer.head_writes,
+        ):
+            mask.fill_(True)
+    return keep
