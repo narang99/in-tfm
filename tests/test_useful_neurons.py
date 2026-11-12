@@ -2,6 +2,8 @@ import pytest
 import torch
 
 from in_tfm.models.attn_only_2l.model import AttnOnlyConfig, AttnOnlyForCausalLM
+from in_tfm.useful_neurons.keep import keep_all
+from in_tfm.useful_neurons.logit_shift import logit_shift, trace_logits
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
     Key,
@@ -95,3 +97,26 @@ def test_every_picked_input_is_itself_expanded(trace: Trace) -> None:
     assert useful.logit_picks.any()
     for inputs in useful.picks.values():
         assert all(input in useful.picks for input in inputs)
+
+
+def test_dropping_a_value_removes_only_its_terms(
+    model: AttnOnlyForCausalLM, trace: Trace
+) -> None:
+    seq = trace.tokens.shape[0]
+    keep = keep_all(model.config, seq)
+    keep.layers[0].v[1, 2, 3] = False
+    ablated = trace_sequence(model, trace.tokens, keep)
+
+    layer = trace.layers[0]
+    removed = layer.pattern[1, :, 2] * layer.v[1, 2, 3]
+    expected = layer.z[1, :, 3] - removed
+    torch.testing.assert_close(ablated.layers[0].z[1, :, 3], expected)
+
+
+def test_unchanged_logits_have_zero_kl(
+    model: AttnOnlyForCausalLM, trace: Trace
+) -> None:
+    logits = trace_logits(trace, model)
+    shift = logit_shift(logits, logits, trace.tokens)
+    assert max(shift.kl) == pytest.approx(0, abs=1e-6)
+    assert all(pct == 0 for pct in shift.percent_change)

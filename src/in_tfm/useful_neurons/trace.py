@@ -12,6 +12,7 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
 from ..models.attn_only_2l.model import AttnOnlyAttention, AttnOnlyForCausalLM
+from .keep import AttnLayerKeep, Keep, keep_all
 
 HeadActs = Float[torch.Tensor, "head seq head_dim"]
 
@@ -69,6 +70,7 @@ def trace_attn_layer(
     attn: AttnOnlyAttention,
     resid: Float[torch.Tensor, "seq hidden"],
     pos_embed: Float[torch.Tensor, "seq hidden"],
+    keep: AttnLayerKeep,
 ) -> AttnLayerTrace:
     """Biases are skipped. They belong to no neuron, and the trained 1L models have none."""
     n_heads = attn.n_heads
@@ -78,20 +80,22 @@ def trace_attn_layer(
     W_O = torch.stack([attn.o_proj.head_weight(h) for h in range(n_heads)])
 
     qk_input = resid + pos_embed
-    q = project_per_head(W_Q, qk_input)
-    k = project_per_head(W_K, qk_input)
-    v = project_per_head(W_V, resid)
+    q = project_per_head(W_Q, qk_input) * keep.q
+    k = project_per_head(W_K, qk_input) * keep.k
+    v = project_per_head(W_V, resid) * keep.v
 
     scores = einsum(q, k, "head seq head_dim, head src head_dim -> head seq src")
     scores = scores * attn.scaling
     seq = resid.shape[0]
     future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
-    pattern = scores.masked_fill(future, float("-inf")).softmax(dim=-1)
+    pattern = scores.masked_fill(future, float("-inf")).softmax(dim=-1) * keep.pattern
 
     z = einsum(pattern, v, "head seq src, head src head_dim -> head seq head_dim")
+    z = z * keep.z
     head_writes = einsum(
         W_O, z, "head hidden head_dim, head seq head_dim -> head seq hidden"
     )
+    head_writes = head_writes * keep.head_writes
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,
@@ -109,17 +113,22 @@ def trace_attn_layer(
 
 @torch.no_grad()
 def trace_sequence(
-    model: AttnOnlyForCausalLM, tokens: Int[torch.Tensor, " seq"]
+    model: AttnOnlyForCausalLM,
+    tokens: Int[torch.Tensor, " seq"],
+    keep: Keep | None = None,
 ) -> Trace:
+    seq = tokens.shape[0]
+    keep = keep or keep_all(model.config, seq)
     stack = model.model
-    pos_embed = stack.pos_embed.weight[: tokens.shape[0]]
-    resid = [stack.embed_tokens.weight[tokens]]
+    pos_embed = stack.pos_embed.weight[:seq] * keep.pos_embed
+    resid = [stack.embed_tokens.weight[tokens] * keep.resid[0]]
     layers = []
-    for layer in stack.layers:
+    for idx, layer in enumerate(stack.layers):
         attn = cast(AttnOnlyAttention, layer.self_attn)
-        layer_trace = trace_attn_layer(attn, resid[-1], pos_embed)
+        layer_trace = trace_attn_layer(attn, resid[-1], pos_embed, keep.layers[idx])
         layers.append(layer_trace)
-        resid.append(resid[-1] + layer_trace.head_writes.sum(dim=0))
+        written = resid[-1] + layer_trace.head_writes.sum(dim=0)
+        resid.append(written * keep.resid[idx + 1])
     return Trace(
         tokens=tokens,
         W_U=model.lm_head.weight,
