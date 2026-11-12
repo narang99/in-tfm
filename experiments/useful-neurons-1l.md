@@ -144,3 +144,25 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 
 - The walk's picks carry real signal in both models.
 - On TinyStories-1M, random drops wreck the model completely, so the walk's KL of 2.6 to 5.6 is far from chance.
+
+## Block mode: keep every writer, trim inside blocks
+
+- A block is everything between the residual-stream readers and a writer.
+  - Attention: q, k, v, attention weights and z. MLP: the hidden neurons.
+- Every writer (o_proj per head, mlp_down) is kept, with the residual stream and embeddings.
+- The walk starts from all writers and stops at the residual stream. Logits play no part.
+- Share 0.9, 64 tokens, random baseline as above.
+
+| model | walk: mean KL | random: mean KL | walk: top-1 unchanged | random: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128 | 0.012 | 1.89 to 2.55 | 95.3% | 23.4% to 34.4% |
+| TinyStories-1M | 4.20 | 47.9 to 61.0 | 20.3% | 0% to 3.1% |
+
+- Kept inside blocks on TinyStories-1M: q 95.5%, k 95.7%, v 88.6%, attention weights 69.0%, z 100%, MLP hidden 90.9%.
+- A kept writer still computes its value from trimmed neurons, so its write is off by up to about 10%.
+  - Later blocks read those changed writes, so the error still compounds across layers.
+  - Block mode removes the cuts on the residual stream itself, not the compounding through blocks.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --out blocks.html
+```
