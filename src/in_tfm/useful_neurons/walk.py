@@ -10,17 +10,15 @@ import torch
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, Field
 
+from .flow import TermsOf, Unembed
 from .neurons import Neuron, Resid
-from .terms import terms_of
 from .top_share import top_share_mask
-from .trace import Trace
 
 
 class AllLogits(BaseModel):
     kind: Literal["all"] = "all"
 
-    def select(self, trace: Trace) -> Bool[torch.Tensor, "seq vocab"]:
-        seq, vocab = trace.tokens.shape[0], trace.W_U.shape[0]
+    def select(self, seq: int, vocab: int) -> Bool[torch.Tensor, "seq vocab"]:
         return torch.ones(seq, vocab, dtype=torch.bool)
 
 
@@ -37,20 +35,20 @@ class UsefulNeurons(BaseModel):
 
 
 def pick_logit_inputs(
-    trace: Trace, selector: LogitSelector, share: float
+    unembed: Unembed, selector: LogitSelector, share: float
 ) -> Bool[torch.Tensor, "seq vocab hidden"]:
-    selected = selector.select(trace)
-    final_resid = trace.resid[-1]
+    seq, vocab = unembed.inputs.shape[0], unembed.W_U.shape[0]
+    selected = selector.select(seq, vocab)
     picks = []
-    for pos in range(final_resid.shape[0]):
-        hadamard = trace.W_U * final_resid[pos]
+    for pos in range(seq):
+        hadamard = unembed.W_U * unembed.inputs[pos]
         kept = top_share_mask(hadamard, share) & selected[pos, :, None]
         picks.append(kept)
     return torch.stack(picks)
 
 
-def pick_inputs(neuron: Neuron, trace: Trace, share: float) -> list[Neuron]:
-    terms = terms_of(neuron, trace)
+def pick_inputs(neuron: Neuron, terms_of: TermsOf, share: float) -> list[Neuron]:
+    terms = terms_of(neuron)
     if terms is None:
         return []
     kept = top_share_mask(terms.values, share).nonzero().flatten().tolist()
@@ -58,25 +56,29 @@ def pick_inputs(neuron: Neuron, trace: Trace, share: float) -> list[Neuron]:
 
 
 def walk_back(
-    roots: list[Neuron], trace: Trace, share: float
+    roots: list[Neuron], terms_of: TermsOf, share: float
 ) -> dict[Neuron, list[Neuron]]:
+    """Equal neurons are interned to one object, since edge lists would otherwise hold millions of copies."""
     picks: dict[Neuron, list[Neuron]] = {}
+    interned: dict[Neuron, Neuron] = {}
     frontier = list(roots)
     while frontier:
         neuron = frontier.pop()
         if neuron in picks:
             continue
-        picks[neuron] = pick_inputs(neuron, trace, share)
+        inputs = pick_inputs(neuron, terms_of, share)
+        picks[neuron] = [interned.setdefault(input, input) for input in inputs]
         frontier.extend(picks[neuron])
     return picks
 
 
 def find_useful_neurons(
-    trace: Trace, selector: LogitSelector, share: float
+    unembed: Unembed, terms_of: TermsOf, selector: LogitSelector, share: float
 ) -> UsefulNeurons:
-    logit_picks = pick_logit_inputs(trace, selector, share)
+    logit_picks = pick_logit_inputs(unembed, selector, share)
     picked_resid = logit_picks.any(dim=1).nonzero().tolist()
     roots: list[Neuron] = [
-        Resid(layer=trace.final_layer, pos=pos, dim=dim) for pos, dim in picked_resid
+        Resid(layer=unembed.final_layer, pos=pos, dim=dim) for pos, dim in picked_resid
     ]
-    return UsefulNeurons(logit_picks=logit_picks, picks=walk_back(roots, trace, share))
+    picks = walk_back(roots, terms_of, share)
+    return UsefulNeurons(logit_picks=logit_picks, picks=picks)

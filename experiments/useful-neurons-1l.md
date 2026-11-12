@@ -72,3 +72,60 @@ python scripts/find_useful_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-l
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --seq-len 64 --share 0.9 --out ablation.html
 ```
+
+## TinyStories-1M (GPT-Neo)
+
+- Model: `roneneldan/TinyStories-1M`. 8 layers, d 64, 16 heads of 4, MLP 256, vocab 50,257.
+- Text: the same val text as above, re-tokenized with its GPT-2 tokenizer, first 64 tokens.
+- LayerNorm is made linear by freezing each token's mean and std.
+  - A dim's term through a norm is `W[j, d] * (weight[d] / std) * x[d]`.
+  - The ablated pass reuses the original pass's stats.
+- Biases and the norms' constants are left out of the sums, as before.
+
+| | 1L d128 | TinyStories-1M |
+|---|---|---|
+| neurons kept | 87% | about 71% |
+| mean KL (nats) | 0.021 | 5.554 |
+| top-1 unchanged | 93.8% | 9.4% |
+| median next-token change | -0.4% | -97.0% |
+
+- The walk and ablation take 144 s locally, with 1.6 GB peak memory.
+
+### Why it breaks
+
+- The residual mean is small (|mean| / std at most 0.35), so the frozen norm is not the cause.
+- Zeroing one kind at a time, with everything else kept:
+
+| kind zeroed | mean KL |
+|---|---|
+| mlp_down | 6.97 |
+| head_writes (o_proj) | 4.49 |
+| k | 1.50 |
+| q | 0.18 |
+| everything else | 0.11 or less |
+| resid | 0.003 |
+
+- Unpicked writes split by whether the walk reached the stream dim they write to:
+
+| | parent reached | parent not reached |
+|---|---|---|
+| mlp_down | 0.20 | 6.95 |
+| head_writes | 4.01 | 2.15 |
+
+- The unreached-parent row is a diagnostic artifact, not the cause.
+  - An MLP that writes -X onto a dim carrying +X leaves the dim near zero, so the walk never reaches it.
+  - That test keeps every resid dim, so zeroing only the eraser brings the +X back.
+  - The full ablation zeroes the unreached resid dim too, which removes the +X with it.
+  - If the dim is reached, +X and -X have opposite signs, so the 90% rule keeps both.
+- The reached-parent row is real: o_proj terms cut on near-cancelling sums.
+  - A mid-stream dim sums the carried stream and 16 head writes.
+  - The 90% rule bounds what is dropped by 10% of each sign's mass, not by 10% of the value.
+  - When large positive and negative terms nearly cancel, the dropped part can exceed the net value.
+- No one kind explains the full run. Restoring any single kind still leaves it broken.
+  - Restoring head_writes helps most: 5.55 to 3.30.
+  - Restoring mlp_hidden gives 4.25, and restoring k gives 4.66.
+- The 1L model has 4 heads, not 16, and only one layer for the error to compound through.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out ablation.html
+```
