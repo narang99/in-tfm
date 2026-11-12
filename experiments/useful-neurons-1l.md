@@ -112,15 +112,19 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --s
 | mlp_down | 0.20 | 6.95 |
 | head_writes | 4.01 | 2.15 |
 
-- Both failures come from cancellation.
-  - **Unreached parent:** an MLP that writes -X onto a dim already carrying +X leaves it near zero.
-    - The walk never reaches that dim, so the MLP write is never picked.
-    - Zeroing the write alone brings the +X back.
-    - Zeroing the resid dim itself costs almost nothing (0.003), since that removes both.
-  - **Reached parent:** a mid-stream dim sums the carried stream and 16 head writes.
-    - The 90% rule bounds what is dropped by 10% of each sign's mass, not by 10% of the value.
-    - When large positive and negative terms nearly cancel, the dropped 10% can exceed the net value.
-- The 1L model barely has either problem: no layer reads its writes after the unembed, and it has 4 heads, not 16.
+- The unreached-parent row is a diagnostic artifact, not the cause.
+  - An MLP that writes -X onto a dim carrying +X leaves the dim near zero, so the walk never reaches it.
+  - That test keeps every resid dim, so zeroing only the eraser brings the +X back.
+  - The full ablation zeroes the unreached resid dim too, which removes the +X with it.
+  - If the dim is reached, +X and -X have opposite signs, so the 90% rule keeps both.
+- The reached-parent row is real: o_proj terms cut on near-cancelling sums.
+  - A mid-stream dim sums the carried stream and 16 head writes.
+  - The 90% rule bounds what is dropped by 10% of each sign's mass, not by 10% of the value.
+  - When large positive and negative terms nearly cancel, the dropped part can exceed the net value.
+- No one kind explains the full run. Restoring any single kind still leaves it broken.
+  - Restoring head_writes helps most: 5.55 to 3.30.
+  - Restoring mlp_hidden gives 4.25, and restoring k gives 4.66.
+- The 1L model has 4 heads, not 16, and only one layer for the error to compound through.
 
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --out ablation.html
