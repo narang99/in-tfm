@@ -7,6 +7,7 @@ exact layout the term rules index into. `test_useful_neurons` checks it reproduc
 from typing import cast
 
 import torch
+from einops import einsum, rearrange
 from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict
 
@@ -50,7 +51,18 @@ class Trace(BaseModel):
 def per_head(
     weight: Float[torch.Tensor, "inner hidden"], n_heads: int
 ) -> Float[torch.Tensor, "head head_dim hidden"]:
-    return weight.view(n_heads, -1, weight.shape[-1])
+    return rearrange(
+        weight, "(head head_dim) hidden -> head head_dim hidden", head=n_heads
+    )
+
+
+def project_per_head(
+    weight: Float[torch.Tensor, "head head_dim hidden"],
+    stream: Float[torch.Tensor, "seq hidden"],
+) -> HeadActs:
+    return einsum(
+        weight, stream, "head head_dim hidden, seq hidden -> head seq head_dim"
+    )
 
 
 def trace_attn_layer(
@@ -66,17 +78,20 @@ def trace_attn_layer(
     W_O = torch.stack([attn.o_proj.head_weight(h) for h in range(n_heads)])
 
     qk_input = resid + pos_embed
-    q = torch.einsum("hjd,sd->hsj", W_Q, qk_input)
-    k = torch.einsum("hjd,sd->hsj", W_K, qk_input)
-    v = torch.einsum("hjd,sd->hsj", W_V, resid)
+    q = project_per_head(W_Q, qk_input)
+    k = project_per_head(W_K, qk_input)
+    v = project_per_head(W_V, resid)
 
-    scores = torch.einsum("hpj,hsj->hps", q, k) * attn.scaling
+    scores = einsum(q, k, "head seq head_dim, head src head_dim -> head seq src")
+    scores = scores * attn.scaling
     seq = resid.shape[0]
     future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
     pattern = scores.masked_fill(future, float("-inf")).softmax(dim=-1)
 
-    z = torch.einsum("hps,hsj->hpj", pattern, v)
-    head_writes = torch.einsum("hdj,hpj->hpd", W_O, z)
+    z = einsum(pattern, v, "head seq src, head src head_dim -> head seq head_dim")
+    head_writes = einsum(
+        W_O, z, "head hidden head_dim, head seq head_dim -> head seq hidden"
+    )
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,

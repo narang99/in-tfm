@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "datasets>=2.14",
+    "einops>=0.7",
     "hdbscan>=0.8.39",
     "huggingface-hub>=0.20",
     "jaxtyping>=0.3.11",
