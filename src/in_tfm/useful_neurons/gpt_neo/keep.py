@@ -79,3 +79,14 @@ def mark_kept(keep: GptNeoKeep, neuron: Neuron) -> None:
             keep.mlp_down[layer][pos, dim] = True
         case _:
             mark_attention_kept(keep.layers, neuron)
+
+
+def with_stream_and_writers(keep: GptNeoKeep) -> GptNeoKeep:
+    """Block mode keeps the residual stream and every writer, and trims only inside blocks."""
+    keep.token_embed.fill_(True)
+    keep.pos_embed.fill_(True)
+    for stream in keep.resid + keep.resid_mid + keep.mlp_down:
+        stream.fill_(True)
+    for layer in keep.layers:
+        layer.head_writes.fill_(True)
+    return keep

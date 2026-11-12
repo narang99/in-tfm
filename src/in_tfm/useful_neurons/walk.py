@@ -10,8 +10,8 @@ import torch
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, Field
 
-from .flow import TermsOf, Unembed
-from .neurons import Neuron, Resid
+from .flow import Terms, TermsOf, Unembed
+from .neurons import Neuron, PosEmbed, Resid, ResidMid, TokenEmbed
 from .top_share import top_share_mask
 
 
@@ -82,3 +82,23 @@ def find_useful_neurons(
     ]
     picks = walk_back(roots, terms_of, share)
     return UsefulNeurons(logit_picks=logit_picks, picks=picks)
+
+
+STREAM_KINDS = (Resid, ResidMid, TokenEmbed, PosEmbed)
+
+
+def within_blocks(terms_of: TermsOf) -> TermsOf:
+    """Stops at the residual stream, so a walk never leaves the block it started in."""
+
+    def block_terms(neuron: Neuron) -> Terms | None:
+        if isinstance(neuron, STREAM_KINDS):
+            return None
+        return terms_of(neuron)
+
+    return block_terms
+
+
+def find_block_neurons(
+    writers: list[Neuron], terms_of: TermsOf, share: float
+) -> dict[Neuron, list[Neuron]]:
+    return walk_back(writers, within_blocks(terms_of), share)
