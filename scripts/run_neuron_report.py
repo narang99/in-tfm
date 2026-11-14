@@ -22,6 +22,7 @@ from datasets import load_dataset
 from in_tfm.models import ModelAdapter
 from in_tfm.models.attn_only_2l import AttnOnly2LAdapter
 from in_tfm.models.gemma3 import Gemma3Adapter
+from in_tfm.models.gpt_neo import GptNeoAdapter
 from in_tfm.models.inception_v1.adapter import InceptionV1Adapter
 from in_tfm.models.inception_v1.source import image_paths, spread_indices
 from in_tfm.models.mnist_cnn.adapter import MnistCnnAdapter, MnistCnnSmallAdapter
@@ -44,6 +45,10 @@ def load_adapter(config: RunConfig) -> ModelAdapter[Any, Any]:
                 config.layer_name,
                 config.text.max_length,
                 device=config.device,
+            )
+        case ModelName.TINYSTORIES_1M:
+            return GptNeoAdapter.from_pretrained(
+                config.model.value, config.text.max_length
             )
         case ModelName.ATTN_ONLY_2L:
             return AttnOnly2LAdapter.from_pretrained(config.text.max_length)

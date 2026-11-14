@@ -1,0 +1,22 @@
+# TinyStories-1M layer 6 MLP write, dim 43, on the tokens where the stream-writers walk keeps that write.
+# Dim 43 is the write the walk keeps most often (96% of tokens in a 6-story pilot), with the widest spread.
+# A hit's Hadamard is over the 256 MLP dims that feed c_proj.
+#   python scripts/writer_neuron_report.py --config configs/tinystories_1m_l6_mlp_write.yaml
+model: roneneldan/TinyStories-1M
+layer_name: h.6.mlp.c_proj
+neurons: [43]
+polarity: signed
+batch_size: 16
+out_dir: reports/tinystories-1m/h.6.mlp.c_proj
+text:
+  max_length: 128
+hits:
+  max_hits: 20000
+clustering:
+  "on": hadamard  # quoted, since YAML 1.1 reads a bare `on` as true
+  distance: weighted_jaccard
+  normalise: false
+  strategy:
+    method: hdbscan
+    min_cluster_size: 10
+    selection_method: eom  # see scripts/hdbscan_merge_report.py for leaf and eom from one tree

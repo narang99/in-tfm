@@ -14,6 +14,7 @@ from in_tfm.useful_neurons.gpt_neo.terms import (
     terms_with_stream_writers,
 )
 from in_tfm.useful_neurons.gpt_neo.trace import GptNeoTrace, trace_gpt_neo
+from in_tfm.useful_neurons.gpt_neo.writer_picks import picked_writers
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
     MlpDown,
@@ -223,3 +224,21 @@ def test_original_patterns_reproduce_the_logits(
     patterns = [block.attn.pattern for block in trace.blocks]
     fixed = trace_gpt_neo(model, trace.tokens, fixed_patterns=patterns)
     torch.testing.assert_close(fixed.logits, trace.logits)
+
+
+@pytest.mark.parametrize("layer", [0, 1])
+def test_walking_above_a_layer_keeps_its_writer_picks(
+    trace: GptNeoTrace, layer: int
+) -> None:
+    full = find_useful_neurons(
+        trace.unembed,
+        partial(terms_with_stream_writers, trace=trace),
+        AllLogits(),
+        share=0.9,
+        scores=[],
+    )
+    expected = {
+        n for n in full.picks if isinstance(n, (MlpDown, OProj)) and n.layer == layer
+    }
+    assert set(picked_writers(trace, layer, share=0.9)) == expected
+    assert any(isinstance(n, MlpDown) for n in expected)
