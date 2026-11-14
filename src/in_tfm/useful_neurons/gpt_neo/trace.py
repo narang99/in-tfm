@@ -22,6 +22,7 @@ from transformers.models.gpt_neo.modeling_gpt_neo import (
 from ..attention import (
     AttnLayerKeep,
     AttnLayerTrace,
+    Pattern,
     attend,
     per_head,
     project_per_head,
@@ -126,7 +127,10 @@ def blocked_sources(
 
 
 def trace_attn(
-    attn: GPTNeoSelfAttention, ln_out: Stream, keep: AttnLayerKeep
+    attn: GPTNeoSelfAttention,
+    ln_out: Stream,
+    keep: AttnLayerKeep,
+    fixed_pattern: Pattern | None = None,
 ) -> AttnLayerTrace:
     """GPT-Neo does not scale its scores by 1/sqrt(head_dim), so `scaling` is 1."""
     heads = attn.num_heads
@@ -146,7 +150,7 @@ def trace_attn(
     blocked = blocked_sources(
         ln_out.shape[0], attn.attention_type, attn.config.window_size
     )
-    pattern, z, head_writes = attend(q, k, v, W_O, 1.0, blocked, keep)
+    pattern, z, head_writes = attend(q, k, v, W_O, 1.0, blocked, keep, fixed_pattern)
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,
@@ -183,10 +187,11 @@ def trace_block(
     resid: Stream,
     keep: GptNeoKeep,
     frozen: FrozenNorms | None,
+    fixed_pattern: Pattern | None = None,
 ) -> tuple[BlockTrace, Stream, Stream]:
     attn = block.attn.attention
     ln_1 = layer_norm(resid, block.ln_1, frozen.ln_1[idx] if frozen else None)
-    attn_trace = trace_attn(attn, ln_1.output, keep.layers[idx])
+    attn_trace = trace_attn(attn, ln_1.output, keep.layers[idx], fixed_pattern)
     attn_out = attn_trace.head_writes.sum(dim=0) + attn.out_proj.bias
     resid_mid = (resid + attn_out) * keep.resid_mid[idx]
 
@@ -203,6 +208,7 @@ def trace_gpt_neo(
     tokens: Int[torch.Tensor, " seq"],
     keep: GptNeoKeep | None = None,
     frozen: FrozenNorms | None = None,
+    fixed_patterns: list[Pattern] | None = None,
 ) -> GptNeoTrace:
     seq = tokens.shape[0]
     keep = keep or keep_all(model.config, seq)
@@ -213,7 +219,12 @@ def trace_gpt_neo(
     resid_mid, blocks = [], []
     for idx, block in enumerate(stack.h):
         block_trace, mid, resid_next = trace_block(
-            cast(GPTNeoBlock, block), idx, resid[-1], keep, frozen
+            cast(GPTNeoBlock, block),
+            idx,
+            resid[-1],
+            keep,
+            frozen,
+            fixed_patterns[idx] if fixed_patterns else None,
         )
         blocks.append(block_trace)
         resid_mid.append(mid)

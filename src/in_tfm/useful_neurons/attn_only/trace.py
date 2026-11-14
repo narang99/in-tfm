@@ -14,6 +14,7 @@ from ...models.attn_only_2l.model import AttnOnlyAttention, AttnOnlyForCausalLM
 from ..attention import (
     AttnLayerKeep,
     AttnLayerTrace,
+    Pattern,
     attend,
     per_head,
     project_per_head,
@@ -49,6 +50,7 @@ def trace_attn_layer(
     resid: Float[torch.Tensor, "seq hidden"],
     pos_embed: Float[torch.Tensor, "seq hidden"],
     keep: AttnLayerKeep,
+    fixed_pattern: Pattern | None = None,
 ) -> AttnLayerTrace:
     """Biases are skipped. They belong to no neuron, and the trained 1L models have none."""
     n_heads = attn.n_heads
@@ -64,7 +66,9 @@ def trace_attn_layer(
 
     seq = resid.shape[0]
     future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
-    pattern, z, head_writes = attend(q, k, v, W_O, attn.scaling, future, keep)
+    pattern, z, head_writes = attend(
+        q, k, v, W_O, attn.scaling, future, keep, fixed_pattern
+    )
     return AttnLayerTrace(
         W_Q=W_Q,
         W_K=W_K,
@@ -85,6 +89,7 @@ def trace_sequence(
     model: AttnOnlyForCausalLM,
     tokens: Int[torch.Tensor, " seq"],
     keep: Keep | None = None,
+    fixed_patterns: list[Pattern] | None = None,
 ) -> Trace:
     seq = tokens.shape[0]
     keep = keep or keep_all(model.config, seq)
@@ -94,7 +99,10 @@ def trace_sequence(
     layers = []
     for idx, layer in enumerate(stack.layers):
         attn = cast(AttnOnlyAttention, layer.self_attn)
-        layer_trace = trace_attn_layer(attn, resid[-1], pos_embed, keep.layers[idx])
+        fixed = fixed_patterns[idx] if fixed_patterns else None
+        layer_trace = trace_attn_layer(
+            attn, resid[-1], pos_embed, keep.layers[idx], fixed
+        )
         layers.append(layer_trace)
         written = resid[-1] + layer_trace.head_writes.sum(dim=0)
         resid.append(written * keep.resid[idx + 1])

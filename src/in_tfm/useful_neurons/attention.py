@@ -74,6 +74,9 @@ def project_per_head(
     )
 
 
+Pattern = Float[torch.Tensor, "head seq src"]
+
+
 def attend(
     q: HeadActs,
     k: HeadActs,
@@ -82,14 +85,14 @@ def attend(
     scaling: float,
     blocked: Bool[torch.Tensor, "seq src"],
     keep: AttnLayerKeep,
-) -> tuple[
-    Float[torch.Tensor, "head seq src"],
-    HeadActs,
-    Float[torch.Tensor, "head seq hidden"],
-]:
-    scores = einsum(q, k, "head seq head_dim, head src head_dim -> head seq src")
-    scores = scores * scaling
-    pattern = scores.masked_fill(blocked, float("-inf")).softmax(dim=-1) * keep.pattern
+    fixed_pattern: Pattern | None = None,
+) -> tuple[Pattern, HeadActs, Float[torch.Tensor, "head seq hidden"]]:
+    """A `fixed_pattern` replaces the softmax, so q and k no longer change where heads attend."""
+    if fixed_pattern is None:
+        scores = einsum(q, k, "head seq head_dim, head src head_dim -> head seq src")
+        scores = scores * scaling
+        fixed_pattern = scores.masked_fill(blocked, float("-inf")).softmax(dim=-1)
+    pattern = fixed_pattern * keep.pattern
     z = einsum(pattern, v, "head seq src, head src head_dim -> head seq head_dim")
     z = z * keep.z
     head_writes = einsum(

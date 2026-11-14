@@ -54,3 +54,10 @@ def with_stream_and_writers(keep: Keep) -> Keep:
     for layer in keep.layers:
         layer.head_writes.fill_(True)
     return keep
+
+
+def with_stream_but_not_embeddings(keep: Keep) -> Keep:
+    """`resid[0]` is the token embedding, a writer, so it is left to the walk."""
+    for resid in keep.resid[1:]:
+        resid.fill_(True)
+    return keep

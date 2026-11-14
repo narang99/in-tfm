@@ -139,3 +139,11 @@ def test_random_keep_keeps_each_count_and_only_real_sources(
     assert shuffled.layers[0].pattern.sum() == 3
     assert not shuffled.layers[0].pattern.triu(diagonal=1).any()
     assert not shuffled.resid[1].any()
+
+
+def test_original_patterns_reproduce_the_logits(
+    model: AttnOnlyForCausalLM, trace: Trace
+) -> None:
+    patterns = [layer.pattern for layer in trace.layers]
+    fixed = trace_sequence(model, trace.tokens, fixed_patterns=patterns)
+    torch.testing.assert_close(fixed.logits, trace.logits)

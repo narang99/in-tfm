@@ -146,3 +146,36 @@ def block_writers(trace: GptNeoTrace) -> list[Neuron]:
         for pos, dim in product(*map(range, block.mlp.writes.shape))
     ]
     return head_writes + mlp_writes
+
+
+def terms_with_stream_writers(neuron: Neuron, trace: GptNeoTrace) -> Terms | None:
+    """A stream dim splits into every earlier write at once, so each writer is cut against all the others."""
+    match neuron:
+        case Resid():
+            return stream_writer_terms(
+                neuron.layer, False, neuron.pos, neuron.dim, trace
+            )
+        case ResidMid():
+            return stream_writer_terms(
+                neuron.layer, True, neuron.pos, neuron.dim, trace
+            )
+        case _:
+            return terms_of(neuron, trace)
+
+
+def stream_writer_terms(
+    layer: int, after_attention: bool, pos: int, dim: int, trace: GptNeoTrace
+) -> Terms:
+    writers: list[Neuron] = [TokenEmbed(pos=pos, dim=dim), PosEmbed(pos=pos, dim=dim)]
+    values = [trace.token_embed[pos, dim], trace.pos_embed[pos, dim]]
+    for below in range(layer + 1 if after_attention else layer):
+        head_writes = trace.blocks[below].attn.head_writes[:, pos, dim]
+        writers += [
+            OProj(layer=below, pos=pos, head=h, dim=dim)
+            for h in range(len(head_writes))
+        ]
+        values += list(head_writes)
+        if below < layer:
+            writers.append(MlpDown(layer=below, pos=pos, dim=dim))
+            values.append(trace.blocks[below].mlp.writes[pos, dim])
+    return Terms(torch.stack(values), lambda i: (writers[i],))
