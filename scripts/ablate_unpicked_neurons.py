@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from transformers import AutoTokenizer, GPTNeoForCausalLM, PreTrainedTokenizerBase
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
+from in_tfm.useful_neurons.attention import all_scores
 from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
 from in_tfm.useful_neurons.attn_only.keep import (
     Keep,
@@ -243,13 +244,16 @@ def run_attn_only(
 
     original = trace_sequence(model, tokens)
     terms_of = partial(attn_only_terms.terms_of, trace=original)
+    scores = all_scores(original.layers)
     if mode == "logits":
-        useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+        useful = find_useful_neurons(
+            original.unembed, terms_of, AllLogits(), share, scores
+        )
         picked = list(useful.picks)
         keep = keep_only(picked, model.config, len(tokens))
     else:
         writers = attn_only_terms.block_writers(original)
-        picked = list(find_block_neurons(writers, terms_of, share))
+        picked = list(find_block_neurons(writers + scores, terms_of, share))
         keep = with_stream_and_writers(keep_only(picked, model.config, len(tokens)))
 
     def ablate(keep: Keep) -> Logits:
@@ -280,13 +284,16 @@ def run_tinystories(
 
     original = trace_gpt_neo(model, tokens)
     terms_of = partial(gpt_neo_terms.terms_of, trace=original)
+    scores = all_scores([block.attn for block in original.blocks])
     if mode == "logits":
-        useful = find_useful_neurons(original.unembed, terms_of, AllLogits(), share)
+        useful = find_useful_neurons(
+            original.unembed, terms_of, AllLogits(), share, scores
+        )
         picked = list(useful.picks)
         keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
     else:
         writers = gpt_neo_terms.block_writers(original)
-        picked = list(find_block_neurons(writers, terms_of, share))
+        picked = list(find_block_neurons(writers + scores, terms_of, share))
         keep = gpt_neo_keep.with_stream_and_writers(
             gpt_neo_keep.keep_only(picked, model.config, len(tokens))
         )

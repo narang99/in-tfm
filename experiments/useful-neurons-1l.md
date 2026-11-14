@@ -187,3 +187,72 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --out blocks.html
 ```
+
+## Writer mode (code not merged)
+
+- At each token, each head's write vector and each MLP's write vector keep their top-share dims, per sign.
+- From the kept writer dims, the walk goes back inside the block and stops at the stream.
+- Embeddings are untouched and no stream neuron is zeroed. Dropped writer dims are zeroed.
+- Code: commit [`7612d88`](https://github.com/narang99/in-tfm/commit/7612d88c60df1fa4a1faa20103e2a3aeae6d63ae), closed PR #190.
+- Share 0.9, 64 tokens.
+
+| setting | walk: mean KL | random: mean KL | walk: top-1 unchanged | random: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128 | 0.065 | 2.50 to 3.04 | 85.9% | 15.6% to 21.9% |
+| TinyStories-1M, frozen norms | 21.48 | 115.3 to 162.6 | 4.7% | 0% |
+| TinyStories-1M, recomputed norms | 4.47 | 8.36 to 9.06 | 20.3% | 3.1% to 9.4% |
+
+- Writers kept: 65.0% of head writes on 1L. 66.6% of head writes and 66.8% of MLP writes on TinyStories-1M.
+- Inside the blocks, the kept shares are almost the same as in block mode.
+  - TinyStories-1M: q 95.5%, k 95.7%, v 88.6%, attention weights 69.0%, z 100%, MLP hidden 90.3%.
+  - A neuron inside a block is kept if any kept writer reaches it, and a third fewer writers barely changes that.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode writers --recompute-norms --out writers.html
+```
+
+## Mean fill (code not merged)
+
+- Dropped neurons took each neuron's mean over 99,968 val tokens instead of 0. Attention weights still became 0.
+- Code: commit [`9836885`](https://github.com/narang99/in-tfm/commit/9836885bac64b7ee9aaaec0fe482357f9c61577b), closed PR #191.
+- Share 0.9, 64 tokens, old attention split.
+
+| model, mode, norms | zero: KL | mean: KL | mean: random KL |
+|---|---|---|---|
+| 1L, logits | 0.021 | 0.320 | 1.82 to 2.21 |
+| 1L, blocks | 0.012 | 0.099 | 1.17 to 1.54 |
+| 1L, writers | 0.065 | 0.290 | 1.87 to 2.08 |
+| TS-1M, logits, recomputed | 5.47 | 3.71 | 6.16 to 6.65 |
+| TS-1M, blocks, recomputed | 2.27 | 1.46 | 5.01 to 5.52 |
+| TS-1M, writers, recomputed | 4.47 | 5.73 | 8.95 to 9.55 |
+
+- Means were worse than 0 on 1L in every mode.
+  - The walk drops terms that are small at this token, so the real value there is usually nearer 0 than the corpus mean.
+
+## MLP neurons only (code not merged)
+
+- TinyStories-1M, blocks, share 0.9, recomputed norms, zero fill. Every attention neuron kept.
+- Code: commit [`7d63c4a`](https://github.com/narang99/in-tfm/commit/7d63c4ad3424a89782e5387a7c0ebf67a1d0fc14), closed PR #192.
+- KL 0.0505 (random 4.14 to 4.83), top-1 unchanged at 89.1%. 90.9% of MLP hidden neurons kept.
+- With attention trimmed too, the same setting gave 2.27. Most of the damage came from attention.
+
+## Scores walk on their own
+
+- Every result above used the old attention rule, where head_out kept a source's value and score together.
+  - Unpicked scores then had their attention weight zeroed after the softmax.
+- The rule now:
+  - head_out splits a z dim by `pattern[src] * v[src, j]` and keeps value neurons only.
+  - Every score with attention weight above 0 starts its own walk, and splits by `q[j] * k[j]`.
+  - No attention weight is zeroed. Scores change only through dropped q and k dims.
+- Blocks, share 0.9, zero fill. TinyStories-1M recomputes its norms.
+
+| model | old rule: KL | new rule: KL | new rule: random KL | new rule: top-1 unchanged |
+|---|---|---|---|---|
+| 1L d128 | 0.012 | 0.0117 | 1.24 to 1.75 | 96.9% |
+| TinyStories-1M | 2.27 | 0.488 | 5.76 to 6.21 | 64.1% |
+
+- Kept on TinyStories-1M: q 95.8%, k 96.7%, v 88.6%, MLP hidden 90.9%.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --out blocks.html
+```

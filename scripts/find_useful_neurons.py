@@ -14,6 +14,7 @@ import numpy as np
 import torch
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
+from in_tfm.useful_neurons.attention import all_scores
 from in_tfm.useful_neurons.attn_only.terms import terms_of
 from in_tfm.useful_neurons.attn_only.trace import Trace, trace_sequence
 from in_tfm.useful_neurons.walk import AllLogits, UsefulNeurons, find_useful_neurons
@@ -67,7 +68,10 @@ def main() -> None:
     began = time.perf_counter()
     trace = trace_sequence(model, tokens)
     neuron_terms = partial(terms_of, trace=trace)
-    useful = find_useful_neurons(trace.unembed, neuron_terms, AllLogits(), args.share)
+    scores = all_scores(trace.layers)
+    useful = find_useful_neurons(
+        trace.unembed, neuron_terms, AllLogits(), args.share, scores
+    )
     print(f"walked in {time.perf_counter() - began:.1f}s")
     print_summary(useful, trace)
     if args.out:

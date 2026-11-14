@@ -6,6 +6,7 @@ import torch
 from transformers import GPTNeoConfig, GPTNeoForCausalLM
 from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
+from in_tfm.useful_neurons.attention import all_scores
 from in_tfm.useful_neurons.gpt_neo.keep import keep_all
 from in_tfm.useful_neurons.gpt_neo.terms import block_writers, terms_of
 from in_tfm.useful_neurons.gpt_neo.trace import GptNeoTrace, trace_gpt_neo
@@ -134,7 +135,10 @@ def test_dropping_a_mid_dim_removes_its_mlp_input_term(
 
 def test_every_picked_input_is_itself_expanded(trace: GptNeoTrace) -> None:
     terms = partial(terms_of, trace=trace)
-    useful = find_useful_neurons(trace.unembed, terms, AllLogits(), share=0.9)
+    scores = all_scores([block.attn for block in trace.blocks])
+    useful = find_useful_neurons(
+        trace.unembed, terms, AllLogits(), share=0.9, scores=scores
+    )
     assert useful.logit_picks.any()
     for inputs in useful.picks.values():
         assert all(input in useful.picks for input in inputs)
@@ -148,3 +152,17 @@ def test_block_walk_never_leaves_its_block(trace: GptNeoTrace) -> None:
         if neuron.kind in stream_kinds:
             assert inputs == []
     assert any(neuron.kind == "mlp_hidden" for neuron in picks)
+
+
+def test_scores_start_their_own_walks(trace: GptNeoTrace) -> None:
+    """Window 3 on the local layer, so its far sources get no score."""
+    scores = all_scores([block.attn for block in trace.blocks])
+    seq = len(trace.tokens)
+    causal_pairs = seq * (seq + 1) // 2
+    local_pairs = sum(min(pos + 1, 3) for pos in range(seq))
+    assert len(scores) == 4 * (causal_pairs + local_pairs)
+
+    head_out = terms_of(HeadOut(layer=1, pos=6, head=2, dim=1), trace)
+    assert head_out is not None
+    picked = [n for i in range(len(head_out.values)) for n in head_out.inputs_of(i)]
+    assert picked and not any(isinstance(n, Score) for n in picked)
