@@ -29,12 +29,13 @@ from in_tfm.activation_ranges import hit_activations
 from in_tfm.hadamard import near_square_shape
 from in_tfm.hdbscan_merges import (
     fit_tree,
+    leaf_and_eom_only,
     merge_nodes,
     shown_hits,
 )
 from in_tfm.html_report import page
 from in_tfm.layers import submodule_getter
-from in_tfm.merge_page import merge_page_body, node_names
+from in_tfm.merge_page import TRIMMED_NOTE, merge_page_body, node_names
 from in_tfm.models.gpt_neo import GptNeoAdapter
 from in_tfm.neuron_report import NeuronClusterHits
 from in_tfm.neuron_run import clustered_rows, prepare_run, timed
@@ -52,6 +53,11 @@ def parse_merge_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--min-cluster-size", type=int, default=10)
     parser.add_argument("--min-samples", type=int, default=None)
+    parser.add_argument(
+        "--leaf-and-eom-only",
+        action="store_true",
+        help="draw only the leaf and eom clusters, each leaf straight under its eom cluster",
+    )
     return parser.parse_known_args(argv)
 
 
@@ -92,7 +98,8 @@ def main() -> None:
         )
         del distances
     nodes = merge_nodes(clusterer)
-    names = node_names(nodes)
+    drawn = leaf_and_eom_only(nodes) if merge_args.leaf_and_eom_only else nodes
+    names = node_names(drawn)
     print(
         f"{len(nodes)} nodes, {sum(n.is_leaf for n in nodes.values())} leaves, "
         f"{sum(n.is_eom for n in nodes.values())} eom clusters"
@@ -134,18 +141,19 @@ def main() -> None:
         scan, neuron_idx, selection.batch_idx, selection.token_idx
     )
     heading = (
-        f"Neuron {neuron_idx}: HDBSCAN merges, "
+        f"Neuron {neuron_idx}: HDBSCAN {'leaf and eom clusters' if merge_args.leaf_and_eom_only else 'merges'}, "
         f"min_cluster_size {merge_args.min_cluster_size}, "
         f"{config.clustering.distance}"
     )
     with timed("cards"):
         body = merge_page_body(
-            nodes,
+            drawn,
             card,
             tokens,
             np.asarray(activations),
             heading,
             run.presenter.page_controls(),
+            TRIMMED_NOTE if merge_args.leaf_and_eom_only else "",
         )
     path = merge_args.out / "index.html"
     path.write_text(page(heading, body))

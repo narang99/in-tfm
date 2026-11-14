@@ -129,3 +129,31 @@ def shown_hits(
         for child in current.children
         for h in steadiest_hits(nodes, child, per_child, copy_of)
     ]
+
+
+def nearest_kept_ancestor(
+    nodes: dict[int, MergeNode], node: int, kept: set[int]
+) -> int | None:
+    parent = nodes[node].parent
+    while parent is not None and parent not in kept:
+        parent = nodes[parent].parent
+    return parent
+
+
+def leaf_and_eom_only(nodes: dict[int, MergeNode]) -> dict[int, MergeNode]:
+    """Only the clusters leaf or eom keeps. A leaf hangs straight off its eom cluster, with the merges between dropped.
+
+    - eom picks one node on every path from a leaf to the root, so every leaf lands under exactly one eom cluster.
+    - Each eom cluster becomes the top of its own tree.
+    - Members and heights stay as in the full tree, so cards should still be drawn from the full tree."""
+    kept = {n for n, node in nodes.items() if node.is_leaf or node.is_eom}
+    parent = {n: nearest_kept_ancestor(nodes, n, kept) for n in kept}
+    return {
+        n: nodes[n].model_copy(
+            update={
+                "parent": parent[n],
+                "children": [c for c in kept if parent[c] == n],
+            }
+        )
+        for n in kept
+    }

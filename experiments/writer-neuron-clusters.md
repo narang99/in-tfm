@@ -44,3 +44,19 @@ python scripts/hdbscan_merge_report.py --config configs/tinystories_1m_l6_mlp_wr
     --picks-from reports/tinystories-1m/h.6.mlp.c_proj --min-cluster-size 10 \
     --out reports/tinystories-1m/h.6.mlp.c_proj_hdbscan_merges
 ```
+
+## Only the leaf and eom clusters
+
+- `--leaf-and-eom-only` draws each eom cluster as the top of its own tree, with its leaf clusters straight under it.
+- 91 of the 99 eom clusters are also leaves. Only 8 hold more than one leaf.
+- In one of them, eom joins " eat"/" ate" (17 hits) and " took"/" put"/" fix" (20 hits) into 80 hits.
+  - The leaves are 0.59 apart at the median, and only 0.40 at their closest pair, which is where they join.
+  - eom keeps the joined group because it lasts longer (stability 7.8) than the two leaves together (1.5).
+  - The other 43 hits are noise to both leaves: " put", " take", " read", " fix", " watch", " kicked" and more.
+  - So the eom cluster is action verbs before their object, and the leaves are two tight cores inside it.
+
+```
+python scripts/hdbscan_merge_report.py --config configs/tinystories_1m_l6_mlp_write.yaml \
+    --picks-from reports/tinystories-1m/h.6.mlp.c_proj --min-cluster-size 10 --leaf-and-eom-only \
+    --out reports/tinystories-1m/h.6.mlp.c_proj_hdbscan_leaf_eom
+```
