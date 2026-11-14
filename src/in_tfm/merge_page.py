@@ -75,7 +75,7 @@ SCRIPT = """
 
 
 def tops(nodes: dict[int, MergeNode]) -> list[int]:
-    """The roots of the drawn trees, largest first. The full tree has one."""
+    """The full tree has one top, its root. A trimmed tree has one per eom cluster, largest first."""
     return sorted(
         (n for n, node in nodes.items() if node.parent is None),
         key=lambda n: -len(nodes[n].members),
@@ -279,6 +279,13 @@ INTRO = (
 )
 
 
+TRIMMED_NOTE = (
+    "<p>Only the leaf and eom clusters are drawn. Each leaf hangs straight off the eom cluster it sits in, and the "
+    "merges between them are left out. Each eom cluster is the top of its own tree. Its height is still the distance "
+    "where its own two groups first join, and its card shows hits from both of those groups.</p>"
+)
+
+
 def legend() -> str:
     return (
         '<p class="legend">'
@@ -297,6 +304,7 @@ def merge_page_body(
     activations: Float[np.ndarray, "n_hits"],
     heading: str,
     controls: str,
+    note: str = "",
 ) -> Markup:
     names = node_names(nodes)
     under = {names[n]: [names[s] for s in subtree(nodes, n)] for n in nodes}
@@ -306,7 +314,7 @@ def merge_page_body(
         f"<p>{len(nodes)} nodes, {n_leaves} leaf clusters, {n_eom} eom clusters.</p>"
     )
     return Markup(
-        f"{STYLE}<h1>{escape(heading)}</h1>{controls}{INTRO}{counts}{legend()}"
+        f"{STYLE}<h1>{escape(heading)}</h1>{controls}{INTRO}{note}{counts}{legend()}"
         '<div class="merge-layout">'
         f'<div class="merge-graph">{graph_svg(nodes, names, tokens)}</div>'
         f'<div class="merge-panel">{cards_html(nodes, names, card, tokens, activations)}</div>'

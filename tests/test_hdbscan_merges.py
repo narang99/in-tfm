@@ -74,3 +74,19 @@ def test_the_graph_puts_each_merge_between_and_above_its_groups(
             xs = [x[c] for c in node.children]
             assert min(xs) <= x[n] <= max(xs)
             assert all(height[n] > height[c] for c in node.children)
+
+
+def test_trimming_keeps_every_leaf_under_one_eom_cluster(
+    distances: np.ndarray,
+) -> None:
+    from in_tfm.hdbscan_merges import leaf_and_eom_only
+
+    nodes = merge_nodes(fit_tree(distances, 10, None))
+    trimmed = leaf_and_eom_only(nodes)
+    assert all(n.is_leaf or n.is_eom for n in trimmed.values())
+    assert {n for n, node in nodes.items() if node.is_leaf} <= set(trimmed)
+    for node in trimmed.values():
+        assert (node.parent is None) == node.is_eom
+        if node.parent is not None:
+            assert trimmed[node.parent].is_eom
+            assert set(node.members) <= set(trimmed[node.parent].members)
