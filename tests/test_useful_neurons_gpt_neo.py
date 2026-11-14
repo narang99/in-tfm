@@ -8,7 +8,11 @@ from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
 from in_tfm.useful_neurons.attention import all_scores
 from in_tfm.useful_neurons.gpt_neo.keep import keep_all
-from in_tfm.useful_neurons.gpt_neo.terms import block_writers, terms_of
+from in_tfm.useful_neurons.gpt_neo.terms import (
+    block_writers,
+    terms_of,
+    terms_with_stream_writers,
+)
 from in_tfm.useful_neurons.gpt_neo.trace import GptNeoTrace, trace_gpt_neo
 from in_tfm.useful_neurons.neurons import (
     HeadOut,
@@ -166,3 +170,56 @@ def test_scores_start_their_own_walks(trace: GptNeoTrace) -> None:
     assert head_out is not None
     picked = [n for i in range(len(head_out.values)) for n in head_out.inputs_of(i)]
     assert picked and not any(isinstance(n, Score) for n in picked)
+
+
+def stream_without_biases(
+    neuron: Resid | ResidMid, trace: GptNeoTrace, model: GPTNeoForCausalLM
+) -> float:
+    after_attention = isinstance(neuron, ResidMid)
+    stream = trace.resid_mid if after_attention else trace.resid
+    value = stream[neuron.layer][neuron.pos, neuron.dim]
+    for below in range(neuron.layer + 1 if after_attention else neuron.layer):
+        block = cast(GPTNeoBlock, model.transformer.h[below])
+        value = value - block.attn.attention.out_proj.bias[neuron.dim]
+        if below < neuron.layer:
+            value = value - block.mlp.c_proj.bias[neuron.dim]
+    return value.item()
+
+
+@pytest.mark.parametrize(
+    "neuron",
+    [
+        Resid(layer=0, pos=4, dim=3),
+        Resid(layer=2, pos=4, dim=3),
+        ResidMid(layer=0, pos=6, dim=2),
+        ResidMid(layer=1, pos=6, dim=2),
+    ],
+)
+def test_stream_writers_sum_to_the_stream_without_biases(
+    neuron: Resid | ResidMid, trace: GptNeoTrace, model: GPTNeoForCausalLM
+) -> None:
+    terms = terms_with_stream_writers(neuron, trace)
+    assert terms is not None
+    expected = stream_without_biases(neuron, trace, model)
+    assert terms.values.sum().item() == pytest.approx(expected, abs=1e-5)
+
+
+def test_stream_dims_step_straight_to_writers(trace: GptNeoTrace) -> None:
+    terms = partial(terms_with_stream_writers, trace=trace)
+    scores = all_scores([block.attn for block in trace.blocks])
+    useful = find_useful_neurons(
+        trace.unembed, terms, AllLogits(), share=0.9, scores=scores
+    )
+    stream_kinds = {"resid", "resid_mid"}
+    for neuron, inputs in useful.picks.items():
+        if neuron.kind in stream_kinds:
+            assert inputs and not any(i.kind in stream_kinds for i in inputs)
+    assert any(isinstance(n, MlpDown) and n.layer == 0 for n in useful.picks)
+
+
+def test_original_patterns_reproduce_the_logits(
+    model: GPTNeoForCausalLM, trace: GptNeoTrace
+) -> None:
+    patterns = [block.attn.pattern for block in trace.blocks]
+    fixed = trace_gpt_neo(model, trace.tokens, fixed_patterns=patterns)
+    torch.testing.assert_close(fixed.logits, trace.logits)

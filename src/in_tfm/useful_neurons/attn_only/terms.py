@@ -77,3 +77,28 @@ def block_writers(trace: Trace) -> list[Neuron]:
         for layer, attn in enumerate(trace.layers)
         for head, pos, dim in product(*map(range, attn.head_writes.shape))
     ]
+
+
+def terms_with_stream_writers(neuron: Neuron, trace: Trace) -> Terms | None:
+    """A stream dim splits into every earlier write at once, so each writer is cut against all the others.
+
+    The token embedding is `Resid(layer=0)`, kept as a leaf writer.
+    """
+    match neuron:
+        case Resid(layer=layer, pos=pos, dim=dim) if layer > 0:
+            return stream_writer_terms(layer, pos, dim, trace)
+        case _:
+            return terms_of(neuron, trace)
+
+
+def stream_writer_terms(layer: int, pos: int, dim: int, trace: Trace) -> Terms:
+    writers: list[Neuron] = [Resid(layer=0, pos=pos, dim=dim)]
+    values = [trace.resid[0][pos, dim]]
+    for below in range(layer):
+        head_writes = trace.layers[below].head_writes[:, pos, dim]
+        writers += [
+            OProj(layer=below, pos=pos, head=h, dim=dim)
+            for h in range(len(head_writes))
+        ]
+        values += list(head_writes)
+    return Terms(torch.stack(values), lambda i: (writers[i],))

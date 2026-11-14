@@ -90,3 +90,10 @@ def with_stream_and_writers(keep: GptNeoKeep) -> GptNeoKeep:
     for layer in keep.layers:
         layer.head_writes.fill_(True)
     return keep
+
+
+def with_stream_but_not_embeddings(keep: GptNeoKeep) -> GptNeoKeep:
+    """The stream sums are kept, so only the writes into them, embeddings included, can be dropped."""
+    for stream in keep.resid + keep.resid_mid:
+        stream.fill_(True)
+    return keep

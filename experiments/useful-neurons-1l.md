@@ -256,3 +256,43 @@ python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --m
 ```
 python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode blocks --recompute-norms --out blocks.html
 ```
+
+## Stream writers
+
+- `--mode stream-writers`: the walk starts at every logit, as in logits mode.
+  - A stream dim splits at once into every earlier write: embeddings, head writes and MLP writes.
+  - One top-share cut runs over all of them, so a writer competes with every other writer.
+  - The old rule split a stream dim one layer at a time, and each layer's cut dropped 10% of what was left.
+- Stream sums are kept. Only writes are dropped.
+
+## Original attention patterns
+
+- `--freeze-pattern`: the ablated pass reuses each layer's original attention pattern.
+  - Scores start no walks. They only existed to protect the pattern.
+  - The random baseline uses the same patterns.
+- Share 0.9, zero fill, 64 tokens. TinyStories-1M recomputes its norms.
+
+| model | mode | KL, live pattern | KL, original pattern | random KL, original pattern |
+|---|---|---|---|---|
+| 1L d128 | blocks | 0.0117 | 0.0003 | 0.19 to 0.24 |
+| 1L d128 | stream-writers | 0.032 | 0.021 | 0.82 to 0.95 |
+| TinyStories-1M | blocks | 0.488 | 0.041 | 3.27 to 3.88 |
+| TinyStories-1M | stream-writers | 1.74 | 0.62 | 5.41 to 6.02 |
+
+- Stream writers with the original pattern, by share:
+
+| model | share | KL | random KL | removable neurons removed | head writes removed |
+|---|---|---|---|---|---|
+| 1L d128 | 0.9 | 0.0207 | 0.82 to 0.95 | 12.8% | 17.5% |
+| 1L d128 | 0.95 | 0.0102 | 0.44 to 0.48 | 7.2% | 9.7% |
+| TinyStories-1M | 0.9 | 0.622 | 5.41 to 6.02 | 40.1% | 54.6% |
+| TinyStories-1M | 0.95 | 0.198 | 4.65 to 4.99 | 28.8% | 39.6% |
+
+- "Removable" leaves out q, k, attention weights and the stream sums, which this setting never drops.
+- On TinyStories-1M at 0.95, the worst position (KL 1.27) is right after a closing quote.
+  - The original predicts a name, ` Spot` at 0.59. The ablated pass predicts a newline at 0.63.
+  - ` Spot`'s logit falls by 1.0. The newline's rises by 3.2, mostly because terms that held it down shrink.
+
+```
+python scripts/ablate_unpicked_neurons.py checkpoints/tiny_attn_only_1l_d128 --model tinystories-1m --mode stream-writers --recompute-norms --freeze-pattern --share 0.95 --out stream_writers.html
+```

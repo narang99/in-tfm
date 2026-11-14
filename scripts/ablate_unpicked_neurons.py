@@ -21,12 +21,13 @@ from pydantic import BaseModel
 from transformers import AutoTokenizer, GPTNeoForCausalLM, PreTrainedTokenizerBase
 
 from in_tfm.models.attn_only_2l.model import load_trained_attn_only
-from in_tfm.useful_neurons.attention import all_scores
+from in_tfm.useful_neurons.attention import AttnLayerKeep, all_scores
 from in_tfm.useful_neurons.attn_only import terms as attn_only_terms
 from in_tfm.useful_neurons.attn_only.keep import (
     Keep,
     keep_only,
     with_stream_and_writers,
+    with_stream_but_not_embeddings,
 )
 from in_tfm.useful_neurons.attn_only.trace import trace_sequence
 from in_tfm.useful_neurons.gpt_neo import keep as gpt_neo_keep
@@ -48,7 +49,7 @@ NEUTRAL_INK = "#52514e"
 GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
 TINYSTORIES_1M = "roneneldan/TinyStories-1M"
-Mode = Literal["logits", "blocks"]
+Mode = Literal["logits", "blocks", "stream-writers"]
 
 
 class AblationRun(NamedTuple):
@@ -236,28 +237,57 @@ def print_random_baseline(run: AblationRun, seeds: int) -> None:
         )
 
 
+def with_original_qk(layers: list[AttnLayerKeep]) -> None:
+    """Under a frozen pattern q, k and the attention weights reach nothing, so they count as kept."""
+    for layer in layers:
+        for mask in (layer.q, layer.k, layer.pattern):
+            mask.fill_(True)
+
+
 def run_attn_only(
-    checkpoint: Path, start: int, seq_len: int, share: float, mode: Mode
+    checkpoint: Path,
+    start: int,
+    seq_len: int,
+    share: float,
+    mode: Mode,
+    freeze_pattern: bool = False,
 ) -> AblationRun:
     model, tokenizer = load_trained_attn_only(checkpoint)
     tokens = val_sequence(checkpoint, start, seq_len)
 
     original = trace_sequence(model, tokens)
     terms_of = partial(attn_only_terms.terms_of, trace=original)
-    scores = all_scores(original.layers)
+    scores = [] if freeze_pattern else all_scores(original.layers)
     if mode == "logits":
         useful = find_useful_neurons(
             original.unembed, terms_of, AllLogits(), share, scores
         )
         picked = list(useful.picks)
         keep = keep_only(picked, model.config, len(tokens))
-    else:
+    elif mode == "stream-writers":
+        stream_terms_of = partial(
+            attn_only_terms.terms_with_stream_writers, trace=original
+        )
+        useful = find_useful_neurons(
+            original.unembed, stream_terms_of, AllLogits(), share, scores
+        )
+        picked = list(useful.picks)
+        keep = with_stream_but_not_embeddings(
+            keep_only(picked, model.config, len(tokens))
+        )
+    elif mode == "blocks":
         writers = attn_only_terms.block_writers(original)
         picked = list(find_block_neurons(writers + scores, terms_of, share))
         keep = with_stream_and_writers(keep_only(picked, model.config, len(tokens)))
 
+    fixed_patterns = None
+    if freeze_pattern:
+        fixed_patterns = [layer.pattern for layer in original.layers]
+        with_original_qk(keep.layers)
+        keep.pos_embed.fill_(True)
+
     def ablate(keep: Keep) -> Logits:
-        return trace_sequence(model, tokens, keep).logits
+        return trace_sequence(model, tokens, keep, fixed_patterns).logits
 
     return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
@@ -269,6 +299,7 @@ def run_tinystories(
     share: float,
     mode: Mode,
     recompute_norms: bool = False,
+    freeze_pattern: bool = False,
 ) -> AblationRun:
     """The walk always reads frozen norms, see `gpt_neo.trace`.
 
@@ -284,14 +315,25 @@ def run_tinystories(
 
     original = trace_gpt_neo(model, tokens)
     terms_of = partial(gpt_neo_terms.terms_of, trace=original)
-    scores = all_scores([block.attn for block in original.blocks])
+    scores = [] if freeze_pattern else all_scores([b.attn for b in original.blocks])
     if mode == "logits":
         useful = find_useful_neurons(
             original.unembed, terms_of, AllLogits(), share, scores
         )
         picked = list(useful.picks)
         keep = gpt_neo_keep.keep_only(picked, model.config, len(tokens))
-    else:
+    elif mode == "stream-writers":
+        stream_terms_of = partial(
+            gpt_neo_terms.terms_with_stream_writers, trace=original
+        )
+        useful = find_useful_neurons(
+            original.unembed, stream_terms_of, AllLogits(), share, scores
+        )
+        picked = list(useful.picks)
+        keep = gpt_neo_keep.with_stream_but_not_embeddings(
+            gpt_neo_keep.keep_only(picked, model.config, len(tokens))
+        )
+    elif mode == "blocks":
         writers = gpt_neo_terms.block_writers(original)
         picked = list(find_block_neurons(writers + scores, terms_of, share))
         keep = gpt_neo_keep.with_stream_and_writers(
@@ -299,9 +341,13 @@ def run_tinystories(
         )
 
     frozen = None if recompute_norms else original.frozen_norms
+    fixed_patterns = None
+    if freeze_pattern:
+        fixed_patterns = [block.attn.pattern for block in original.blocks]
+        with_original_qk(keep.layers)
 
     def ablate(keep: GptNeoKeep) -> Logits:
-        return trace_gpt_neo(model, tokens, keep, frozen=frozen).logits
+        return trace_gpt_neo(model, tokens, keep, frozen, fixed_patterns).logits
 
     return AblationRun(tokens, tokenizer, original.logits, keep, ablate, len(picked))
 
@@ -322,21 +368,33 @@ def main() -> None:
     parser.add_argument("--random-seeds", type=int, default=5)
     parser.add_argument(
         "--mode",
-        choices=["logits", "blocks"],
+        choices=["logits", "blocks", "stream-writers"],
         default="logits",
-        help="logits: walk back from every logit. blocks: keep every writer, trim inside blocks",
+        help=(
+            "logits: walk back from every logit. "
+            "blocks: keep every writer, trim inside blocks. "
+            "stream-writers: walk back from every logit, and split each stream dim "
+            "into every earlier write at once, so only writes are dropped from the stream"
+        ),
     )
     parser.add_argument(
         "--recompute-norms",
         action="store_true",
         help="tinystories-1m only: the ablated pass recomputes LayerNorm stats",
     )
+    parser.add_argument(
+        "--freeze-pattern",
+        action="store_true",
+        help="the ablated pass reuses the original attention patterns, and scores start no walks",
+    )
     args = parser.parse_args()
 
     began = time.perf_counter()
-    run_model = RUNS[args.model]
+    run_model = partial(RUNS[args.model], freeze_pattern=args.freeze_pattern)
     if args.recompute_norms:
-        run_model = partial(run_tinystories, recompute_norms=True)
+        run_model = partial(
+            run_tinystories, recompute_norms=True, freeze_pattern=args.freeze_pattern
+        )
     run = run_model(args.checkpoint, args.start, args.seq_len, args.share, args.mode)
     print(f"walked and ablated in {time.perf_counter() - began:.0f}s")
     tokens, tokenizer, before = run.tokens, run.tokenizer, run.before
