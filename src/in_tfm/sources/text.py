@@ -70,6 +70,31 @@ class TextSource:
             return mask
         return mask & (input_ids != self.tokenizer.bos_token_id)
 
+    def sentences_around(
+        self, sample_ids: Sequence[SampleId], token_idx: Sequence[int]
+    ) -> list[tuple[str, str, str]]:
+        """(before, token, after) per hit: the sentence holding the token, cut at sentence ends.
+
+        Each side is capped, so a text with no sentence ends still gives a short window."""
+        token_texts: dict[SampleId, list[str]] = {}
+        out = []
+        for sample_id, idx in zip(sample_ids, token_idx):
+            if sample_id not in token_texts:
+                token_texts[sample_id] = self._token_texts(sample_id)
+            texts, first_real = token_texts[sample_id]
+            i = idx - first_real
+            start, end = sentence_start(texts, i), sentence_end(texts, i)
+            out.append(("".join(texts[start:i]), texts[i], "".join(texts[i + 1 : end])))
+        return out
+
+    def _token_texts(self, sample_id: SampleId) -> tuple[list[str], int]:
+        """The real tokens' texts, and the column of the first one, since padding may sit on the left."""
+        encoded = self._encode([sample_id])
+        real = encoded["attention_mask"][0].bool()
+        ids = encoded["input_ids"][0][real]
+        first_real = int(real.nonzero()[0])
+        return [self.tokenizer.decode(i) for i in ids.tolist()], first_real
+
     def _embed_device(self) -> torch.device:
         return next(self.embed.parameters()).device
 
@@ -98,3 +123,33 @@ class TextSource:
         """Some tokenizers (GPT-NeoX) never add BOS themselves, but parse its string as the
         special token, which is how TransformerLens prepends it."""
         return self.tokenizer.bos_token + text if self.prepend_bos else text
+
+
+SENTENCE_ENDS = (".", "!", "?", "\n")
+MAX_BEFORE = 40
+MAX_AFTER = 20
+
+
+def ends_sentence(text: str) -> bool:
+    return any(mark in text for mark in SENTENCE_ENDS)
+
+
+def sentence_start(texts: list[str], idx: int) -> int:
+    start = idx
+    while (
+        start > 0 and idx - start < MAX_BEFORE and not ends_sentence(texts[start - 1])
+    ):
+        start -= 1
+    return start
+
+
+def sentence_end(texts: list[str], idx: int) -> int:
+    """Exclusive. The token that ends the sentence is kept."""
+    end = idx + 1
+    while (
+        end < len(texts)
+        and end - idx <= MAX_AFTER
+        and not ends_sentence(texts[end - 1])
+    ):
+        end += 1
+    return end

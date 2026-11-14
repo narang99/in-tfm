@@ -30,3 +30,17 @@ python scripts/writer_neuron_report.py --config configs/tinystories_1m_l6_mlp_wr
 - 71 of the 80 stories open with "Once upon a time, there was a".
   - Each token of that opening is the same hit in every story, so it becomes its own cluster of 71 copies.
   - leaf splits some of those copies into several clusters, which can only come from how ties break.
+
+## HDBSCAN merges
+
+- `scripts/hdbscan_merge_report.py` fits HDBSCAN once and draws its tree, with a cluster card at every node.
+  - Leaf and eom both come from that one tree: 221 nodes, 111 leaf clusters and 99 eom clusters.
+- The top of the tree sheds the shared story opening one group at a time: " upon", "Once", " named".
+- Lower down, merges read as word groups. " boy" and " girl" join first, then " man".
+- HDBSCAN joins two groups at their closest pair of hits, so one close pair can join groups that look different.
+
+```
+python scripts/hdbscan_merge_report.py --config configs/tinystories_1m_l6_mlp_write.yaml \
+    --picks-from reports/tinystories-1m/h.6.mlp.c_proj --min-cluster-size 10 \
+    --out reports/tinystories-1m/h.6.mlp.c_proj_hdbscan_merges
+```
